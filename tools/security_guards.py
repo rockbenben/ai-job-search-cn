@@ -74,8 +74,10 @@ errors: list[str] = []
 # of strings`），所以每条消息都指得到是哪个文件的哪个键下的哪一条。
 #: `permissions.defaultMode` 允许的取值。**故意不含 `bypassPermissions`**：
 #: 那等于把这份文件从「逐个入口预批」变成「全不询问」，而仓库的立场是
-#: CONTRIBUTING.md「限定到入口，不开宽授权」。要放那一档，得先有人来改这里，
-#: 并且当场把 `test_a_bypass_default_mode_is_rejected` 变红的原因写清楚。
+#: CONTRIBUTING.md「限定到入口，不开宽授权」。要放那一档，得先改这里的取值面，
+#: 并说清为什么——盯这件事的是
+#: `tests/test_security_guards.py::test_bypass_permissions_default_mode_fails`
+#: 与 `tests/test_the_generator_and_the_guard_agree.py::test_bypass_permissions_mode_is_rejected`。
 SCALAR_LEAVES = {"defaultMode": {"default", "acceptEdits", "plan"}}
 
 
