@@ -33,6 +33,17 @@
 （`## 候选人资料` + `### 教育背景`），标题还可能带括注。写死层级的下场是每一节都
 「找不到」，而找不到通常意味着**静默放行**。
 
+## 第三类不是词，是整句原话
+
+值有形状（薪资、公司名），抽得出正则；**一句话没有形状**。实测这一类的来源就是
+「举例」：注释里写「活动用户资料里写着『……』」，把 `profile/` 里的原句整条引了
+进来，还配上归属词——那已经不是举例，是替他表态。词表守卫看不见它，因为它抽的是
+专有名词。判据在 `VerbatimSentencesFromTheUsersOwnText`：整句逐字来自使用者正文、
+而**又不是仓库自己的话**（同一句在 `workflows/`/`docs/`/`tools/` 里也出现就算仓库
+词汇，方向是文档→数据，本来就在公开仓库里）时报，且只报位置，不把原句打印出来。
+
+没有活动用户、或资料没填时这一类**整条跳过**（与薪资那条同档）。
+
 没有活动用户、或资料还没填 → skip。新 clone 与 CI 上不会因此变红。
 
 ## 这条不管历史
@@ -431,7 +442,7 @@ def personal_figures() -> set:
     #: 所以和薪资取值一样，靠下面「取值 + 归属词同行」那道判据收窄。
     for ln in _section(text, "身份").splitlines():
         # **只认写着「出生年」的那一行。** 不加这个限定，四位年份的正则会把
-        # 日期里的 `2026` 一起抽走，而「2026-08-14 本人裁定」这种行满仓库都是
+        # 日期里的 `2026` 一起抽走，而「一个日期紧跟着归属词」这种行满仓库都是
         # ——判据当场变成一片红（实测四处误报）。
         if "出生年" in ln:
             for m in re.finditer(r"(19\d{2})", ln):
@@ -893,3 +904,309 @@ class DemoDataIsInventedNotCopied(unittest.TestCase):
                          "守卫文件自己点名了真实公司 —— 它不扫自己，所以没人会替它报警。"
                          "说明里写形状（「真公司名只差一个字」），别写是哪一家："
                          + "；".join(bad))
+
+
+# ============================================================================
+# 第三类：整句原话
+# ============================================================================
+
+#: 被「」包起来的整句。**短的不算**——「可以投」「硬门」这类是框架词，
+#: 由 `test_display_wording` 那张表管；这里只管成句的原话。
+_QUOTE_RUN = re.compile(r"「([^」\n]{12,80}?)」")
+
+#: 算作「使用者自己的正文」的那些文件。
+#:
+#: **只收 `profile/`。** `outreach.md` 与 `evaluation.md` 里那些引号半数是在引
+#: 职位描述原文（公开文本），拿来当个人语料扫，实测报出来的三条全是这种回声和
+#: 一个日期标签——噪音淹掉信号，正是这份文件顶上关于「取法」的那条教训。
+#: 话术与评估是命令生成的，不是他写的；`profile/` 里才是他自己填与定过稿的话。
+_PERSONAL_GLOBS = ("profile/*.md",)
+
+#: 仓库自己的话住在哪儿。同一句在这里也出现，方向就是「文档→数据」——
+#: 那句话本来就在公开仓库里，不算从谁身上抄走。
+#:
+#: **不能拿「所有被跟踪的文件」当这个集合**：泄漏点本身也在被跟踪文件里，
+#: 那句话就会同时出现在「仓库文档」一侧，于是每一条真泄漏都自我豁免了。
+#: 所以这里只列**给人看的模板与说明**；`tests/` 与 `tools/` 都不在其中——
+#: 注释里抄原话正是这条守卫要抓的那件事（本文件顶上那张表记的四处，
+#: 两处就在 `tools/` 的注释里）。
+_REPO_DOC_DIRS = ("workflows", "docs", "profile.example", "templates",
+                  ".claude/skills", ".agents/skills")
+_REPO_DOC_FILES = ("AGENTS.md", "CLAUDE.md", "README.md", "SETUP.md",
+                   "CONTRIBUTING.md", "SECURITY.md",
+                   "resume/template.typ", "resume/example.typ",
+                   "cover_letter/template.typ", "documents/README.md")
+
+
+def _norm(text: str) -> str:
+    """比对用的形状：空白全部折成单空格。换行是排版，不是内容。"""
+    return " ".join(text.split())
+
+
+def _active_user_dir():
+    au = ROOT / ".active_user"
+    if not au.is_file():
+        return None
+    user = au.read_text(encoding="utf-8").strip()
+    if not user or user in _EXAMPLE_NAMES:
+        return None
+    d = ROOT / "users" / user
+    return d if d.is_dir() else None
+
+
+def personal_blob() -> str:
+    u = _active_user_dir()
+    if u is None:
+        return ""
+    out = []
+    for g in _PERSONAL_GLOBS:
+        for p in sorted(u.glob(g)):
+            out.append(_norm(p.read_text(encoding="utf-8", errors="replace")))
+    return "\n".join(out)
+
+
+def _repo_doc_paths():
+    for d in _REPO_DOC_DIRS:
+        base = ROOT / d
+        if not base.is_dir():
+            continue
+        for p in sorted(base.rglob("*")):
+            if p.is_file() and p.suffix.lower() in (".md", ".py"):
+                yield p
+    for f in _REPO_DOC_FILES:
+        p = ROOT / f
+        if p.is_file():
+            yield p
+
+
+def _quote_fragments(text: str) -> list:
+    """文本里被「」包起来、够长到算「一句话」的那些片段（空白已归一）。
+
+    **要带至少四个汉字**：`prompt engineering`、`evaluation.md` 这种是术语和
+    文件名，长度够了但不是句子——拿它们当「原话」判，报出来全是噪音。
+    """
+    out = []
+    for m in _QUOTE_RUN.finditer(text):
+        frag = _norm(m.group(1))
+        if len(frag) < 12:
+            continue
+        if len(re.findall(r"[㐀-鿿]", frag)) < 4:
+            continue
+        out.append(frag)
+    return out
+
+
+#: 全文语料，按文件缓存一次。判「谁先写的这句话」必须看**全文**：
+#: 工具印出去的话在源码里是不带引号的字符串，只在别处的「」里找方向会漏掉它。
+_TEXTS = {}
+_BLOB = ""
+
+
+def _all_texts() -> dict:
+    if not _TEXTS:
+        for p in tracked_text_files():
+            _TEXTS[str(p)] = readable(p)
+    return _TEXTS
+
+
+def _blob() -> str:
+    global _BLOB
+    if not _BLOB:
+        _BLOB = "\n".join(_all_texts().values())
+    return _BLOB
+
+
+def authored_elsewhere(frag: str, here: Path) -> bool:
+    """这句话在**别的**被跟踪文件里也逐字写着吗。
+
+    数的是出现次数：全仓次数减掉本文件次数还有剩 → 别处先写的。
+    另一种写法是把整棵树拼成一条大串、再 `replace` 掉本文件那一段——它的静默
+    失败方向是**漏报**（本文件与拼接结果有一处行尾差异，那次删除就什么也没删掉，
+    泄漏点自我豁免而守卫全绿）。判据失效只能朝红的方向坏。
+
+    ⚠️ **这一条有明确的盲区，别把它读成「原话不会进仓库」**：它认的是
+    「只在这一份文件里出现」的形状，所以同一句话被抄到**两处**时，两处都会因为
+    「别处也写着」被放掉。真正兜住第一次的那道是它自己——第一次进来就红，
+    于是不会有第二次；它防的是新增，不是既成事实的扩散。
+    """
+    texts = _all_texts()
+    mine = texts.get(str(here))
+    if mine is None:
+        # 植入用例传的是「还不存在的文件」：它没有正文，本文件次数就是 0，
+        # 于是「别处写着」只看全仓次数 —— 这正是植入要的形状。
+        mine = readable(here) if here.is_file() else ""
+    return _blob().count(frag) - mine.count(frag) > 0
+
+
+def quoted_personal_sentences(text: str, personal: str,
+                              here: Path = None) -> list:
+    """`text` 里那些「逐字来自使用者正文、又不是仓库别处先写出来的话」的整句。
+
+    `here` = 正在看的这个文件。**别处**也逐字写着同一句 → 方向是那处先写、
+    这里只是引用，不算从谁身上抄走；只在这一份里出现 → 抄的。
+    按文件排除而不是按目录排除：`tools/` 里既有泄漏面（注释抄原话），也有
+    工具自己印出去的话（那些话后来也被写进资料那一侧），用目录一刀切两头都判错。
+
+    模板与说明那一侧（`profile.example/`、`workflows/`）整份不看：资料是从它们
+    长出来的，模板句在两边逐字出现是常态，报出来只会淹掉真信号。
+    """
+    if here is not None and _is_authored(here):
+        return []
+    out = []
+    for frag in _quote_fragments(text):
+        if frag not in personal:
+            continue
+        if here is not None and authored_elsewhere(frag, here):
+            continue
+        out.append(frag)
+    return out
+
+
+def _is_authored(path: Path) -> bool:
+    """这份文件是不是「写给人看的模板与说明」那一侧。
+
+    那一侧不是泄漏面：使用者的资料是从 `profile.example/` 与 `workflows/`
+    长出来的，模板句在两边逐字出现是常态。泄漏面是 `tests/`、`tools/`、`web/`
+    这些「顺手举个例子」的地方。
+
+    ⚠️ 这一层是**必要**的，不是省扫描：模板里那句话常常只在模板自己出现一次，
+    方向判据在这种形状上算出「别处 0 处」，于是那份模板会被判成泄漏点。
+    撤掉它，`test_the_doc_vocabulary_is_still_the_baseline_side` 当场红——
+    那里专挑这种「只出现在一处」的模板句来验。
+    """
+    rel = path.relative_to(ROOT).as_posix()
+    return (any(rel.startswith(d + "/") for d in _REPO_DOC_DIRS)
+            or rel in _REPO_DOC_FILES)
+
+
+class VerbatimSentencesFromTheUsersOwnText(unittest.TestCase):
+    """专有名词抽得出正则，**一句话抽不出**——所以句子要有另一条判据。
+
+    这一类的来源还是那个「举个例子」的手感：注释里写「活动用户资料里写着『……』」，
+    后面跟的就是 `profile/` 里的原句，还配着归属词。那已经不是举例，是替他表态：
+    读的人会把那句当成他定过稿的话，而它只是他被问到时的一次回答。
+
+    报的时候只给**文件与句数**，不复述原句——否则这条守卫自己就成了新的泄漏点
+    （本文件顶上那张表记的就是这件事）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.personal = personal_blob()
+        if not cls.personal:
+            # **两种「空」要分开说**：CI 上没有活动用户，跳过是对的；
+            # 本机有活动用户却抽不到正文，那是取法坏了，得响亮地说，
+            # 不能和「没数据」共用一句 skip —— 那样改错目录都不会有人看见。
+            if _active_user_dir() is not None:
+                raise unittest.SkipTest(
+                    "⚠️ 有活动用户，但按 `_PERSONAL_GLOBS` 抽不到任何正文 —— "
+                    "要么资料还没填，要么这条的取法指错了地方")
+            raise unittest.SkipTest("没有活动用户 —— 无从比对")
+        # 全仓只走一遍，两份断言共用这一份结果：`readable()` 一趟四十多秒，
+        # 扫两轮是白白翻倍。模板与说明那一侧不是泄漏面，不看。
+        cls.hits = [(p, quoted_personal_sentences(readable(p), cls.personal, here=p))
+                    for p in tracked_text_files() if not _is_authored(p)]
+        cls.hits = [h for h in cls.hits if h[1]]
+
+    def _one_of_mine(self) -> str:
+        """找一句只在资料正文里、仓库里没人写过的话，供植入用例用。"""
+        u = _active_user_dir()
+        for p in sorted(u.glob(_PERSONAL_GLOBS[0])):
+            for ln in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                s = _norm(re.sub(r"^[\s>*\-#\d.、（）()]+", "", ln))
+                if len(s) >= 14 and len(re.findall(r"[㐀-鿿]", s)) >= 4 \
+                        and s in self.personal and _blob().count(s) == 0:
+                    return s
+        return ""
+
+    def test_the_ruler_catches_a_planted_quote(self):
+        """控制用例：把一句真实资料原话嵌进一行注释，必须被逮到。"""
+        s = self._one_of_mine()
+        self.assertTrue(s, "资料里取不到一句「仓库没有」的正文 —— 比对是空跑")
+        got = quoted_personal_sentences(f"活动用户资料里写着「{s}」",
+                                        self.personal,
+                                        here=ROOT / "某个新文件.py")
+        self.assertEqual(got, [s])
+
+    def test_direction_is_what_exempts_not_content(self):
+        """**反向控制**：豁免只看方向，不看内容——一句话在**别处**也逐字写着，
+        那就是那处先写的、这里只是引用。
+
+        这一条只管「该放掉的放掉」；「该报的会报」由
+        `test_the_ruler_catches_a_planted_quote` 用一句仓库里根本没有的话去验。
+        两支合起来才是方向判据——**别在这里再要一份「只出现在一处」的样本**：
+        存量清完之后树里就没有那种形状了，那样这条会常年跳过而没人察觉。
+
+        判方向用的是全文出现次数，不是「别处的引号里也出现」：工具印出去的话
+        在源码里是不带引号的字符串，只在引号里找方向就会把工具自己写成泄漏点。
+        """
+        texts = _all_texts()
+        seen = {f for t in texts.values() for f in _quote_fragments(t)
+                if f in self.personal}
+        counts = {f: sum(1 for t in texts.values() if f in t) for f in seen}
+        shared = [(p, f) for p, t in texts.items() for f in _quote_fragments(t)
+                  if counts.get(f, 0) >= 2]
+        if not shared:
+            self.skipTest("这棵树里没有「多处都写着、又落在资料里」的句子 —— "
+                          "这一支没东西可验，不算通过")
+        p, frag = shared[0]
+        self.assertNotIn(
+            frag, quoted_personal_sentences(texts[p], self.personal, here=Path(p)),
+            "别处也写着这句话，方向是「那处先写」，却仍然报在这一份上")
+
+    def test_the_doc_vocabulary_is_still_the_baseline_side(self):
+        """模板与说明那一侧（`profile.example/`、`workflows/`）不许被当成泄漏面。
+
+        使用者填的资料是从模板长出来的，模板句在两边逐字出现是常态。
+        **专挑「只在模板里出现一次」的那种**：那种形状方向判据帮不上忙
+        （别处 0 处），放掉它靠的正是 `_is_authored()` 这一层——所以把那一层
+        撤掉，这条会红。挑多处出现的句子做用例，等于用另一条判据替它作证。
+        """
+        texts = _all_texts()
+        solo = None
+        for p in _repo_doc_paths():
+            t = texts.get(str(p))
+            if not t:
+                continue
+            for f in _quote_fragments(t):
+                if f in self.personal and sum(1 for q in texts.values()
+                                              if f in q) == 1:
+                    solo = (p, f, t)
+                    break
+            if solo:
+                break
+        if not solo:
+            self.skipTest("这棵树里没有「只在模板里出现一次、又落在资料里」的句子 —— "
+                          "这一支没东西可验，不算通过")
+        p, frag, t = solo
+        self.assertIn(frag, t, "样本没在被读的模板里 —— 用例自己空了")
+        self.assertEqual(
+            quoted_personal_sentences(t, self.personal, here=p), [],
+            "模板自己的句子被当成从使用者身上抄的了（`_is_authored` 那层没生效）")
+
+    #: 存量清零。**只许往下走，也不许往上加。**
+    #:
+    #: 这一轮清的时候最后剩下的那一处（`tools/query_yield.py` 里的
+    #: 「`—` 是下一轮最值钱的格子」）核过两头：那句是工具**自己印出去的话**，
+    #: 同一条句子在它维护的资料块里出现两次（一次是它的说明，一次是它引自己），
+    #: 说的是表格里的破折号，不是任何人的事。方向判据把它放掉了，所以基线留 0。
+    #:
+    #: 以后真出现「两边都在用的共享词汇」又放不掉的，先看方向判据是不是该补
+    #: 一处豁免，**别先动这个数** —— 把基线抬高等于把这条判据的天花板挪高，
+    #: 而它现在的天花板是零。
+    BASELINE = 0
+
+    def test_no_tracked_file_quotes_a_personal_sentence(self):
+        bad = [f"{p.relative_to(ROOT).as_posix()}（{len(h)} 处）" for p, h in self.hits]
+        self.assertLessEqual(
+            len(bad), self.BASELINE,
+            f"又被抄进去一整个人的原句，累计从 {self.BASELINE} 涨到了 {len(bad)}。"
+            "要说明就写类别，别引原句（本文件顶上那张表记的就是这件事）：\n  "
+            + "\n  ".join(bad))
+
+    def test_the_baseline_is_not_stale(self):
+        """存量清掉就该把这个数收紧——只挂着不降的基线是张免死金牌。"""
+        n = len(self.hits)
+        self.assertLessEqual(
+            self.BASELINE - n, 2,
+            f"现在只剩 {n} 个文件有命中，基线还写着 {self.BASELINE} —— 收到 {n}")
