@@ -29,6 +29,18 @@
 
 依赖真实数据（`data.json` 不进版本库），CI 上会跳过 —— 与
 `test_no_maintainer_data_in_repo` 同一档，本机跑那一遍才是这条的战场。
+
+## 第二类：判定码占了一栏**地名**
+
+状态码漏进句子之外，还有一处漏得更直的：总览页的**地点列**印的是 `PASS`。
+实测 2026-10-02 有 8 个岗。根因不在写手，在 `workflows/job-rank.md` 的回传格式：
+地点那道门的判定当初就叫 `location`，与职位记录里那栏**城市**同名，
+照着键名回填就把「上海」挤成了 `PASS`。所以这一条守两头——
+
+- 显示层：`short_location()` 认得判定码，认出来就当没填（**下面那组不依赖
+  真实数据，CI 上真跑**）；
+- 生成流程：回传格式里那个键已经改名，判定只住在 `hard_gates` 里
+  （`TheKeyThatCollidedWithTheCityColumn` 钉住它不许长回来）。
 """
 import json
 import pathlib
@@ -39,6 +51,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
+import export_web_data as ex  # noqa: E402
 import tracker  # noqa: E402
 
 #: 存的就是那个码的字段：前端按它分支/上色，不是给人读的句子。
@@ -100,6 +113,38 @@ def _leaks(data: dict) -> list:
     return out
 
 
+#: 判定码。**不借 `export_web_data._VERDICT_ONLY`** —— 拿实现自己的表去断言实现，
+#: 那条测试只能证明它和自己一致。这一份是独立写出来的。
+VERDICT_CODES = {"PASS", "FAIL", "FLAG", "满足", "不满足", "要留意", "未知", "不适用"}
+
+RANK_DOC = ROOT / "workflows" / "job-rank.md"
+
+
+def _verdict_in_a_city_column(data: dict) -> list:
+    """地点栏里住着的判定码。整段相等才算 —— 「上海·徐汇区」里含个「未」不算。"""
+    return [j.get("id") for j in data.get("jobs") or []
+            if (j.get("location") or "").split("（")[0].strip().upper() in VERDICT_CODES]
+
+
+def _rank_payload(text: str) -> str:
+    """子代理那份回传格式（「每个代理返回一个 JSON 数组」后面的第一个围栏）。"""
+    i = text.find("每个代理返回一个 JSON 数组")
+    if i < 0:
+        return ""
+    m = re.search(r"```json\n(.*?)\n```", text[i:], re.S)
+    return m.group(1) if m else ""
+
+
+def _city_key_holding_a_verdict(block: str) -> list:
+    """顶层键里「名字是地名、取值是判定码」的那几条。"""
+    out = []
+    for m in re.finditer(r'^  "([^"]+)"\s*:\s*(.*)$', block, re.M):
+        key, val = m.group(1), m.group(2)
+        if key.lower() in {"location", "city"} and re.search(r"\b(?:PASS|FAIL|FLAG)\b", val):
+            out.append((key, val.strip()))
+    return out
+
+
 class TheRulerWouldLightUp(unittest.TestCase):
     """判据自检 —— 认不出码时下面那条在空集上永远绿。"""
 
@@ -129,6 +174,30 @@ class TheRulerWouldLightUp(unittest.TestCase):
 
     def test_the_code_list_is_not_empty(self):
         self.assertGreater(len(_codes()), 6)
+
+    def test_short_location_refuses_a_verdict(self):
+        """判定码进不了地名栏 —— 这一条不依赖真实数据，CI 上真跑。"""
+        for bad in ("PASS", "FAIL", "FLAG", "不满足", "PASS（不计权重）", "未知"):
+            with self.subTest(bad):
+                self.assertEqual(ex.short_location(bad), "")
+
+    def test_short_location_still_cuts_a_real_address(self):
+        """**反向控制。** 上面那条要是把整函数改成「一律返回空串」也照样绿。"""
+        self.assertEqual(ex.short_location("上海-杨浦区民府路678号T2号楼"), "上海·杨浦区")
+        self.assertEqual(ex.short_location("北京"), "北京")
+
+    def test_the_city_column_ruler_catches_a_planted_one(self):
+        got = _verdict_in_a_city_column(
+            {"jobs": [{"id": "a", "location": "PASS"},
+                      {"id": "b", "location": "上海·徐汇区"}]})
+        self.assertEqual(got, ["a"])
+
+    def test_the_payload_ruler_catches_a_planted_one(self):
+        got = _city_key_holding_a_verdict('  "location": "PASS" | "FAIL" | "FLAG",\n')
+        self.assertEqual([k for k, _ in got], ["location"])
+        # **只看顶层。** 门名缩进两格，装判定码是天经地义的，别把它们一起报。
+        self.assertEqual(_city_key_holding_a_verdict(
+            '    "地点（跨城搬迁）": "PASS" | "FAIL" | "FLAG"\n'), [])
 
 
 class TheTwoPrescreenRulesSayItInChinese(unittest.TestCase):
@@ -182,14 +251,12 @@ class NoCodeReachesTheExportedPanel(unittest.TestCase):
     def test_the_scan_sees_the_payload(self):
         self.assertGreater(len(self.data.get("jobs") or []), 20)
 
-    #: 快照里**存量**的那几句 —— 它们是 2026-08-31 修好之前，预筛把
-    #: 「状态 applied」写进 `rank_breakdown.依据` 留下的，同一句同时进
-    #: `skipReason` 与 `skillWhy`，所以 9 个岗数出 18 处。
-    #:
-    #: **这个数只许往下走。** 改一处 `prescreen` 治不了已经落盘的字（那要
-    #: 重跑那几个岗的判断），而为了清 18 行文字去动用户的数据不划算 ——
-    #: 它们会随着那几个岗归档自己消失。新写的一处当场把这条顶红。
-    BASELINE = 18
+    #: 存量是 2026-08-31 修好之前落盘的几句：预筛把「状态 applied」写进了
+    #: `rank_breakdown.依据`，同一句同时进 `skipReason` 与 `skillWhy`，所以
+    #: 一个岗数出两处。**这个数只许往下走。** 改一处 `prescreen` 治不了已经
+    #: 落盘的字（那要重跑那几个岗的判断），而为了清几行文字去动用户的数据
+    #: 不划算 —— 它们会随着那几个岗归档自己消失。新写的一处当场把这条顶红。
+    BASELINE = 2
 
     def test_no_prose_field_carries_a_status_code(self):
         leaks = _leaks(self.data)
@@ -208,6 +275,35 @@ class NoCodeReachesTheExportedPanel(unittest.TestCase):
         self.assertLessEqual(
             self.BASELINE - n, 4,
             f"实际只剩 {n} 处，基线还写着 {self.BASELINE} —— 把它收到 {n}")
+
+    def test_the_location_column_never_shows_a_verdict(self):
+        got = _verdict_in_a_city_column(self.data)
+        self.assertEqual(got, [],
+                         f"{len(got)} 个岗的地点列上印的是判定码：{got[:8]}")
+
+
+class TheKeyThatCollidedWithTheCityColumn(unittest.TestCase):
+    """生成流程那一头：回传格式里不许再有「地名键装判定码」。
+
+    显示层挡住的是已经落盘的字，这一条挡的是**下一个岗还会不会这么写**。
+    当初那个键就叫 `location`，写手照着它把判定回填进职位记录的同名字段，
+    而那字段是城市。
+    """
+
+    def test_the_payload_says_nothing_about_a_city(self):
+        block = _rank_payload(RANK_DOC.read_text(encoding="utf-8"))
+        self.assertTrue(block, "没找到那份回传格式 —— 下面那条在空串上永远绿")
+        self.assertEqual(_city_key_holding_a_verdict(block), [],
+                         "回传格式里又有地名键装判定码了，写手会把它回填进城市栏")
+
+    def test_the_location_gate_still_has_a_home(self):
+        """删键不等于删那道门。判定必须有落点，否则「想 FAIL 也没地方填」。
+
+        **认键名，不认这个名字出现在哪儿** —— 注释里也写着门名，
+        拿 `assertIn` 断言的话，把键删了它照样绿（变异当场照出来过）。
+        """
+        block = _rank_payload(RANK_DOC.read_text(encoding="utf-8"))
+        self.assertRegex(block, r'(?m)^\s+"地点（跨城搬迁）"\s*:')
 
 
 if __name__ == "__main__":

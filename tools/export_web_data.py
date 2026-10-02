@@ -1844,7 +1844,8 @@ def profile_terms(user: str) -> list[str]:
     lines = [ln for ln in body.splitlines() if ln.lstrip().startswith(("-", "*"))]
     body = "\n".join(re.sub(r"^\s*[-*]\s*", "", ln) for ln in lines)
     body = re.sub(r"\*\*[^*]{0,12}：\*\*", " ", body)        # 去掉「**主力：**」这类标签
-    # 按中英文标点切开。括注里的内容（如「Dify、n8n、Coze 这一层」）也要切进来
+    # 按中英文标点切开。括注里的并列项（技能名、平台名那一类）也要切进来，
+    # 不然整条括注会当一个词留在外面。
     parts = re.split(r"[；;，,、。\n\(\)（）/｜|]+", body)
     terms, seen_t = [], set()
     for raw in parts:
@@ -2481,6 +2482,16 @@ def salary_months_unknown(salary: str) -> bool:
     return not re.search(r"\d+\s*薪", t)
 
 
+#: 判定码不是地名。`/job-rank` 的回传格式里，地点那道门的判定的键名一度与
+#: 职位记录的 `location`（城市）撞名，照着回填的写手就把 `PASS` 写进了城市栏，
+#: 面板的地点列直接显示它（实测 8 个岗）。正本已改：判定只住在 `hard_gates` 里。
+#: 这里兜住已经落盘的那几条，以及以后再撞一次的。
+_VERDICT_ONLY = re.compile(
+    r"^(?:PASS|FAIL|FLAG|通过|不通过|满足|不满足|要留意|未知|不适用|不计权重)"
+    r"(?:\s*[（(][^（）()]*[）)])?$",
+    re.I)
+
+
 def short_location(loc: str) -> str:
     """地点只留到区级。
 
@@ -2489,7 +2500,7 @@ def short_location(loc: str) -> str:
     而多出来的那些字对「投不投」没有任何帮助——通勤判断到区就够了。
     """
     t = (loc or "").strip()
-    if not t:
+    if not t or _VERDICT_ONLY.match(t):
         return ""
     parts = [p for p in re.split(r"[-·]", t) if p.strip()]
     if len(parts) >= 2:
@@ -2780,6 +2791,24 @@ _MD_TICK = re.compile(r"`([^`\n]+)`")
 #: 中日韩字符之间的空格。替换之后才收——见 `plain()` 末尾的说明。
 _CJK = r"\u4e00-\u9fff\u3400-\u4dbf\u3001-\u303f\uff01-\uff65"
 _CJK_GAP = re.compile(rf"(?<=[{_CJK}])[ \t]+(?=[{_CJK}])")
+#: HTML 标签。**只列认得的标签名**，不写 `</?[a-zA-Z][^>]*>` 通吃：面板上要显示的
+#: 命令模板里满是 `<公司>` `<职位链接>` 这种尖括号占位符，那是用户要照敲的东西。
+#: 通吃版虽然碰不到它们（里面是中文），但 JD 原文里一旦出现 `A < b > c` 这种形状
+#: 就会无声吃掉用户的字。宁可列一张名单，漏了顶多标签还在屏幕上看得见。
+_HTML_TAGS = re.compile(
+    r"</?\s*(?:br|wbr|hr|p|div|span|a|b|i|u|s|em|strong|code|pre|tt|kbd|mark|"
+    r"small|big|sub|sup|font|center|blockquote|ul|ol|li|dl|dt|dd|table|thead|"
+    r"tbody|tr|td|th|h[1-6]|img)\b[^<>]*>", re.I)
+#: `<br>` 在纯文本节点里不会断行，只会留下一个空洞，所以换成一个空格，
+#: 交给下面 `_CJK_GAP` 在两侧都是中文时收掉。
+_HTML_BR = re.compile(r"<\s*br\s*/?\s*>", re.I)
+#: 打分器追加在依据末尾的那段自述：「⚠️ 某日 score.py 现算订正：
+#: 薪资与职级 90→80；综合分 77 → 77，结论可以考虑 → 值得投。这三样…由工具现算，
+#: 不手填。」那是写给**下一个改评估文件的人**的（`tools/score.py` 用它顶住手改），
+#: 不是给他看的分析——上屏的 142 条里，它说的三件事面板本来就显示着。
+#: **认「现算订正」这四个字，不认 ⚠️**：别的 ⚠️ 段是真提醒（「要留意」那一档
+#: 就靠它），一个都不许跟着剥。
+_SCORE_LOG = re.compile(r"[ \t]*⚠️[^\n]*现算订正[^\n]*")
 
 
 
@@ -2808,8 +2837,8 @@ def plain(text: str) -> str:
     剥在**换词之前**：反引号剥掉，下面那张表才认得出 `job-rank.md` 这个文件名。
 
     **成对剥完还要收落单的那半个。** `_MD_BOLD` 只认 `**…**` 这样成对的；
-    上游一旦在一对星号中间切了一刀，落到这里的就是「不写代码**，只能大致读懂」
-    —— 一个孤零零的 `**`，成对规则认不出，于是原样上了终端（2026-09-01 实测：
+    上游一旦在一对星号中间切了一刀，落到这里的就是一句被劈开的边界条款
+    —— 后半截头上挂着一个孤零零的 `**`，成对规则认不出，于是原样上了终端（2026-09-01 实测：
     `audit_pipeline` 的「哪一条排除最贵」那句就是这么漏出去的，源头在
     `_cli.exclusion_tally` 切分规则文本时切进了加粗里）。**补在这里而不是补在
     那个调用方**：面板、终端、话术都从这一个函数出去，在调用方各补一次
@@ -2818,6 +2847,13 @@ def plain(text: str) -> str:
     out = _MD_BOLD.sub(r"\1", text or "")
     out = out.replace("**", "")          # 上游切断加粗留下的半个标记
     out = _MD_TICK.sub(r"\1", out)
+    # **HTML 标签也要剥。** 评估正文是 markdown 写的，作者偶尔直接写 `<br>` 断行；
+    # 而面板上这些字进的是纯文本节点与 `title=`，浏览器不渲染标签——
+    # 「两条逐条核：<br>① 英语——」就原样上屏了（2026-09-30 在渲染后的 DOM 里量到 3 处）。
+    # 顺序：先 `<br>`→空格、再剥标签，最后由末尾的 `_CJK_GAP` 把中文之间的缝收掉。
+    out = _HTML_BR.sub(" ", out)
+    out = _HTML_TAGS.sub("", out)
+    out = _SCORE_LOG.sub("", out)
     for pat, b in _TERM_PATS:            # 表在模块顶上编译好，见 `_TERM_PATS`
         out = pat.sub(b, out)
     out = strip_weights(out)

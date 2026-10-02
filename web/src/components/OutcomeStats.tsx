@@ -148,7 +148,7 @@ export function OutcomeStatsPanel({ s }: { s: OutcomeStats }) {
           {/* 整句一行：JSX 里两个汉字之间的换行会被折成空格，中文里那就是错字。
               只有标签边界是安全的断点。 */}
           <p className="ostats-note">
-            <span>各档回复率如果差不多，说明这套打分没帮上忙——那就该回去调评估权重，而不是继续按它排序。</span>
+            <span>各档回复率如果差不多，说明这套打分没帮上忙——那就该回去改它看的那些东西，而不是继续按它排序。</span>
           </p>
         </div>
       ) : s.byBand.length > 0 ? (
@@ -157,7 +157,7 @@ export function OutcomeStatsPanel({ s }: { s: OutcomeStats }) {
           <p className="ostats-note">
             <span>
               {`还一个回音都没有，这一栏得等有人回了才有内容。多数回音在投出去 ${s.silentDays} 天内`}
-              {"出现——到那时这里会告诉你：分高的岗是不是真的更容易有人理。是，说明这套打分帮上了忙；不是，就该回去调权重。"}
+              {"出现——到那时这里会告诉你：分高的岗是不是真的更容易有人理。是，说明这套打分帮上了忙；不是，就说明它看的东西和你真实收到的回复对不上，得回去改它看的那些东西。"}
             </span>
           </p>
         </div>

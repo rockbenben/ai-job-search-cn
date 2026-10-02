@@ -1135,6 +1135,32 @@ class WeightJargonStaysOffTheScreen(unittest.TestCase):
                          "面板文案里出现了权重这个内部参数——说它对用户的意思，"
                          f"别说机制：\n  " + "\n  ".join(bad[:6]))
 
+    def test_no_weight_wording_in_the_frontend_text(self):
+        """同一把尺子还得量**前端自己写死**的那批句子。
+
+        上一条扫的是 `data.json` 里 `dimensions[].note`——那是从评估文件导出来的字。
+        组件里还有一类话不经过导出，直接写在 JSX 里，上一条永远看不见。
+        2026-09-30 在渲染后的 DOM 里量到两句，都在 `OutcomeStats` 的投后统计空状态：
+        「那就该回去调评估权重」「就该回去调权重」。
+        取文本节点用 `test_web_copy.jsx_text_nodes`（屏幕上真会出现的字那份正本），
+        不在这儿另写一套剥法。
+        """
+        sys.path.insert(0, str(ROOT / "tests"))
+        from test_web_copy import jsx_text_nodes
+        pat = re.compile(r"权重|占\s*\d+\s*%")
+        bad, seen = [], 0
+        for f in sorted((ROOT / "web" / "src").rglob("*.tsx")):
+            for ln, txt in jsx_text_nodes(f.read_text(encoding="utf-8")):
+                seen += 1
+                if pat.search(txt):
+                    bad.append(f"{f.name}:{ln} {txt[:44]}")
+        self.assertGreater(seen, 120,
+                           f"从 JSX 里只抽出 {seen} 个文本节点——扫描源怕是空了，"
+                           "这条等于没跑")
+        self.assertEqual(bad, [],
+                         "前端写死的文案里出现了权重——说它对用户的意思，别说机制：\n  "
+                         + "\n  ".join(bad[:6]))
+
     def test_the_rule_is_in_the_wording_table(self):
         t = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         self.assertIn("散文里提权重", t, "措辞表只禁了算式，没禁散文里提权重")

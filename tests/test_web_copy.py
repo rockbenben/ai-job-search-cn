@@ -136,6 +136,27 @@ class CopyBornInPythonIsAlsoUserFacing(unittest.TestCase):
     #: 走 `_notes()` 统一取——两处各写一份取法，迟早只扫到一半。
     SOURCE = ROOT / "tools" / "export_web_data.py"
 
+    @staticmethod
+    def _exported_strings() -> list:
+        """`data.json` 里的每一条字符串。两处判据共用这一份取法。"""
+        import json
+        f = ROOT / "web" / "public" / "data.json"
+        if not f.is_file():
+            return []
+        out = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+            elif isinstance(node, str):
+                out.append(node)
+        walk(json.loads(f.read_text(encoding="utf-8")))
+        return out
+
     @classmethod
     def _notes(cls) -> list:
         """`resume_insight` 里那些会上屏的整句。
@@ -160,6 +181,73 @@ class CopyBornInPythonIsAlsoUserFacing(unittest.TestCase):
             bad, [],
             "这些句子会原样印到屏幕上，markdown 标记不会被渲染成加粗：\n"
             + "\n".join(bad) + "\n要强调就重写句子，别用 ** 和反引号")
+
+    def _strings_or_skip(self) -> list:
+        """取导出成品里的全部字符串。扫描源空了要当场说，不许默默通过。"""
+        strings = self._exported_strings()
+        if not strings:
+            self.skipTest("还没导出过 data.json")
+        self.assertGreater(len(strings), 500,
+                           f"只从 data.json 取到 {len(strings)} 条字符串——扫描源空了")
+        return strings
+
+    def test_no_html_tags_in_exported_text(self):
+        """HTML 标签和 markdown 是同一种毛病：**面板上这些字进的是纯文本节点**，
+        浏览器不渲染标签，于是 `<br>` 原样上屏（2026-09-30 在渲染后的 DOM 里量到 3 处，
+        全在硬性条件的依据里——评估正文是 markdown 写的，作者偶尔直接 `<br>` 断行）。
+
+        ⚠️ 这条**只管导出的数据，不管 JSX 源码**：源码里 `<b>` / `<code>` 是合法的
+        元素写法（上面那条 markdown 判据还专门让人改用标签）。分界是这段字
+        到没到过「纯文本节点」那一侧。清理住在 `export_web_data.plain()`，
+        它只剥列得出名字的标签——命令模板里的 `<职位链接>` 是要用户照敲的。
+        """
+        tag = re.compile(r"</?\s*(?:br|p|div|span|a|b|i|u|s|em|strong|code|pre|"
+                         r"tt|kbd|mark|small|sub|sup|font|center|ul|ol|li|table|"
+                         r"tr|td|th|h[1-6]|img)\b[^<>]*>", re.I)
+        bad = [s[:70] for s in self._strings_or_skip() if tag.search(s)]
+        self.assertEqual(bad, [],
+                         "HTML 标签会原样印在屏幕上：\n  " + "\n  ".join(bad[:6]))
+
+    def test_the_scorers_own_log_stays_off_the_screen(self):
+        """`score.py` 每次现算都在依据末尾追加一段自述，那段字**也上了屏**。
+
+        实测 2026-10-02：导出的 `data.json` 里 142 条带着
+        「⚠️ 某日 score.py 现算订正：薪资与职级 90→80；综合分 77 → 77，
+        结论可以考虑 → 值得投」。那三件事面板本来就显示着，而这句话的对象是
+        **下一个改评估文件的人**（防手改），不是读屏幕的人。
+        留在盘上，剥在显示层——`export_web_data._SCORE_LOG`。
+
+        ⚠️ 这条量的是**本机那份成品**（`data.json` 不进版本库）：新长出第二条
+        不经清洁工的通路会在这里红。清洁工本身对不对、`依据` 有没有过它，
+        由下面两条管，那两条在 CI 上真跑。
+        """
+        bad = [s[:70] for s in self._strings_or_skip() if "现算订正" in s]
+        self.assertEqual(bad, [],
+                         "打分器的自述上了屏（它说的数面板本来就有）：\n  "
+                         + "\n  ".join(bad[:4]))
+
+    def test_the_reason_goes_through_the_cleaner(self):
+        """接线也要钉住：清洁工自己对了，`依据` 不经过它照样上屏。
+
+        142 条全部走 `skillWhy` 这一个出口（逐字段数过），所以钉这一处。
+        """
+        src = self.SOURCE.read_text(encoding="utf-8")
+        self.assertRegex(src, r'"skillWhy":\s*plain\(',
+                         '`依据` 到 `skillWhy` 这一段没过显示层清洁工')
+
+    def test_plain_takes_the_log_but_not_a_real_warning(self):
+        """**反向控制。** 只断言「剥掉了」，把 `plain()` 改成见到 ⚠️ 就删也照样绿。
+
+        这一条不依赖真实数据，CI 上真跑。
+        """
+        sys.path.insert(0, str(ROOT / "tools"))
+        import export_web_data as ex
+        with_log = ("方向对得上。\n\n⚠️ 某日 `score.py` 现算订正："
+                    "薪资与职级 90→80；综合分 77 → 77，结论可以考虑 → 值得投。"
+                    "这三样（薪资维 / 综合分 / 结论）是确定性函数，由工具现算，不手填。")
+        self.assertEqual(ex.plain(with_log), "方向对得上。")
+        reminder = "⚠️ 英语只限书面、口语不行，JD 要求「能与外籍同事日常会议」。"
+        self.assertIn("口语不行", ex.plain(reminder))
 
     def test_no_unexplained_codes_or_framework_words(self):
         """英文码与框架内部词都不该上屏——用户不该为了看懂工具先学一套词。"""
