@@ -34,7 +34,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import _cli  # noqa: E402
 
-STAMPED = ("prescreen", "writeback", "archive", "audit_pipeline", "rekey")
+STAMPED = ("prescreen", "writeback", "archive", "audit_pipeline", "rekey", "ingest")
 
 
 class TheUserSeesASentence(unittest.TestCase):

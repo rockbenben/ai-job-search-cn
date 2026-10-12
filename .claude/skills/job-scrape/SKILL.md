@@ -4,7 +4,7 @@ description: >
   抓新岗并自动评分：抓完直接排出可以投的，不停在「待评」
   不给参数时：全部方向都抓一轮（按实测产出剪掉挖空的词），抓完自动评分
   触发词：找职位、找新岗、抓职位、有没有新岗位、搜岗、find jobs、job scrape、/job-scrape
-allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(python tools/portal_budget.py:*), Bash(node --version), Bash(python tools/jd_store.py:*), Bash(python tools/query_yield.py:*), Bash(node .agents/skills/liepin-search/cli/src/cli.ts:*), Bash(bun run .agents/skills/liepin-search/cli/src/cli.ts:*), Bash(python tools/doctor.py:*), Bash(python tools/export_web_data.py:*), Bash(bun --version)
+allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(python tools/portal_budget.py:*), Bash(node --version), Bash(python tools/jd_store.py:*), Bash(python tools/ingest.py:*), Bash(python tools/query_yield.py:*), Bash(node .agents/skills/liepin-search/cli/src/cli.ts:*), Bash(bun run .agents/skills/liepin-search/cli/src/cli.ts:*), Bash(python tools/doctor.py:*), Bash(python tools/export_web_data.py:*), Bash(bun --version)
 ---
 
 <!-- 由 tools/gen_entries.py 生成：改 workflows/INDEX.md 或 tools/_entries.py，别改这里 -->

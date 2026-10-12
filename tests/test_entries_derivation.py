@@ -15,12 +15,19 @@ import _entries  # noqa: E402
 
 
 class KnownAnswers(unittest.TestCase):
-    def test_the_scrape_shell_gets_all_five_python_tools(self):
-        """`job-scrape` 要五条 `python tools/*.py`，一条都不能少。
+    def test_the_scrape_shell_gets_all_six_python_tools(self):
+        """`job-scrape` 要六条 `python tools/*.py`，一条都不能少。
 
-        手算依据：今天的壳里写着 doctor / query_yield / jd_store / export_web_data /
-        **portal_budget**。第五条最容易漏——它是 Step 0.46 的额度闸门，而漏掉的后果
+        手算依据：从今天的 `.claude/skills/job-scrape/SKILL.md` 逐行数出来的
+        doctor / query_yield / jd_store / export_web_data / portal_budget /
+        **ingest**。
+
+        portal_budget 那条最容易漏 —— 它是 Step 0.46 的额度闸门，而漏掉的后果
         有实测：2026-08-19 用户的猎聘账号被标异常、要短信验证。
+
+        第六条是 2026-10-12 加的 `ingest`：Step 2 的入库命令。**它漏掉的
+        后果与前五条同一形状** —— 招牌命令每一步都要用户手点授权，
+        而 `/job-scrape` 是入口命令，入口点不动等于整条链走不下去。
         """
         got = [t for t in _entries.allowed_tools("job-scrape")
                if t.startswith("Bash(python tools/")]
@@ -30,6 +37,7 @@ class KnownAnswers(unittest.TestCase):
             "Bash(python tools/jd_store.py:*)",
             "Bash(python tools/export_web_data.py:*)",
             "Bash(python tools/portal_budget.py:*)",
+            "Bash(python tools/ingest.py:*)",
         ]))
 
     def test_the_index_yields_every_command(self):

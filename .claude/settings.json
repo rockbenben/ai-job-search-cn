@@ -18,6 +18,7 @@
       "Bash(python tools/fetch_details.py:*)",
       "Bash(python tools/followups.py:*)",
       "Bash(python tools/gap_split.py:*)",
+      "Bash(python tools/ingest.py:*)",
       "Bash(python tools/jd_store.py:*)",
       "Bash(python tools/outreach_header.py:*)",
       "Bash(python tools/portal_budget.py:*)",
