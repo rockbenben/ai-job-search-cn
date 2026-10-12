@@ -172,8 +172,9 @@ class ARealUserWithZeroJobsIsNotDemoData(unittest.TestCase):
         t = self.LOAD.read_text(encoding="utf-8")
         i = t.index("async function loadSnapshot")
         seg = t[i:i + 2200]
-        self.assertIn("if (d.isRealData) return", seg,
-                      "真实数据没有优先分支，0 个职位仍会退回演示数据")
+        # 只问顺序，不钉那一行长什么样：写成 `if (d.isRealData) { return … }`
+        # 语义没变而逐字钉会红（`test_a_guard_pins_behaviour_not_a_line.py` 数的那种）。
+        # 顺序判据同时要求这个判断**存在**——`index` 找不到直接报错。
         self.assertLess(seg.index("d.isRealData"), seg.index("d.jobs.length === 0"),
                         "isRealData 的判断排在长度判断之后，等于没判")
 

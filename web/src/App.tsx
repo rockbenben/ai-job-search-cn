@@ -653,7 +653,38 @@ export default function App() {
     return (
       <ConfigProvider theme={cockpitTheme} locale={zhCN} button={cockpitComponents.button}>
         <div className="cockpit">
-          <p className="loading">正在读取本机数据…</p>
+          {/* 这句话会停在这儿很久（数据两兆多，本机实测浏览器里约 7 秒），
+              所以它得说清「在等什么」——否则用户分不清是在加载还是卡死了。
+              ⚠️ 别写「2.4 MB」：字母单位夹在中文句子里会被措辞守卫判成
+              散落英文（`test_web_copy` 那条）。说「两兆多」就够。 */}
+          <p className="loading">
+            正在读取本机数据…（两兆多，等十几秒）
+          </p>
+        </div>
+      </ConfigProvider>
+    );
+  }
+
+  //: 读到了、但那份是**演示数据**，而 `loadError` 说清了为什么。
+  //:
+  //: 原来这条路上直接把演示数据铺开：110/23/3 与 5 个虚构职位，每一处都长得
+  //: 像真的。页头那行「演示数据（虚构）」是诚实的，但要用户**注意到**它 ——
+  //: 而他刚打开页面，正等着看自己的进度。
+  //:
+  //: 这里只拦**服务端接上了却没交出数据**那一种（500 / 正文断在半路 / 超时）。
+  //: 服务压根没起时演示数据是一份正当的首次体验，下面 `isRealData` 的横幅管它。
+  if (snap.loadError) {
+    return (
+      <ConfigProvider theme={cockpitTheme} locale={zhCN} button={cockpitComponents.button}>
+        <div className="cockpit">
+          <p className="loading">读不到本机数据：{snap.loadError}</p>
+          {/* 刻意不用 `sec-note`：那是段头旁注的样式（配 `{(\w+).length > 0 && (`
+              那道守卫），而这里是一个整屏的失败态，套段头样式会让
+              `test_the_column_legend_waits_for_rows` 的锚点落到这里。 */}
+          <p>
+            面板要连着本机服务才有数据。先确认它还在跑，跑不起来就重开一次：
+          </p>
+          <Cmd>python tools/serve.py</Cmd>
         </div>
       </ConfigProvider>
     );

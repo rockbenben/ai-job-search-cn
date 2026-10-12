@@ -45,6 +45,18 @@ export interface Snapshot {
   observedMonths?: number | null;
   /** 在线简历多久没刷新算旧。正本在 `export_web_data.RESUME_STALE_DAYS`。 */
   resumeStaleDays?: number | null;
+  /**
+   * 读数据失败时的一句话原因（**空串 = 没失败**）。
+   *
+   * 为什么要有它：原来失败一律退回演示数据，而演示数据是**别人的求职进度** ——
+   * 一个真实用户看到的是「示例用户」的 110/23/3 与 5 个虚构职位。页头那行
+   * 「演示数据（虚构）」虽然诚实，却要用户先注意到它；没注意到的人会把
+   * 虚构的数字当成自己的。
+   *
+   * 只在**服务端确实在、却没把数据交出来**时填（见 `loadSnapshot`）：
+   * 服务压根没起时演示数据是一份正当的首次体验，不该报错。
+   */
+  loadError?: string;
   /** 「挂了」时可以点的原因，来自 `tracker.REASONS`，前端不写死。 */
   outcomeReasons?: { value: string; label: string }[];
   nextStep: NextStep;
@@ -79,12 +91,38 @@ const demo: Snapshot = {
   nextStep: demoNextStep,
 };
 
+/**
+ * 读 `data.json` 的上限。**没有它这一格可以永远转下去。**
+ *
+ * `fetch` 只有在**拿到响应头**之后才 resolve；正文那一段断了（连接被重置、
+ * 服务进程被杀、`Content-Length` 说好了多少却没送够），它既不 resolve 也不
+ * reject —— 只是永远不 settle。实测 2026-10-12：这一格停在
+ * 「正在读取本机数据…」两分钟不动，浏览器控制台连一条错都没有，
+ * 而 `python tools/serve.py` 那边的日志是一串
+ * `ConnectionAbortedError`。
+ *
+ * **`try/catch` 抓不到这种「悬着」** —— 它不是异常，是没结束。
+ * 所以那道闸门必须是一个真的会响的东西：超时主动 abort。
+ *
+ * 取 20 秒：这份数据现在 2.4 MB，本机实测直连取回 0.2 秒、浏览器里渲染
+ * 约 7 秒。20 秒给慢机器留了三倍余量，又不至于让人以为页面死了。
+ */
+const LOAD_TIMEOUT_MS = 20000;
+
 export async function loadSnapshot(): Promise<Snapshot> {
   // 只有 fetch 这一条路：数据一律由 `serve.py` 提供。曾经并存的「把数据内联进单文件
   // HTML、file:// 直开」那条已删——原委见 `web/README.md`。
+  //
+  // `reached` 记的是**服务端有没有接上**这一个事实：连不上（`serve.py` 没起）
+  // 与接上了却没交出数据（500 / 正文断在半路 / 超时），对用户是两件不同的事，
+  // 前者退回演示数据是正当的首次体验，后者必须说出来 —— 见 `loadError`。
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), LOAD_TIMEOUT_MS);
+  let reached = false;
   try {
-    const res = await fetch("data.json", { cache: "no-store" });
-    if (!res.ok) return demo;
+    const res = await fetch("data.json", { cache: "no-store", signal: ctl.signal });
+    reached = true;
+    if (!res.ok) return { ...demo, loadError: `数据接口回了 ${res.status}` };
     const d = (await res.json()) as Partial<Snapshot>;
     // **「导出器没跑过」和「跑过，但这个人还没抓职位」是两回事。**
     //
@@ -101,7 +139,13 @@ export async function loadSnapshot(): Promise<Snapshot> {
     if (!Array.isArray(d.jobs) || d.jobs.length === 0) return demo;
     return { ...normalize(d), isRealData: true };
   } catch {
-    return demo;      // 既没内联数据、fetch 也失败 → 演示数据（页头会标出来）
+    // ⚠️ **`AbortError` 是这里唯一会「悬着」的那一种的解药**，不是超时了就算了：
+    // 悬着的话这一格永远不结束，而用户能做的只有刷新或干等。
+    return reached
+      ? { ...demo, loadError: `等了 ${LOAD_TIMEOUT_MS / 1000} 秒还没读完数据` }
+      : demo;          // 服务压根没起 → 演示数据（页头会标出来），不是错误
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -133,6 +177,9 @@ function normalize(d: Partial<Snapshot>): Snapshot {
     topExclusions: d.topExclusions,
     observedMonths: d.observedMonths,
     resumeStaleDays: d.resumeStaleDays,
+    // 读到真实数据时**不该**还有失败原因；留着是为了这一格只有一个来源
+    // （`loadError` 只在失败那条路上被填上），而不是在这里手工清一遍。
+    loadError: d.loadError,
     outcomeReasons: d.outcomeReasons ?? [],
     // **`normalize` 是手写白名单——漏掉一个字段，那块界面就永远不出现。**
     // `resumeInsight` 就这么漏了：导出器算好了、`data.json` 里有、`Snapshot`
