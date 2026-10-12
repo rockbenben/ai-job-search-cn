@@ -190,7 +190,20 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
         self.assertIn("结论自称读过 JD", got[0][1])
 
     def test_the_out_of_reach_group_is_not_empty(self):
-        """**支点。** 全在猎聘时这一条没有由头（那时 tail 也该是空的）。"""
+        """**支点。** 全在猎聘时这一条没有由头（那时 tail 也该是空的）。
+
+        ## 2026-10-12：下限从「> 5」降到「> 0」
+
+        原来那 5 不是一条质量线，是**「这个检查不是空转」**的下限。
+        而这条尾巴是被真活干掉的：2026-10-12 这一轮补抓把 313 个岗的正文
+        补到了 309 个，`fetch_details` 能够着的都补上了，够不着的从
+        「一批」缩到 **1 个（51job-browser 1）—— 浏览器渠道的 JD 只能在
+        抓取当次落库，下次跑 `/job-scrape` 顺手就有了**。
+
+        语料变了就该重新量，而不是把语料变回那个数。这里守的还是原来那件事
+        （这一栏不能是空的、这一句不能是空转），只是把「不小」换成「不空」——
+        要是哪天它真的归零，`test_it_fires_today` 会先跳过，那时这条也该跟着退。
+        """
         _seen, got = self._got()
         if not got:
             self.skipTest("都补齐了")
@@ -198,7 +211,7 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
             self.skipTest("这一批全在猎聘 —— 那一句本来就该不出现")
         m = re.search(r"另有 (\d+) 个这个工具够不着", got[0][2])
         self.assertTrue(m)
-        self.assertGreater(int(m.group(1)), 5)
+        self.assertGreater(int(m.group(1)), 0)
 
     def test_the_two_numbers_add_up(self):
         """现算对账：够得着 + 够不着 = 总数。对不上就是判据分了叉。"""

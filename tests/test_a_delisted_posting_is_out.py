@@ -162,7 +162,24 @@ class TheOtherPathsStillCatchThemToo(unittest.TestCase):
 
 
 class TheSignalItLeansOnIsReal(unittest.TestCase):
-    """有语料时验一次：这个写法真的出现过，而且补它确实不改变结果。"""
+    """有语料时验一次：这个写法真的出现过，而且补它确实不改变结果。
+
+    ## 取样范围 2026-10-12 从热库改成「热库 + 存档」
+
+    原来只读 `web/public/data.json`，而那份快照只含**热库**。于是这条在
+    2026-10-12 报了「语料里一个『已下线』判词都没有」——
+
+        热库  997 条   判词以「已下线」开头  0 条
+        存档 3159 条  判词以「已下线」开头  5 条
+        （已下线 / 已下线 / 已下线 / 已下线（评分前发现）/ 已下线（页面写着「职位已关闭」））
+
+    **写法没有死，语料搬家了**：带这个判词的岗早就被 `archive.py` 收走，
+    而快照按设计不导出存档。判据却写在「这个判据管的那个字段」上，
+    `is_out_verdict` 至今认这五种写法（下面有实测那一格）。
+
+    判「这个写法不再被使用」之前先量全两边——那是同一条教训的另一个形状：
+    **产出为空**可以是「没人写了」，也可以是「写到别处去了」。
+    """
 
     def _jobs(self):
         p = ROOT / "web" / "public" / "data.json"
@@ -173,13 +190,42 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
             self.skipTest("语料太小")
         return jobs
 
+    def _cold(self):
+        ptr = ROOT / ".active_user"
+        if not ptr.is_file():
+            self.skipTest("没有活动用户")
+        f = (ROOT / "users" / ptr.read_text(encoding="utf-8").strip()
+             / "job_scraper" / "archive.json")
+        if not f.is_file():
+            self.skipTest("没有存档")
+        return json.loads(f.read_text(encoding="utf-8")).get("seen", {})
+
     def test_the_spelling_really_occurs(self):
-        jobs = self._jobs()
-        n = sum(1 for j in jobs
+        hot = self._jobs()
+        cold = self._cold()
+        n = sum(1 for j in hot
                 if (j.get("verdict") or "").strip().startswith("已下线"))
-        self.assertGreater(n, 0,
-                           "语料里一个「已下线」判词都没有 —— 这条守卫失去依据，"
-                           "重新量一次这个写法还在不在用")
+        m = sum(1 for v in cold.values()
+                if isinstance(v, dict)
+                and str(v.get("rank_verdict") or "").strip().startswith("已下线"))
+        self.assertGreater(n + m, 0,
+                           f"热库 {n} 条 + 存档 {m} 条，语料里一个「已下线」判词都没有 —— "
+                           "重新量一次这个写法还在不在用（两边都量过了才是「不在用」）")
+
+    def test_the_rule_still_recognises_it(self):
+        """上面那几条不能只是躺在数据里：判据得真认它们。
+
+        没有这一条，把取样范围从热库放宽到存档之后，「写法还在」只证明了
+        「字符串还在」，没证明**规则还认它** —— 而这条守卫守的正是后者。
+        """
+        import export_web_data as ex
+        cold = self._cold()
+        seen = [str(v.get("rank_verdict")) for v in cold.values()
+                if isinstance(v, dict)
+                and str(v.get("rank_verdict") or "").strip().startswith("已下线")]
+        self.assertTrue(seen, "存档里一个「已下线」判词都没有，这条没法验")
+        for vd in seen:
+            self.assertTrue(ex.is_out_verdict(vd), f"`is_out_verdict` 不认「{vd}」")
 
     def test_adding_it_changed_nothing_today(self):
         """真改了什么的话，那就不是「补全枚举」，是行为变更，要单独说清。"""

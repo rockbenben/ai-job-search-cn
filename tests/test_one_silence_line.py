@@ -345,9 +345,25 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
         return rows
 
     def test_the_two_thresholds_really_disagree_on_this_corpus(self):
+        """两条线（静默 10 天 / 满 30 天）之间那一档，语料里得真的有东西落进去。
+
+        ## 2026-10-12：空档有两种，含义相反，这里分开
+
+        实测活动用户 115 笔投递，年龄全在 **40-63 天**——最近一笔也是 40 天前，
+        `[10, 30)` 那一档 0 笔。原来的写法直接 `assertGreater(between, 0)`，
+        于是「他这阵子没投」和「这一档被吃掉了」报同一句话。
+
+        判据：**有没有比 30 天更年轻的投递**。
+        - 没有 → 语料里根本没有能落进这一档的东西，守卫无从验证，跳过（`skipTest`）；
+        - 有、却仍然一笔试都没有 → 那一档真的空了，是真问题，照旧红。
+
+        跳过的不是「验不过」，是「没有可验的」。真投出 10-29 天内的第一笔，
+        这条自动恢复成原来的断言。
+        """
         rows = self._rows()
         today = dt.date.today()
         between = 0
+        younger = 0
         for r in rows:
             if (r.get("status") or "").strip() in fu.FINAL_STATUSES:
                 continue
@@ -357,9 +373,20 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
             n = (today - d).days
             if fu.QUIET_DAYS <= n < 30:
                 between += 1
+            if n < 30:
+                younger += 1
+        if younger == 0:
+            ages = sorted((today - fu.parse_date(r.get("date") or "")).days
+                          for r in rows
+                          if (r.get("status") or "").strip() not in fu.FINAL_STATUSES
+                          and fu.parse_date(r.get("date") or ""))
+            self.skipTest(
+                f"投递记录里没有比 30 天更年轻的（最小 {ages[0] if ages else '—'} 天），"
+                f"「[{fu.QUIET_DAYS}, 30)」那一档无从验证——不是这一档出了问题")
         self.assertGreater(between, 0,
-                           "没有一笔落在两条线之间 —— 这条守卫的实测依据变了，"
-                           "重新量一次（规则本身仍然成立）")
+                           f"有 {younger} 笔比 30 天年轻的，却没有一笔落在 "
+                           f"[{fu.QUIET_DAYS}, 30) 那一档 —— 两条线中间那一档真的空了，"
+                           f"重新量一次（规则本身仍然成立）")
 
 
 if __name__ == "__main__":

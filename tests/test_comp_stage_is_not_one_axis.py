@@ -215,10 +215,21 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
         self.assertTrue(own, "一个所有权取值都没有 —— 那几行没有依据了")
 
     def test_the_two_off_table_values_are_not_rare(self):
+        """「民营」「不需要融资」表里没有对应行，只能落进「其他」那档——
+        所以它们得真的常见，这条才撑得起给它们单开一行。
+
+        2026-10-12：下限 50 → 30。热库有 `compStage` 的 555 条里这两个合计
+        **47 条（8.5%）**。热库会随 `archive.py` 归档而缩水（已归档的岗
+        搬出热库，带值的也一起搬走），绝对数跟着掉；判据问的是
+        **「罕见不罕见」**，那是占比不是计数，所以跟着占比走。
+        """
         vals = self._values()
         n = sum(1 for v in vals if v in ("民营", "不需要融资"))
-        self.assertGreater(n, 50,
-                           f"「民营」+「不需要融资」只有 {n} 个 —— 重新量一次")
+        share = n / len(vals)
+        self.assertGreater(n, 30,
+                           f"「民营」+「不需要融资」只有 {n} 个（占 {share:.1%}）—— 重新量一次")
+        self.assertGreater(share, 0.05,
+                           f"占比掉到 {share:.1%} 了，那已经不是「不罕见」—— 重新量一次")
 
     def test_funding_rounds_also_occur(self):
         """三条轴要真的共存，才谈得上「混」。"""

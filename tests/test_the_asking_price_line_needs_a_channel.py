@@ -191,8 +191,22 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
             post = r.parent / "posting.md"
             url = ""
             if post.is_file():
-                m = re.search(r"https?://\\S+",
+                m = re.search(r"https?://\S+",
                               post.read_text(encoding="utf-8", errors="replace"))
+                    # 2026-10-12：这里是 `r"https?://\\S+"` —— **raw 字符串里的
+                    # 双反斜杠，匹配的是一个字面的反斜杠**，于是永远匹配不上，
+                    # `url` 恒为 `""`、`byurl.get("")` 恒为 `None`、
+                    # `portal` 恒为 `"?"`，`test_they_are_all_chat_platforms`
+                    # 于是恒定地报「15/15 对不上平台」。
+                    #
+                    # **它一直在空跑**：这条守卫的全部依据是「15 份定制简历
+                    # 全在直聊场景，所以「一份都不该写期望薪资」才成立」，
+                    # 而它从来没量过那 15 份到底来自哪个渠道。修好之后实测
+                    # 15 份全部对得上，`portal` 无一个 `"?"`。
+                    #
+                    # 与 `tests/test_one_value_one_home.py` 是同一族：
+                    # 正则写错时报的不是「正则写错了」，是它本该守的那件事
+                    # 「对不上」—— 而那句话读起来完全合理。
                 url = m.group(0).rstrip(")>」") if m else ""
             out.append(("期望" in r.read_text(encoding="utf-8", errors="replace"),
                         (byurl.get(url) or {}).get("portal") or "?"))
