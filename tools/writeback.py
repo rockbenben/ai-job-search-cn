@@ -50,6 +50,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import _cli  # noqa: E402
+import archive  # noqa: E402  存档路径走它，别造第二份
 import build_dashboard as bd  # noqa: E402  解析走它，别造第二份
 import export_web_data as ex  # noqa: E402
 import gap_split as _gs  # noqa: E402  算式解析走它，别造第二份
@@ -140,9 +141,10 @@ _WARN = re.compile(r"⚠[^。]*。?")
 #:
 #: 实测活动用户 2026-08-27：249 条深评条目里，形状 1 有 1 条
 #: （写「发展这一维给 85」，库里是 72）、形状 2 有 18 条。
-_DIM_SAID = re.compile(r"(技能|薪资|强度|发展)[^。；]{0,14}?(?:这一维|维)?[^。；]{0,6}?给\s*(\d{2})")
-_DIM_FULL = {"技能": "技能与经验", "薪资": "薪资与职级",
-             "强度": "强度与公司性质", "发展": "发展与风险"}
+#: 正本在 `_cli`（`scoring.rewrite_pay_said` 判同一件事，2026-10-12 那次事故之后
+#: 两侧合成一份）。本模块的别名留着：下面那圈注释与它的 docstring 都指着这个名字。
+_DIM_SAID = _cli.DIM_SAID
+_DIM_FULL = _cli.DIM_FULL
 _PRESCREEN_WORDS = re.compile(r"未抓 ?JD|预筛|粗筛")
 
 
@@ -253,9 +255,23 @@ def main(argv=None) -> int:
     for v in seen.values():
         by_url.setdefault(v.get("url") or "", []).append(v)
 
+    # **存档里也算「还在」。** 归档不是删除（`archive.py` 自己这么写），而这一格
+    # 只查热库 —— 于是 `archive.py --apply` 归档掉的岗，它的材料目录立刻被报成
+    # 「职位链接在库里找不到（可能岗位记录被删过）」。
+    # 实测 2026-10-12：一轮收尾 `archive` 归了 817 个，紧接着 `writeback` 就开始
+    # 报「记录被删过」。**没删，是搬走了，而那句话把归档说成了删除** ——
+    # 用户按它去查「谁删了我的记录」，查不到，因为没人删。
+    archived_urls = set()
+    _sj, _arc = archive.paths(user)
+    if _arc.is_file():
+        _arc_seen = _cli.seen_of(
+            json.loads(_arc.read_text(encoding="utf-8")))
+        archived_urls = {_cli.norm_url(e.get("url") or "")
+                         for e in _arc_seen.values() if e.get("url")}
+
 
     apps = ROOT / "users" / user / "documents" / "applications"
-    drift, refused, orphan, unreadable = [], [], [], []
+    drift, refused, orphan, unreadable, gone = [], [], [], [], []
     if apps.is_dir():
         for d in sorted(x for x in apps.iterdir() if x.is_dir()):
             got, why = read_dir(d)
@@ -272,7 +288,10 @@ def main(argv=None) -> int:
             url, score, verdict, dims, pair, notes = got
             cands = by_url.get(url) or []
             if not cands:
-                orphan.append(d.name)
+                if _cli.norm_url(url) in archived_urls:
+                    gone.append(d.name)       # 搬去了存档，不是「被删」
+                else:
+                    orphan.append(d.name)
                 continue
             e, why_amb = pick_entry(cands, d.name)
             if e is None:
@@ -373,7 +392,7 @@ def main(argv=None) -> int:
 
     # ---------- 报告（给人看的措辞，不带内部码） ----------
     verb = "已写回" if args.apply else "待写回（加 --apply 生效）"
-    if not (drift or refused or orphan or n_prefix or n_park or unreadable
+    if not (drift or refused or orphan or gone or n_prefix or n_park or unreadable
             or stale_basis):
         print("库与深评档案一致，没有要写回的。")
         return 0
@@ -412,8 +431,17 @@ def main(argv=None) -> int:
         else:
             print("  这些都已经投出去、标了不投或下线了，改它没有意义。")
     if orphan:
-        print(f"⚠ {len(orphan)} 个目录的职位链接在库里找不到（可能岗位记录被删过）："
+        print(f"⚠ {len(orphan)} 个目录的职位链接在热库和存档里都找不到"
+              f"（岗位记录可能被删过）："
               f"{'、'.join(orphan[:3])}{' 等' if len(orphan) > 3 else ''}")
+    if gone:
+        # **不是故障，但要说出它是什么。** 归档不是删除（`archive.py --apply` 的原话），
+        # 而这一格以前把归档说成了「记录被删过」——用户照着去查谁删了记录，
+        # 查不到，因为没人删。材料还在，只是那个岗已经出局、搬去存档了。
+        print(f"ℹ {len(gone)} 个目录对应的岗已经归档（不是删除，材料还在）："
+              f"{'、'.join(gone[:3])}{' 等' if len(gone) > 3 else ''}")
+        print("  这些不用管。它们是出局两周以上的岗，存档里分数与结论都原样留着；"
+              "想重新判定先跑 python tools/archive.py --revive --apply")
     if refused:
         print(f"✗ {len(refused)} 个目录被拒收——评估文件自身把结论写高了：")
         for r in refused:
