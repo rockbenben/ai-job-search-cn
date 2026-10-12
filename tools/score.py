@@ -237,9 +237,8 @@ def apply(user: str, rows: list, today: str) -> None:
         b = v["rank_breakdown"]
         old_dims, old_score, old_v = r["old"]
         b.update(r["dims"])
-        why = scoring.SAID.sub(
-            lambda m: f"{m.group(1)}{r['dims']['薪资与职级']}{m.group(3)}",
-            b.get("依据") or "")
+        why = scoring.rewrite_pay_said(b.get("依据") or "",
+                                       r["dims"]["薪资与职级"])
         moved = "、".join(f"{k} {old_dims[k]}→{r['dims'][k]}"
                           for k in scoring.DIM_WEIGHTS if old_dims[k] != r["dims"][k])
         b["依据"] = why + (

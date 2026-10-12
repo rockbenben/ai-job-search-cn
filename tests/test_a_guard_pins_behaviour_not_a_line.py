@@ -48,8 +48,13 @@ _SOURCEY = re.compile(
 _CODEY = re.compile(r"[A-Za-z_][\w.]*\s*[(=]")
 #: `tests/` 里用到的模块别名。**要按这张表判，不能按「有个点」判** ——
 #: `skipped.add(` 也是 `x.y` 的形状，那是个局部变量（判据自检当场照出来）。
+#:
+#: `scoring` 是 2026-10-12 加进来的：`test_the_pay_sentence_is_the_only_one_that_moves`
+#: 钉的是「`score.py` 走不走 `scoring.rewrite_pay_said` 这份正本、别退回全局 `sub`」，
+#: 按上面「怎么分」那一节那是契约，不是位置。表里缺这个名字时它被算成了按行钉。
 _MODULES = ("_cli", "_ex", "_sc", "_vp", "ap", "AP", "bd", "ex", "tk", "wb",
-            "fu", "ps", "qy", "vp", "sm", "oh", "tu", "gs", "sc", "pb", "fd",
+            "fu", "ps", "qy", "vp", "sm", "oh", "tu", "gs", "sc", "scoring",
+            "pb", "fd",
             "ar", "srv", "doctor", "tracker", "prescreen", "archive", "serve",
             "followups", "gap_split", "jd_store", "audit", "security_guards",
             "lint_skills")

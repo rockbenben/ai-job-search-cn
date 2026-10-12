@@ -210,6 +210,61 @@ def snap_coarse(v: int) -> int:
 #: （`writeback._basis_is_stale` 盯的就是这个形状）。
 SAID = re.compile(r"(给\s*)(\d{2})(\s*(?:并挂|，|。|$))")
 
+#: 「给 NN」归哪一维 —— **正本在 `_cli.DIM_SAID`**，与 `writeback._basis_is_stale`
+#: 判的是同一件事（两边都 import `_cli`，见那里为什么正本落在那儿）。
+#:
+#: **为什么必须认归属：`SAID` 一个人认不出来，而一段依据里从来不只谈钱。**
+#: 逐库实测 2026-10-12：51 处「给 NN」里只有 7 处锚定在薪资维，另 11 处说强度、
+#: 9 处说发展、24 处压根没点名维度（说「专业能力」「业务域」）。
+_PAY_CONTEXT = re.compile(r"薪|年包|下沿|上沿|月薪|几薪")
+
+
+def rewrite_pay_said(basis: str, pay: int) -> str:
+    """把依据里**属于薪资维**的「给 NN」换成 `pay`，别的维度一个字不动。
+
+    ## 为什么不能用 `SAID.sub` 直接全局替换
+
+    实测代价（2026-10-12 一轮 `/job-auto`）：`score.py --apply` 把
+    「强度与公司性质这一维给 50」「发展与风险这一维给 30」两句话里的数
+    全改成了薪资维的值（55 / 25）。总览页上那格显示的就是这段解释 ——
+    **用户读到的是一句话在说强度、给出的数是薪资的。**
+    而本文件开头写着薪资维之外的三个判断维「不碰」：那三句被改，
+    恰好是它承诺不碰的地方。
+
+    逐库量过：51 处匹配里，**旧实现 100% 会改，其中只有 7 处该改**。
+
+    ## 归属怎么判
+
+    1. 句里有维度名（技能 / 薪资 / 强度 / 发展）→ **按名字认**。只有薪资
+       才改；锚到别的维的一律不动。
+    2. 没点名维度 → 看**所在分句**有没有谈钱信号（`_PAY_CONTEXT`）。
+       有才改（实测那 14 处全是「按 16 薪估下沿 NN 万能过，这一维给 55 并挂
+       「⚠ 先问几薪」」这一句），没有就不改。
+
+    ## 为什么 2 要有，而不是一律不动
+
+    04 的薪资维专门有一条「有月薪、但没写几薪」的 55 分规则，判据就是
+    「按 16 薪估能过底线」——那一维的解释**必然**落在第 2 类里。
+    一律不动等于薪资维改了而解释不改，`_basis_is_stale` 会一直报。
+    """
+    if not basis or not isinstance(pay, int):
+        return basis
+    anchored = {m.start(2): m.group(1) for m in _cli.DIM_SAID.finditer(basis)}
+
+    def repl(m):
+        dim = anchored.get(m.start(2))
+        if dim is not None:
+            if dim != "薪资":
+                return m.group(0)          # 说的是强度/发展/技能 → 不碰
+            return f"{m.group(1)}{pay}{m.group(3)}"
+        # 没点名维度：只看它所在的那一分句
+        lo = max(basis.rfind(c, 0, m.start()) for c in ("。", "；", "\n")) + 1
+        if not _PAY_CONTEXT.search(basis[lo:m.end()]):
+            return m.group(0)
+        return f"{m.group(1)}{pay}{m.group(3)}"
+
+    return SAID.sub(repl, basis)
+
 
 def is_triage(breakdown: dict) -> bool:
     """这条是粗筛/预筛（可以机械重算），还是深评（正本在 evaluation.md）。
