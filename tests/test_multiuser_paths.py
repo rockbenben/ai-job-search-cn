@@ -8,12 +8,16 @@
 """
 
 import re
+import sys
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_MD = REPO_ROOT / "AGENTS.md"
 GMAIL_SYNC_CMD = REPO_ROOT / "workflows" / "job-gmail-sync.md"
+
+sys.path.insert(0, str(REPO_ROOT / "tools"))
+import _entries  # noqa: E402  两族目录名的正本在派生器里，这里不另抄一份
 
 
 def resolution_section() -> str:
@@ -55,9 +59,18 @@ class CommandPathIdiomTests(unittest.TestCase):
     )
 
     def iter_docs(self):
-        for d in ((REPO_ROOT / "workflows"),
-                  (REPO_ROOT / ".claude" / "commands"),
-                  (REPO_ROOT / ".claude" / "skills")):
+        """两族都扫。`.agents/` 才是非 Claude 工具真正读进去的那一族，
+        手写路由壳 `job-application-assistant` 不走生成器（CLAUDE.md：
+        「改了它必须两族同步 —— 没人替你兜」），只扫 `.claude/` 等于把它放掉。
+
+        `.claude/commands/` 2026-10-09 从这里删掉：命令 stub 早已整体删除，
+        仓库里其它地方提到它都是「必须为空」的反向引用（lint_skills、
+        docs/tool-entries.md）。扫一个被要求为空的目录，等于把守卫钉在一个
+        刻意不存在的位置上。
+        """
+        roots = [REPO_ROOT / "workflows"]
+        roots += [REPO_ROOT / fam / "skills" for fam in _entries.SHELL_FAMILIES]
+        for d in roots:
             for path in sorted(d.rglob("*.md")):
                 yield path
 

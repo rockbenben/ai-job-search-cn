@@ -128,12 +128,23 @@ class DashboardShowsWhoElseExists(unittest.TestCase):
         （`.gitignore` 挡着），原来这里直接 `iterdir()` 抛 FileNotFoundError
         ——首次 CI 必红，而红的原因是「CI 上没有维护者的个人数据」，
         与它要守的事毫无关系。2026-08-20 拿干净 clone 实测抓到。
+
+        **用户不足 3 个时也 skip（2026-10-09 补）。** 上一版只挡了「一个都没有」，
+        于是**单人仓库长期常红**：多用户是给「多人共用一份 clone」准备的可选项，
+        绝大多数用户（包括本机）就一个 `users/<名>/`，那是完全正常的状态，
+        不是多用户路径写坏了。与 `tests/_live.py` 那条判据同一个道理 ——
+        「这台机器上没有可读的真实数据」该 skip，不该红。真撞上多用户路径坏了，
+        本类另外五条（导出只报名字、按钮接得上开合、面板渲染得出来、
+        告诉用户怎么建第二个、面板不改 `.active_user`）照样会红。
         """
         user_or_skip()   # 没有真实数据可读时 skip（见 tests/_live.py）
         if not (ROOT / "users").is_dir():
             self.skipTest("这台机器上还没有任何用户 —— 控制测试无从谈起")
         users = [d.name for d in (ROOT / "users").iterdir()
                  if d.is_dir() and (d / "profile" / "candidate.md").is_file()]
+        if len(users) < 3:
+            self.skipTest(f"这台机器上只有 {len(users)} 个用户（{users}）—— "
+                          "多用户路径无从实测；单人仓库是正常状态，不是故障")
         self.assertGreaterEqual(len(users), 3,
                                 f"可切换的用户太少（{users}），多用户路径没法实测")
 
