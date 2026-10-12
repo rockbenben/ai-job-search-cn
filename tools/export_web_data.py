@@ -2432,18 +2432,12 @@ PORTAL_NAMES = {k: _cli.PORTAL_DISPLAY[v]
                 for k, v in qy.PORTAL_ALIAS.items()}
 
 
-def stable_id(url: str, title: str) -> str:
-    """按 URL + 职位名派生的**稳定** id。
-
-    原来用枚举序号（`f"j{i}"`）——`seen_jobs` 增删一条，后面所有 id 全部错位。
-    浏览器里按 id 存的任何状态（「已发」勾选、「不投」标记）就会张冠李戴：
-    你排除了 A 岗，下次重新生成后被隐藏的是 B 岗。
-
-    带上职位名是因为 51job 实测同一 URL 下挂着两个不同职位
-    （见 `workflows/reference/cdp-portals.md`），只用 URL 会让两个岗共用一个 id。
-    """
-    h = hashlib.sha1(f"{url}#{title}".encode("utf-8")).hexdigest()
-    return "j" + h[:10]
+#: 按 URL + 职位名派生的**稳定** id。**正本搬进了 `_cli.stable_id`**（2026-10-12）：
+#: `_cli` 要拿它算 `seen_index` 的键与 `rekey` 的新键，而 `_cli` 是底层模块，
+#: 反过来 import 本文件会把 `build_dashboard`/`followups` 整串拖进每条命令的启动路径。
+#: 别名留着是因为 `serve.py`、`jd_store.py` 和一批测试都在按 `ex.stable_id` 用它——
+#: 与 `_DIM_SAID` 同一种处理（两边判的是同一件事，抄一份就是等着分叉）。
+stable_id = _cli.stable_id
 
 
 def portal_name(portal) -> str:
@@ -4008,7 +4002,7 @@ def main(argv=None, *, show_next_step=True) -> int:
                 # 「粘到{平台}的聊天框直接发」，而 `followups.py` 催进度时
                 # 早就分了流（「BOSS 是聊天框；猎聘/智联走站内信，多半没有
                 # 对话入口」）—— 催的时候知道形态，发的时候不知道。
-                # 实测 305 份里 86 份被指去找一个多半不存在的聊天框。
+                # 实测 309 份里 90 份被指去找一个多半不存在的聊天框。
                 # 判据在 `_cli.send_hint`，猎头/直招三态与平台一起看。
                 # **在跟谁说话**——抬头那半句写反了，第二轮就走反了。
                 # 判据与审计同源（`_cli.addressee_problem`）：那边事后报一份清单，
