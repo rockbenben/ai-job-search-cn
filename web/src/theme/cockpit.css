@@ -219,7 +219,16 @@ body .chan > summary:active {
 }
 
 /* ---------- 段标题 ---------- */
-.sec-head { display: flex; align-items: baseline; gap: 13px; margin-bottom: 13px; }
+/* **宁可换行，不许挤压。** 这一行原来只有 `display:flex`，没有 `flex-wrap`：
+   默认 nowrap 下 flex 项会**各自收缩**而不是换行，于是内容一多就出现
+   「可以投的岗 / 位」「不想看什 / 么」「藏 / 了 / 1」这种**从词中间断开**的排版
+   —— 屏幕明明还有空地，换行的却不是行，是字。
+   `flex-wrap: wrap` 让空间不够时整块换行，`white-space: nowrap` 让每一块自己
+   保持完整：两者一起才是「空间够就在一行，不够就换一整块」。 */
+.sec-head { display: flex; align-items: baseline; gap: 13px; margin-bottom: 13px;
+            flex-wrap: wrap; }
+.sec-head h2, .sec-head .sec-count, .sec-head .hide-toggle,
+.sec-head .funnel-chip, .sec-head .sec-note { white-space: nowrap; }
 .sec-head h2 { font-size: var(--fs-body); font-weight: 600; margin: 0; letter-spacing: 0.02em; }
 /* 评估正文里的小节头（硬性条件 / 面试练习）：与主表那批同族，只是上面要留口气。
    原来这两处各写一遍 inline style，一个是 marginBottom 9、一个是 11 ——
@@ -1416,7 +1425,11 @@ body .ant-typography .ant-typography-copy {   /* (0,2,1)：既出面板又压得
    这一层的正本叫 `--dim` / `--faint`。 */
 /* 下面这些是 2026-09-30 从 JSX 的 inline style 收上来的（判据见 DESIGN.md 的 Rules：
    inline style 只许给由数据算出来的值，静态样式一律进 class）。 */
-.sl-search { max-width: 320px; }
+/* 搜索框**本体**（antd 紧凑组：输入框 + 放大镜按钮）。
+   320 是给**输入框**的宽度上限；antd 的紧凑组内部是 inline-flex，输入框 280 +
+   按钮 34 + 边框刚好压着 320 的边，所以上限给到 344 —— 差那几像素原来表现为
+   「按钮掉到输入框下面一行」。外层行是 `.sl-searchbar`，不共用这个类。 */
+.sl-search { max-width: 344px; }
 .sl-filter { min-width: 168px; }
 .act-note.is-warn { color: var(--caution); }
 .kicker.is-tag { margin-left: auto; color: var(--faint);
@@ -1928,8 +1941,13 @@ body .readout .ant-typography code::-webkit-scrollbar { display: none; }
 .jobpref-row { grid-template-columns: 18em 6em 1fr; }
 .jobpref-row .portal-note { white-space: normal; overflow: visible; }
 
-/* 列表搜索条 */
-.sl-search {
+/* 列表搜索条 —— **这一行的类名原来与输入框本体重名**（两处都叫 `sl-search`），
+   于是 1419 行那条给输入框的 `max-width: 320px` 也落到了**外层行**上。
+   后果是行容器被自己限宽到 320px，而搜索框本身就要 320 —— 筛选框必然放不下，
+   `flex-wrap: wrap` 于是把它挤到下一行；**屏幕再宽也一样**，因为卡住的是
+   容器宽度不是视口宽度。搜索按钮同理（antd 的紧凑组内部也会换行）。
+   「行」和「件」是两个东西，就该有两个类名。 */
+.sl-searchbar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin: 0 0 12px;
 }

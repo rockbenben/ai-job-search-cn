@@ -644,7 +644,7 @@ export function Shortlist({
       )}
       {/* 搜索条只在表够长时出现——十几行的表上，一个搜索框比直接扫一眼更慢。 */}
       {jobs.length >= 12 && (
-        <div className="sl-search">
+        <div className="sl-searchbar">
           <Input.Search
             allowClear
             placeholder="搜职位名、公司、地点、薪资、结论、来源"
