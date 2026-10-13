@@ -280,7 +280,7 @@ python tools/doctor.py
 | Gmail 读取 | mcp__claude_ai_Gmail__*（Connectors 连接 Gmail） | 无 → `workflows/job-gmail-sync.md` 全流程跳过并说明原因 |
 | Notion 写入 | Notion MCP（OAuth） | 无 → `workflows/job-notion-sync.md` 全流程跳过并说明原因 |
 | 浏览器取数与页面操作（含登录态） | ① Claude 浏览器扩展（`mcp__claude-in-chrome__*`）② 没有扩展才用 web-access skill 的 CDP 代理 | `site:` 域名限定搜索兜底（见 `workflows/job-scrape.md`） |
-| PDF 编译与文本层校验 | typst compile / **`pdftotext -layout -enc UTF-8`**（**`-enc UTF-8` 不是可选的**：不给它，中文 Windows 上抽出来的中文简历会变成一份「没有汉字」的文本，据此下的结论是灾难性的假警报）；装了 Python 还可以 `tools/verify_pdf.py <pdf> --cjk --contains <手机号>`，一次查完乱码、汉字占比、联系方式 | 无 typst → 交付 .typ 源文件并说明编译方法 |
+| PDF 编译与文本层校验 | typst compile / **`pdftotext -layout -enc UTF-8`**（**`-enc UTF-8` 不是可选的**：不给它，中文 Windows（cp936）上抽出来的中文简历会变成一份「没有汉字」的文本，结论就是灾难性假警报）；装了 Python 还可以 `tools/verify_pdf.py <pdf> --cjk --contains <手机号>`，一次查完乱码、汉字占比、联系方式 | 无 typst → 交付 .typ 源文件并说明编译方法 |
 
 ### 取数渠道的顺位（别搞反）
 
