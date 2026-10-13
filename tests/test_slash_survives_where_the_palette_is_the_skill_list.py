@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""斜杠只在「不把 `/` 留给自己内置指令」的那几家保留。
+"""命令形式按「这家工具吃不吃斜杠」给，只给一种。
 
 `AGENTS.md`「每一处引导都要写出该敲的命令」要求**按当前工具调整命令形式**。
-2026-09-29 / 09-30 逐家实测，五家吃斜杠、一家拦：
+2026-09-29 / 09-30 逐家实测，2026-10-13 又补一家：
 
 - **Claude Code** —— 技能进它的斜杠表（二进制里的 `skillToolCommands`）。
 - **Qoder** —— harness 自己的口径：技能可按 `/<名>` 请求。
@@ -12,10 +12,15 @@
   ⚠️ 本机先前装的是 0.14.0，那一版两件事都不成立 —— 据旧版下的结论被新版打回。
 - **MiMo Code** —— `command/index.ts` 把每个技能以 `source: "skill"` 塞进命令表，
   `skill/index.ts` 的注释写着「用户手敲斜杠照样能用」。
+- **MCode** —— 用户 2026-10-13 当场确认；信号 `MAVIS_SESSION_TRANSFER_CLIENT`
+  是在一个真会话里逐个量出来的。
 - **Codex CLI —— 拦。** 二进制 `codex.exe` 0.159.0 里就印着
   `Unrecognized command '/-'. Type "/" for a list of supported commands.`
   （出处 `tui\\src\\bottom_pane\\chat_composer\\inline_input.rs`）。它注入给模型的
-  是 `<skills_instructions>`，技能不注册成斜杠项。
+  是 `<skills_instructions>`，技能不注册成斜杠项。**2026-10-13 起它自己一格**
+  （此前靠 `generic` 那个免斜杠的默认值兜，而它探测不到）。
+- **认不出来的那一批** —— 2026-10-13 也给斜杠。理由与代价见下面第 27 行起，
+  以及 `tools/doctor.py` 的 `COMMAND_SYNTAX` 上方。
 
 **Gemini CLI 原来在这一档，2026-09-30 整档删掉**：那家已停（个人版登录通道被关，
 `reasonCode: UNSUPPORTED_CLIENT` / `tierId: free-tier`），后继是 Antigravity CLI。
@@ -23,9 +28,13 @@
 
 **这一档最早只钉着 `claude` 一家，其余全在「去斜杠」里**，理由是「斜杠会被客户端
 当成内置指令拦掉」——那句话只对 Codex 成立，剩下几家是被它白扣了斜杠这一层形式。
-Codex 没有可用的探测信号（`CODEX` 那个变量不存在），自动探测落 `generic`，
-所以 `no-slash` 那一档现在兜的是**「没实测过的工具」**，含 Codex。
-裸形式各家都敲得动（触发词接得住），留着敲不动的斜杠才是每条引导都作废。
+
+**2026-10-13：免斜杠的只剩 Codex 一家，`generic` 翻到了带斜杠这一档。**
+理由与实测见 `tools/doctor.py` 的 `COMMAND_SYNTAX` 上方、`docs/tool-entries.md`
+的表下第 2 条。一句话版本：**裸形式不是命令，只是聊天框里的一段文字**——
+触发词接得住的是模型、不是宿主；而两种错法的可见性不一样（带错斜杠会报错，
+缺斜杠用户根本不知道有这条命令）。Codex 没有可用的探测信号（`CODEX` 那个变量不存在），
+现在**自己一格**（`JOBS_CODE_TOOL=codex` 或面板上那个开关），不再靠 generic 兜底。
 
 这份文件管**渲染层那张表**，以及面板那头的抄件。`_cli.py` 与 `doctor.py` 两份
 `detect_code_tool` 副本的一致性已经由 `tests/test_code_tool_detection.py` 钉住，
@@ -45,8 +54,8 @@ import doctor  # noqa: E402
 #: 渲染层的两档名单，喂给下面第一条用例（逐档验斜杠去没去掉）。
 #: **枚举「探测能返回哪些值」不靠这份手抄** —— 那条断言从源码里数，见
 #: `_auto_detect_returns()`。
-NO_SLASH = ("generic",)
-SLASH = ("antigravity", "claude", "mimo", "qoder", "qwen")
+NO_SLASH = ("codex",)
+SLASH = ("antigravity", "claude", "generic", "mavis", "mimo", "qoder", "qwen")
 
 #: 面板那头自己存了一份斜杠档名单（`CodeToolContext.tsx`）。它是 Python 那张表的
 #: **抄件**，跨语言，import 不到，只能按文本对拍 —— 原来没有这一条，所以
@@ -103,9 +112,21 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
         self.assertEqual(doctor.command_syntax("codex"), "no-slash")
 
     def test_an_unknown_tool_falls_into_the_no_slash_group(self):
-        """没探测出来的工具按去斜杠处理 —— 留斜杠会让所有引导都敲不动。"""
-        self.assertNotIn("/job-", doctor.adapt_commands("/job-auto", "某个没见过的工具"))
-        self.assertEqual(doctor.command_syntax("某个没见过的工具"), "no-slash")
+        """没探测出来的工具按**带斜杠**处理 —— **2026-10-13 从去斜杠翻过来的。**
+
+        原来这一条钉的是去斜杠，理由是「留斜杠会让所有引导都敲不动」。
+        那个理由把两件事当成了对称的，其实不对称：
+
+        - 带错斜杠 → 工具报错或列出命令，**看得见**，用户当场知道不对；
+        - 缺斜杠   → 复制出来的是一段普通文字，用户**不知道**有这条命令。
+
+        而 `docs/tool-entries.md` 量过 12 家，**8 家吃斜杠**——
+        认不出来的那一批更可能落在吃斜杠的一边。真拦的（Codex）
+        2026-10-13 起自己一格，不再靠 generic 兜底。
+        """
+        self.assertEqual(doctor.adapt_commands("/job-auto", "某个没见过的工具"),
+                         "/job-auto")
+        self.assertEqual(doctor.command_syntax("某个没见过的工具"), "slash")
 
     def test_the_discontinued_tool_has_no_cell(self):
         """Gemini CLI 已停 → 整档删掉，别再给它留格子，也别再认它的信号。
@@ -130,12 +151,23 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
         现在加一档而没在 `COMMAND_SYNTAX` 里给它一格 → 红；两族副本（`_cli.py` 与
         `doctor.py`）数出来的集合不等 → 也红（判得一样那部分另有正本：
         `tests/test_code_tool_detection.py`，这里只比取值集合，不抄它的行为用例）。
+
+        ⚠️ **2026-10-13：判据从 `==` 改成 `<=`。** 表里允许有**探测不到**的值——
+        `codex` 没有可用的环境变量信号（`CODEX` 这个变量根本不存在），
+        只能 `JOBS_CODE_TOOL=codex` 手工进。它自己一格免斜杠之后，
+        「探测得到 ⇒ 表里有」这条仍然要守；反过来不成立。
         """
         for src in ("_cli.py", "doctor.py"):
             with self.subTest(src=src):
-                self.assertEqual(auto_detect_returns(src), set(doctor.COMMAND_SYNTAX),
-                                 f"{src} 的 detect_code_tool 返回值与 "
-                                 f"COMMAND_SYNTAX 的格子对不上")
+                self.assertTrue(
+                    auto_detect_returns(src) <= set(doctor.COMMAND_SYNTAX),
+                    f"{src} 的 detect_code_tool 返回值与 "
+                    f"COMMAND_SYNTAX 的格子对不上（探测得到、表里没有）")
+        # 反向允许存在：**表里可以有探测不到的值**，例如 `codex`
+        # （它没有可用的环境变量信号，只能 `JOBS_CODE_TOOL=codex` 手工指定）。
+        # 2026-10-13 之前这里是 `==` —— 那条规则成立时看不出问题，
+        # 一旦有一格只能手工进（Codex 自己一格免斜杠），它就开始报
+        # 「'codex' : 探测返回值与格子对不上」，而那正是它该允许的。
         self.assertEqual(set(NO_SLASH) | set(SLASH), set(doctor.COMMAND_SYNTAX),
                          "上面那两档名单与 COMMAND_SYNTAX 分了家 —— 第一条用例就只"
                          "覆盖了一半的档位")

@@ -214,10 +214,11 @@ node .agents/skills/liepin-search/cli/src/cli.ts detail "<职位URL>" --format p
 
 ### 在不同 AI 工具中怎么执行命令
 
-- **在 Claude Code、Antigravity CLI (agy)、MiMo、Qoder、Qwen Code 里**：带斜杠就是原生形态（`/job-auto`、`/job-rank`、`/job-apply <职位链接>`），五家都把每个技能注册成 `/<名>`。
+- **在 Claude Code、Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code 里**：带斜杠就是原生形态（`/job-auto`、`/job-rank`、`/job-apply <职位链接>`），这几家都把每个技能注册成 `/<名>`。
 - **在 Codex CLI 里**：去掉开头的斜杠，直接输入 `job-auto`、`job-rank`、`job-apply <职位链接>`。
-  > **只有这一家要去掉。** 它把开头的 `/` 留给自己的内置指令——二进制里那句原文是 `Unrecognized command '/-'. Type "/" for a list of supported commands.`。逐家的实测出处与分档的判据正本在 `docs/tool-entries.md`（那张表就是 `tools/doctor.py` 的 `COMMAND_SYNTAX`）。
-- **在认不出来的助手与编辑器内置助手里**（Cursor 等）：同样给去斜杠的形式——认不出来就落最保守那一档，见上条。
+  > 它把开头的 `/` 留给自己的内置指令——二进制里那句原文是 `Unrecognized command '/-'. Type "/" for a list of supported commands.`。逐家的实测出处与分档的判据正本在 `docs/tool-entries.md`（那张表就是 `tools/doctor.py` 的 `COMMAND_SYNTAX`）。
+- **在认不出来的助手与编辑器内置助手里**（Cursor 等）：**照给带斜杠的形式**（2026-10-13 改）。默认档曾是「去斜杠」，理由是「裸形式各家都敲得动」——那句话不成立：裸形式不是命令，只是聊天框里的一段文字，触发词接得住的是模型、不是宿主。逐家量过 12 家，8 家吃斜杠，真拦的只有 Codex，而它自己有一档。
+  > 探测错了可以手工改：面板上「能敲哪些命令」里有开关，或设 `JOBS_CODE_TOOL=<工具名>`（可选值自检末尾会印）。
 - **直接用自然语言**：说求职者的人话即可，例如「自动跑一轮」、「帮我给手上的岗位打分」、「投这个岗 <链接>」、「刷一下在线简历」。本仓库在 `.agents/skills/` 下配置了完整的 Agent 技能与触发词，AI 会自动识别意图并执行完全相同的工作流。
 
 **那 `.claude/` 是干什么的？** 它是 Claude Code 的接入件，不是本仓库的一部分逻辑：`.claude/skills/` 是 Claude Code 找命令与自动触发技能的**固定路径**（每条命令一份壳，由 `tools/gen_entries.py` 从 `workflows/INDEX.md` 与 `tools/_entries.py` 生成，外加一份手写的求职咨询壳；壳里只有触发词和工具权限，正文一句「读取并严格执行 `workflows/<名>.md`」）；`.claude/settings.json`是它的权限预批清单。两者加上 `CLAUDE.md` **没有一行正文**——正文全部在 `workflows/`，谁都读得到。原来那 19 份 `.claude/commands/` 命令 stub 已经删掉：斜杠命令这一层壳两族都给，不再需要第二落点。**这里不写壳有几份**——加一条命令就多一份壳，写死的数字没人钉着只会变成假话（判据与实测记录在 `docs/tool-entries.md`）。

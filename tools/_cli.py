@@ -2694,6 +2694,7 @@ def detect_code_tool() -> str:
     - "antigravity": Antigravity CLI (agy)
     - "claude": Claude Code
     - "mimo": MiMo Code（小米；opencode 的分支）
+    - "mavis": MCode
     - "qoder": Qoder（实测吃斜杠：技能可按 `/<名>` 请求）
     - "qwen": Qwen Code（阿里）
     - "generic": 其它终端 / 普通命令行 / 认不出来的助手
@@ -2724,6 +2725,13 @@ def detect_code_tool() -> str:
       （`packages/opencode/src/index.ts:116`，紧邻 `AGENT=1` 与 `MIMOCODE_PID`），
       子进程继承，所以比「只注给子 shell」那种更稳。MiMo 是 opencode 的分支，
       但它**不设** `OPENCODE`（同文件 grep 无命中），`MIMOCODE` 因此能唯一认出它。
+    - MCode：2026-10-13 在一个真会话里 `os.environ`
+      逐个量出来的，注了三个 `MAVIS_*`：
+      `MAVIS_SESSION_TRANSFER_CLIENT`、`MAVIS_ELECTRON_LOCALE`、
+      `MAVIS_SESSION_RESULT_DOWNLOADS_DIR`。取第一个是因为它最像会话级的
+      （另两个一个跟着 Electron 语言、一个跟着下载目录），而这一档认的
+      本来就是「跑在哪个 agent 里」，不是「装在哪」。
+      它吃斜杠（技能注册成 `/<名>`，用户 2026-10-13 当场确认）。
     - **Gemini CLI 那一档 2026-09-30 整条删掉。** `GEMINI_CLI=1` 是**真信号**
       （它也给子 shell 注入），跟上面那批凭空写的假变量不是一回事；删它的理由是
       那家已停：包还在发版（0.61.0，2026-09-24），但个人版登录通道被关了
@@ -2740,11 +2748,15 @@ def detect_code_tool() -> str:
       Codex CLI 也没有；OpenCode 有 `OPENCODE=1` 但**没实测**它认不认斜杠
       （源码里技能是以 `source: "skill"` 进命令表的，文档却写成「agent 直接调用的
       工具」，两边打架），按「没实测过 → generic」处理，不为它开档。
-      Cursor 落 generic（免斜杠）就是我们要的行为；**Codex 也一样** —— 它是
-      实测过的那几家里唯一拦斜杠的（二进制里那句 `Unrecognized command`），
-      没有信号反而让它正好落在安全那一档，所以既不必为它加信号、也不必给表里加格。
-      认不出来就落 generic —— 那是免斜杠那一档，兜的就是「没实测过的工具」。
-      识别错了可用环境变量 JOBS_CODE_TOOL 手工覆盖（doctor 的工具名提示仍认它）。
+      Cursor 与 OpenCode 都落 `generic`，而认不出来的那一批**从 2026-10-13 起吃斜杠**
+      ——**代价就是它们会拿到敲不动的斜杠**，见下面那段。要救只能手工指定。
+      Codex 不用落 generic：它是实测过唯一拦斜杠的那一家，二进制里那句
+      `Unrecognized command` 就是出处，所以 2026-10-13 给它单独立了一格 `no-slash`
+      （探测不到，靠 `JOBS_CODE_TOOL=codex` 或面板上那个开关进）。
+      认不出来就落 generic —— 理由见 `doctor.COMMAND_SYNTAX` 那段：实测 12 家里
+      8 家吃斜杠，「认不出来」更可能落在吃斜杠的那一边；而真拦的 Codex 已有自己一格。
+      识别错了可用环境变量 JOBS_CODE_TOOL 手工覆盖（doctor 的工具名提示仍认它），
+      面板上也有开关（`CodeToolContext` 的 `setSlashMode`）。
 
     doctor.py 因「只用标准库、不 import 仓库模块」的契约保有一份逐字副本，
     两份判得一样由 tests/test_code_tool_detection.py 钉住。
@@ -2764,5 +2776,7 @@ def detect_code_tool() -> str:
         return "qwen"
     if os.environ.get("MIMOCODE"):
         return "mimo"
+    if os.environ.get("MAVIS_SESSION_TRANSFER_CLIENT"):
+        return "mavis"
     return "generic"
 

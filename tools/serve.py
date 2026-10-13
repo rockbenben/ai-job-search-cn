@@ -537,7 +537,9 @@ def with_detected_tool(raw: bytes, tool: str) -> bytes:
     导出器在导出那一刻把 detectedTool 烤进 data.json，而 data.json 只在
     「上游数据变了」时才重导——换个 AI 工具起服务、或并行会话（另一个工具
     先导出过一份）都不会让它失效。实测 2026-09-12：Claude Code 会话起的面板，
-    端的是早先 Antigravity 会话导出的快照，整页命令默认免斜杠。
+    端的是早先 Antigravity 会话导出的快照，整页命令用了那份快照所对应的工具档。
+    （当时那两档的差别是斜杠；2026-10-13 起免斜杠只剩 Codex 一家，所以这一句
+    只讲「按起服务的环境盖」，不再断言具体是哪种字形——那一层会再变。）
     与 with_stale_flag 同款：只改这一次响应，不动盘上的 data.json。
     纯函数，解析失败原样端出去。
     """

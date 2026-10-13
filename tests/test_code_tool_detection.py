@@ -6,10 +6,13 @@
   Claude Code 注入 `CLAUDECODE=1`（不是 `CLAUDE_CODE` / `CLAUDE`，那两个从没存在过）、
   agy 注入 `ANTIGRAVITY_AGENT=1`、Qoder 注入 `QODERCN_CLI=1` /
   `QODER_AGENT_SDK_ENTRYPOINT=sdk-ts`（2026-09-29 在一个真 Qoder CN 会话里现测）、
-  Qwen Code 注入 `QWEN_CODE=1`、MiMo Code 注入 `MIMOCODE=1`
-  （后两家出处见 `_cli.detect_code_tool` 的 docstring）。
-  上一版因为信号是凭空写的，真 Claude Code 会话被认成 generic，整个面板
-  默认变成免斜杠。所以下面专门有一组断言「不该再认的信号不许触发」。
+  Qwen Code 注入 `QWEN_CODE=1`、MiMo Code 注入 `MIMOCODE=1`、MCode 注入
+  `MAVIS_SESSION_TRANSFER_CLIENT`（2026-10-13 加；后三家出处见
+  `_cli.detect_code_tool` 的 docstring）。
+  上一版因为信号是凭空写的，真 Claude Code 会话被认成 generic——当时那一档是
+  免斜杠，于是整个面板默认少一层斜杠。所以下面专门有一组断言「不该再认的信号
+  不许触发」。**加新信号时 `TOOL_ENV` 必须跟着加**：跑测试的机器正好是那一档时，
+  全表用例一起红，报的还是「认不出来」那种看不懂的话（Qoder 与 MCode 各栽过一回）。
 - doctor 因「只用标准库、不 import 仓库模块」的契约保着一份逐字副本
   （见 doctor.detect_code_tool 的 docstring），这份测试同时钉两份。
 """
@@ -33,10 +36,14 @@ TOOL_ENV = (
     "JOBS_CODE_TOOL",
     "ANTIGRAVITY_AGENT", "ANTIGRAVITY_AGENTAPI_EXE", "ANTIGRAVITY_LS_VERSION",
     "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT",
-    # Qoder：跑在 Qoder 里时这两个**就在环境里**，不列进来下面的用例会
-    # 被宿主会话污染（`({}, "generic")` 那条会当场红）。
+    # Qoder / MCode：跑在它们里面时这几个**就在环境里**，不列进来下面的
+    # 用例会被宿主会话污染（`({}, "generic")` 那条会当场红）。
+    # Qoder 那次是真栽过：2026-10-13 给 MCode 加 `MAVIS_*` 时它又原样
+    # 栽了一回——每加一档信号都得在这张表里补一行，否则**跑测试的那台机器
+    # 正好是那一档**时，全表用例一起红，而且报的是「'mavis' != 'generic'」，
+    # 看不出是夹具漏了。
     "QODERCN_CLI", "QODER_AGENT_SDK_ENTRYPOINT",
-    "QWEN_CODE", "MIMOCODE",
+    "QWEN_CODE", "MIMOCODE", "MAVIS_SESSION_TRANSFER_CLIENT",
     # 下面两组都「不许再认」，但**理由不同，别混成一档**：
     # 1) 上一版凭空写、实测根本不存在的假信号 —— 留着验它们不再触发。
     "CLAUDE_CODE", "CLAUDE", "CURSOR_VERSION", "TERM_PROGRAM", "CODEX",
@@ -44,7 +51,9 @@ TOOL_ENV = (
     #    已停：官方把个人版登录通道关了（`reasonCode: UNSUPPORTED_CLIENT` /
     #    `tierId: free-tier`），后继是 Antigravity CLI（用户 2026-09-30 告知）。
     #    探测认它没有意义 —— 认出来也只是给一个装不上的工具印名字，
-    #    所以整档删掉，它落回 generic（去斜杠，而 generic 那档本来就兜得住）。
+    #    所以整档删掉，它落回 generic。⚠️ 当时落回正好兜得住，是因为那之前
+    #    generic 就是免斜杠；**2026-10-13 那一档翻成了带斜杠**，所以现在
+    #    「删掉一档」不再是零成本的补救——它会让命令形式一起跟着变。
     "GEMINI_CLI",
 )
 
@@ -92,6 +101,7 @@ SCENARIOS = [
     ({"QODER_AGENT_SDK_ENTRYPOINT": "sdk-ts"}, "qoder"),
     ({"QWEN_CODE": "1"}, "qwen"),
     ({"MIMOCODE": "1"}, "mimo"),
+    ({"MAVIS_SESSION_TRANSFER_CLIENT": "1"}, "mavis"),
     # 在 Qoder 的终端里再开 Claude Code：两家信号同时在，Claude 赢
     # （优先级问题，不是形式问题——两家现在实测都吃斜杠，见 COMMAND_SYNTAX）。
     ({"CLAUDECODE": "1", "QODERCN_CLI": "1"}, "claude"),
@@ -137,11 +147,12 @@ class TestCodeToolDetection(unittest.TestCase):
             self.assertEqual(_cli.detect_code_tool(), "cursor")
             self.assertEqual(doctor.detect_code_tool(), "cursor")
 
-    # ---- adapt_commands：认不出来的那一档去斜杠，实测吃斜杠的那几家原样 ----
+    # ---- adapt_commands：免斜杠的那一档（2026-10-13 起只剩 codex）去斜杠，其余原样 ----
 
     def test_adapt_strips_slash_only_for_the_unverified_group(self):
-        # 「codex 那一档靠默认值兜」另有专门的用例，这里不重复钉。
-        for tool in ("generic", "cursor"):
+        # **2026-10-13：免斜杠的只剩 codex 一家。** generic（认不出来的那一批）
+        # 翻成了带斜杠，理由见 `doctor.COMMAND_SYNTAX` 上方那段。
+        for tool in ("codex",):
             with self.subTest(tool=tool):
                 self.assertEqual(
                     doctor.adapt_commands("跑 /job-auto 接着抓", tool),
@@ -160,12 +171,21 @@ class TestCodeToolDetection(unittest.TestCase):
                 self.assertEqual(
                     doctor.adapt_commands("https://x//job-auto", tool),
                     "https://x//job-auto")
-        # 实测吃斜杠的五家：一切原样（剥掉就是白退回裸形式）。
-        for tool in ("claude", "antigravity", "mimo", "qoder", "qwen"):
+        # 实测吃斜杠的六家 + 认不出来的那一批：一切原样（剥掉就是白退回裸形式）。
+        for tool in ("claude", "antigravity", "mimo", "mavis", "qoder", "qwen",
+                     "generic"):
             with self.subTest(tool=tool):
                 self.assertEqual(
                     doctor.adapt_commands("跑 /job-auto 接着抓", tool),
                     "跑 /job-auto 接着抓")
+                # 路径与 URL 里的片段在「原样」这一档同样不许动。
+                self.assertEqual(
+                    doctor.adapt_commands(
+                        "workflows/job-apply.md 里写着 /job-setup", tool),
+                    "workflows/job-apply.md 里写着 /job-setup")
+                self.assertEqual(
+                    doctor.adapt_commands("https://x//job-auto", tool),
+                    "https://x//job-auto")
 
     def test_adapt_passes_non_string_through(self):
         self.assertIs(doctor.adapt_commands(None, "generic"), None)
@@ -188,12 +208,18 @@ class TestCodeToolDetection(unittest.TestCase):
 
     def test_main_generic_output_is_slash_free(self):
         _rc, out = self._run_main("generic")
-        # 整份输出一种形式到底：连脚注也不示范别家的写法。原来那条要列出
-        # 「用 Claude Code 时带斜杠（如 /job-auto）」——那是把两套说法摊给
-        # 一个只该看到一套的人。
-        self.assertNotRegex(out, doctor._SLASH_CMD)
-        self.assertIn("不带开头斜杠", out)
+        # **2026-10-13 改了判据**：generic 从「免斜杠」翻成「带斜杠」，
+        # 所以这一条现在反过来验——认不出来的那一批**保留**斜杠，
+        # 理由与实测见 `doctor.COMMAND_SYNTAX` 上方。
+        # Codex 那一档免斜杠由 `test_main_codex_output_has_no_slash` 单独钉。
+        self.assertRegex(out, doctor._SLASH_CMD)
         self.assertNotIn("用 Claude Code 时带斜杠", out)
+
+    def test_main_codex_output_has_no_slash(self):
+        """Codex 是唯一免斜杠的那一档（它的二进制里印着会拦）。"""
+        _rc, out = self._run_main("codex")
+        self.assertNotRegex(out, doctor._SLASH_CMD)
+        self.assertIn("不带开头的斜杠", out)
 
     def test_main_says_which_tool_it_thinks_it_is_for_everyone(self):
         """这一行每家都印 —— 探测错了的唯一线索。
@@ -223,14 +249,17 @@ class TestCodeToolDetection(unittest.TestCase):
         写死** —— 拿 `set(doctor.COMMAND_SYNTAX)` 去比它就是自己比自己，永远绿。
         写死之后：探测加一档 → `COMMAND_SYNTAX` 少格子先红（正本在另一份测试文件），
         表里加了格而派生串漏了名字 → 这里红。
-        codex / cursor 不在里面是设计：它们探测不出来，而手工指定也不改变命令形式
-        （默认档就是去斜杠），列出来只是多两个敲了没区别的值。
+        **2026-10-13：`codex` 进这串了。** 原来它不在里面，理由是
+        「探测不出来，手工指定也不改变命令形式」——那一条在 `generic` 翻成
+        带斜杠之后**不成立了**：`JOBS_CODE_TOOL=codex` 现在是少数能把命令
+        切回免斜杠的手段（面板上那个开关之外唯一的退路），不列出来就成了死路。
+        `cursor` 仍不在：吃不吃斜杠没实测过，列出来等于宣称量过。
         """
         _rc, out = self._run_main("generic")
         hint = next(line for line in out.splitlines() if "JOBS_CODE_TOOL=" in line)
         listed = set(re.findall(r"[a-z]+", hint.split("JOBS_CODE_TOOL=", 1)[1]))
-        self.assertEqual(listed, {"claude", "antigravity", "mimo",
-                                  "qoder", "qwen", "generic"})
+        self.assertEqual(listed, {"claude", "antigravity", "mimo", "mavis",
+                                  "qoder", "qwen", "codex", "generic"})
 
 
 if __name__ == "__main__":

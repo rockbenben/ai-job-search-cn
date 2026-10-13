@@ -1837,6 +1837,8 @@ def detect_code_tool() -> str:
         return "qwen"
     if os.environ.get("MIMOCODE"):
         return "mimo"
+    if os.environ.get("MAVIS_SESSION_TRANSFER_CLIENT"):
+        return "mavis"
     return "generic"
 
 
@@ -1847,6 +1849,7 @@ _TOOL_LABELS = {
     "claude": "Claude Code",
     "cursor": "Cursor",
     "codex": "Codex CLI",
+    "mavis": "MCode",
     "mimo": "MiMo Code",
     "qoder": "Qoder",
     "qwen": "Qwen Code",
@@ -1856,17 +1859,43 @@ _TOOL_LABELS = {
 #: 那是路径（workflows/job-apply.md）或 URL 里的片段，不是命令。
 _SLASH_CMD = re.compile(r"(?<![\w./-])/(job-[a-z][a-z-]*)")
 
-#: 每家工具的命令语法。2026-09-29 / 09-30 逐家实测：**五家吃斜杠，一家拦**。
+#: 每家工具的命令语法。2026-09-29 / 09-30 逐家实测：**六家吃斜杠，一家拦**。
 #: Claude Code 的技能进它的斜杠表；Qoder 的 harness 自己写着技能可按 `/<名>` 请求；
 #: agy 的 `/` 面板用户当场测过（`/job-scrape` 能匹配）；Qwen Code 0.24.7 起把技能
-#: 注册成 `/<技能名>`；MiMo Code 的技能以 `source: "skill"` 进它的命令表。
-#: **只有 Codex 把 `/` 留给自己的内置指令** —— 它的二进制里印着
-#: `Unrecognized command '/-'. Type "/" for a list of supported commands.`。
+#: 注册成 `/<技能名>`；MiMo Code 的技能以 `source: "skill"` 进它的命令表；
+#: MCode 同形态（2026-10-13 用户确认，`MAVIS_SESSION_TRANSFER_CLIENT`
+#: 是量出来的信号）。**只有 Codex 把 `/` 留给自己的内置指令** —— 它的二进制里
+#: 印着 `Unrecognized command '/-'. Type "/" for a list of supported commands.`。
 #: 这一格原来只把 `claude` 放进 `"slash"`、其余全去斜杠，理由写的正是「斜杠会被
-#: 客户端当成内置指令拦掉」——那句话对五家是错的，白扣了斜杠这一层形式。
+#: 客户端当成内置指令拦掉」——那句话对六家是错的，白扣了斜杠这一层形式。
 #: Gemini CLI 原来也在 `"slash"` 里，2026-09-30 整档删掉（那家已停，后继是 agy）。
-#: Codex 没有可用的探测信号（`CODEX` 这个变量不存在），自动探测落 `"generic"`，
-#: 所以 `"no-slash"` 那一档兜的是**没实测过的工具**（含 Codex、Cursor、OpenCode）。
+#: Codex 没有可用的探测信号（`CODEX` 这个变量不存在），自动探测落 `"generic"`。
+#
+#: ## 2026-10-13：`generic` 从免斜杠翻成带斜杠
+#:
+#: **原来 `generic` 是免斜杠那一档**，理由是「裸形式各家都敲得动（触发词接得住），
+#: 留着一个敲不动的斜杠则每一条引导都作废」。前半句在 harness 里不成立：
+#: 裸形式不是命令，只是聊天框里的一段文字——触发词接得住的是**模型**，
+#: 不是**宿主**，而这一页给的每一条都是「敲这个」。
+#:
+#: 后果当场可见（同一屏两种形态）：流水线格子与弹层里的 `<Cmd>` 走了
+#: `formatCommand`、被剥成 `job-scrape`，而「下一步」那行是纯文本、
+#: 原样留着 `/job-outcome <公司>`。实测这台机器跑在 MCode 里
+#: （`detect_code_tool()` 返回 `generic`），复制按钮复制下来的是**敲不动的命令**。
+#:
+#: 翻过来的三条理由：
+#:   1. `docs/tool-entries.md` 量过 12 家，**8 家吃斜杠**；「认不出来」更可能
+#:      落在吃斜杠的那一边。
+#:   2. 两种错法的**可见性不同**：带错斜杠，工具会报错或列出命令；
+#:      缺斜杠，用户根本不知道有这条命令（`AGENTS.md`「用户不知道该敲什么」）。
+#:   3. 真拦的那一家（Codex）现在**自己一格**，不再靠 generic 兜底。
+#:
+#: 代价说清楚：**探测不到 Codex 的人会拿到敲不动的斜杠**——它没有可用的环境变量，
+#: 只能 `JOBS_CODE_TOOL=codex` 或用面板上的开关（`CodeToolContext.setSlashMode`，
+#: 2026-10-13 把它接上了界面；此前它零调用点，是条死路）。
+#: `cursor` 同理：`_TOOL_LABELS` 里有它，吃不吃斜杠没实测过，所以**不给它格子**，
+#: 让它落 generic（带斜杠）—— 与「认不出来按多数派」同一条判据，不是漏了。
+#:
 #: `detect_code_tool` 自动探测能返回的每一个值都要在这里有一格，见
 #: `tests/test_slash_survives_where_the_palette_is_the_skill_list.py`
 #: （它把那张表的键与探测函数源码里的 `return` 字面量逐条对拍 —— 值是从源码数的，
@@ -1875,16 +1904,20 @@ COMMAND_SYNTAX = {
     "claude": "slash",
     "antigravity": "slash",
     "mimo": "slash",
+    "mavis": "slash",
     "qoder": "slash",
     "qwen": "slash",
-    "generic": "no-slash",
+    "generic": "slash",
+    "codex": "no-slash",
 }
 
 
 def command_syntax(tool: str) -> str:
-    """这一档给不给斜杠。**没实测出来的工具按 `"no-slash"` 处理**：裸形式各家都
-    敲得动（触发词接得住），留着一个敲不动的斜杠则每一条引导都作废。实测吃斜杠的
-    五家各自有格，所以默认值只兜「没测过的」那一类，不再顺手把几家扣进去。
+    """这一档给不给斜杠。
+
+    **没实测出来的工具按 `"generic"` 那一档走，而它 2026-10-13 起是带斜杠**：
+    实测 12 家里 8 家吃斜杠，而认不出来的那一批更可能落在吃斜杠的一边；
+    真拦的（Codex）自己一格。这段理由的完整版在 `COMMAND_SYNTAX` 上方。
     """
     return COMMAND_SYNTAX.get(tool, COMMAND_SYNTAX["generic"])
 
@@ -1893,8 +1926,9 @@ def adapt_commands(text, tool: str) -> str:
     """把文档正本的斜杠命令改写成当前工具能敲的形式。
 
     **文档正本（`AGENTS.md`、`workflows/`、`workflows/INDEX.md`）里一律保留斜杠**
-    ——那是标准形式；改写只发生在给用户看的最终渲染层。实测吃斜杠的五家
-    （Claude Code / agy / MiMo / Qoder / Qwen）原样返回，认不出来的才去斜杠。
+    ——那是标准形式；改写只发生在给用户看的最终渲染层。实测吃斜杠的六家
+    （Claude Code / agy / MiMo / MCode / Qoder / Qwen）与认不出来的那一批原样返回，
+    只有 Codex 那一档去斜杠。
     """
     if not isinstance(text, str):
         return text

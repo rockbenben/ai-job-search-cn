@@ -120,8 +120,10 @@ class ItHandsOverTheCommand(unittest.TestCase):
         self.assertIn("job-cv <职位链接>", body())
         # 这里原来还有一条 `assertNotIn("**让用户敲 `/job-apply")`，防的是
         # 「写回成 Claude 专用的斜杠形式」。2026-09-29 逐家实测后方向反了：
-        # 四家吃斜杠，斜杠才是该放在文首的形式。「裸形式也得在正文里出现」
-        # 这一半由上面的 test_it_defers_the_leading_slash_to_the_running_tool 钉。
+        # 多数家吃斜杠，斜杠才是该放在文首的形式。**2026-10-13 认不出来的那批
+        # 也归到吃斜杠这一档**，于是「该放在文首」成了绝大多数情况。「裸形式也得
+        # 在正文里出现」这一半由上面的
+        # test_it_defers_the_leading_slash_to_the_running_tool 钉。
 
     def test_it_says_the_command_is_not_this_shell_to_run(self):
         """不说这句，读的人会以为敲了命令一样受限、于是还是不敢交出去。

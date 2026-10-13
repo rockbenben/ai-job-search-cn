@@ -192,8 +192,9 @@ class TheFirstRunGuidanceWorksForEveryTool(unittest.TestCase):
 
         claude              # 在这个目录启动 Claude Code
 
-    对 Claude 用户是对的，对另外几家（吃斜杠的 agy / Qoder / Qwen / MiMo、
-    要去斜杠的 Codex、以及认不出来的助手）是让人去敲一个手上没有的命令。
+    对 Claude 用户是对的，对另外几家（吃斜杠的 agy / Qoder / Qwen / MiMo / MCode、
+    要去斜杠的 Codex，以及认不出来的助手——**2026-10-13 起最后这批也吃斜杠了**）
+    是让人去敲一个手上没有的命令。
 
     **这个 bug 能活着，是本文件那条判据的形状造成的**：七个场景原来全在
     `JOBS_CODE_TOOL=claude` 下跑，非 Claude 的首轮输出一次都没被断言过。

@@ -56,13 +56,16 @@
 > 仍然是第三条路——每行写着正文在哪、怎么敲、不给参数时干什么，壳不在也照样执行。
 >
 > **本文的示例按 Claude Code 写，理由只有一个：斜杠。** 2026-09-30 逐家实测之后
-> 这个理由归五家了——命令形式表（`tools/doctor.py` 的 `COMMAND_SYNTAX`）里
-> `claude` / `antigravity` / `mimo` / `qoder` / `qwen` 五格都是 `slash`，
-> `/job-auto` 那种敲法在这五家里就是它的原生形态。**只有 Codex CLI 拦**：它把开头的
-> `/` 留给自己的内置指令（实测出处见 `docs/tool-entries.md`），连同认不出来的助手
-> 一起落 `generic` 那一档、给 `job-auto`。Cursor 与 Codex 至今没有可识别标记，
-> 所以落 `generic` 是默认行为而不是判断；认错了手工指定：
-> `JOBS_CODE_TOOL=claude|antigravity|mimo|qoder|qwen|generic`。
+> 这个理由不只归它一家——命令形式表（`tools/doctor.py` 的 `COMMAND_SYNTAX`）里
+> `claude` / `antigravity` / `mimo` / `mavis` / `qoder` / `qwen` 几格都是 `slash`，
+> `/job-auto` 那种敲法在这些家里就是它的原生形态。**要去掉斜杠的只有 Codex CLI**：
+> 它把开头的 `/` 留给自己的内置指令（实测出处见 `docs/tool-entries.md`），
+> 2026-10-13 起它自己一格 `no-slash`。
+> Cursor 与 Codex 至今没有可识别标记，所以它们落 `generic`；而 `generic` 那一档
+> 2026-10-13 从「去斜杠」翻成了**带斜杠**（逐家量过 12 家，8 家吃斜杠，认不出来的
+> 更可能落在吃斜杠的一边——理由与代价见 `docs/tool-entries.md` 表下第 2 条）。
+> 所以本文的示例在 Cursor 一类助手里也照敲 `/job-auto`。认错了手工指定：
+> `JOBS_CODE_TOOL=claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`。
 
 **只想先看看效果**：只装 ①，跑 `/job-setup` → `/job-scrape`（抓完自动打分排序），就能拿到真实的排序名单。
 猎聘搜索 CLI 直接跑在 Node 上（零 runtime 依赖、无编译步骤），不需要额外运行时。

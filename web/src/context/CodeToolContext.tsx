@@ -9,17 +9,36 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
  * `tests/test_slash_survives_where_the_palette_is_the_skill_list.py`
  * 的 ThePanelCarriesTheSameTable 逐格对拍（名单不等就红）。
  * 2026-09-29 / 09-30 逐家实测：Claude Code / Qoder / agy / Qwen Code / MiMo Code
- * 五家都吃斜杠（技能注册成 `/<名>`），只有 Codex CLI 把 `/` 留给自己的内置指令。
+ * 几家都吃斜杠（技能注册成 `/<名>`），只有 Codex CLI 把 `/` 留给自己的内置指令。
+ * 2026-10-13 加 MCode（`MAVIS_SESSION_TRANSFER_CLIENT`，量出来的信号）。
  * Gemini CLI 原来在这一档，2026-09-30 整档删掉 —— 那家已停，后继是 agy。
- * 后端经 JOBS_CODE_TOOL 也可能给出 codex / cursor 等表外名字 —— 它们与
- * generic 同一档（免斜杠），归一到 generic 就是了；面板上没有任何地方露出
- * 「哪家工具」这个名字，露出来的只有 Radio 停在哪一档。
+ *
+ * ## `generic` 2026-10-13 从免斜杠翻成带斜杠
+ *
+ * 原来「认不出来」被归到免斜杠那一档。**实测 `docs/tool-entries.md` 里量过
+ * 12 家，8 家吃斜杠** —— 认不出来的那一批更可能落在吃斜杠的一边。
+ * 而两种错法的可见性不同：带错斜杠，工具会报错或列出命令；缺斜杠，
+ * 用户根本不知道有这条命令（`AGENTS.md`「用户不知道该敲什么」）。
+ * 真拦的那一家（Codex）现在自己一格，不再靠 generic 兜底。
+ * 理由的完整版在 `tools/doctor.py` 的 `COMMAND_SYNTAX` 上方。
+ *
+ * `cursor` 没给格子：吃不吃斜杠没实测过，让它落 generic（带斜杠）。
  */
-const KNOWN_TOOLS = ["antigravity", "claude", "mimo", "qoder", "qwen", "generic"] as const;
+const KNOWN_TOOLS = [
+  "antigravity", "claude", "codex", "mavis", "mimo", "qoder", "qwen", "generic",
+] as const;
 export type CodeTool = (typeof KNOWN_TOOLS)[number];
 
-/** 这一档的命令带开头的斜杠。 */
-const SLASH_TOOLS: readonly CodeTool[] = ["antigravity", "claude", "mimo", "qoder", "qwen"];
+/**
+ * 这一档的命令带开头的斜杠。
+ *
+ * **只剩 Codex 免斜杠** —— 它的二进制里印着
+ * `Unrecognized command '/-'. Type "/" for a list of supported commands.`。
+ * 「认不出来」（`generic`）在这一档里：见上面那段与 doctor 的说明。
+ */
+const SLASH_TOOLS: readonly CodeTool[] = [
+  "antigravity", "claude", "generic", "mavis", "mimo", "qoder", "qwen",
+];
 
 const STORAGE_KEY = "job_search_command_form";
 

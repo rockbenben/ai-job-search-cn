@@ -10,8 +10,8 @@
 是谁拼的」。
 
 于是同一个文件里能同时出现两种写法：`Shortlist.tsx` 的正文用 `<Cmd>`，
-而它的悬浮提示直接把 `/job-apply` 写进字符串。免斜杠那一档（Codex 与认不出来的
-助手）读到的就是**一个他敲不动的形式**，而且是在「照着这个做」的位置上。
+而它的悬浮提示直接把 `/job-apply` 写进字符串。**免斜杠那一档（2026-10-13 起只剩
+Codex 一家）**读到的就是一个他敲不动的形式，而且是在「照着这个做」的位置上。
 
 2026-09-30 全量审计抓到四处：`JobReadout.tsx` 的 `<code>/job-apply</code>`、
 `ResumeRead.tsx` 的 `<code>/job-setup --section search</code>`，以及

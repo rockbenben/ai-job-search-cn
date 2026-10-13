@@ -191,8 +191,10 @@ class StaleCodeGetsCalledOut(unittest.TestCase):
         """盘上 data.json 的 detectedTool 是**导出那一刻**的环境，可能来自别的工具。
 
         实测 2026-09-12：Claude Code 起的面板，端的是早先 Antigravity 会话导出的
-        快照（快照只在数据上游变化时重导，环境换了不重导），整页命令默认免斜杠。
+        快照（快照只在数据上游变化时重导，环境换了不重导），整页命令用了那份快照的档。
         with_detected_tool 在响应时按起服务的环境盖写，不落盘。
+        ⚠️ **别在这条里断言「免斜杠」**：那是被测工具的档位，不是「盖写生效」这件事，
+        而档位 2026-10-13 又翻过一次（认不出来的那批改成带斜杠）。
         """
         raw = json.dumps({"jobs": [], "detectedTool": "antigravity"},
                          ensure_ascii=False).encode("utf-8")

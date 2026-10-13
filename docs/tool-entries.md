@@ -34,6 +34,23 @@
 | Qoder | ✅（另有 `AGENTS.local.md`） | ✅（legacy 开关默认开） | ✅ | `QODERCN_CLI=1` |
 | Qwen Code | ✅ | ✅（0.24.7 起；0.14.0 不扫） | ✅ | `QWEN_CODE=1` |
 | MiMo Code | ✅ | ✅（默认开） | ✅ | `MIMOCODE=1` |
+| MCode | **未验** | ✅ | ✅ | `MAVIS_SESSION_TRANSFER_CLIENT=1`（2026-10-13 逐个量出来的） |
+
+> **这一行的三列不是同一档的证据，别当成一样。**
+> - 「扫 `.agents/skills/`」✅：2026-10-13 那次会话里，21 条 job-* 工作流确实是从
+>   `.agents/skills/` 加载进来的（`lint_skills.py` 也过），所以这一列有据。
+> - 「吃斜杠」✅：用户 2026-10-13 当场确认，技能注册成 `/<名>`。
+> - 「探测信号」：真在会话里量了 `os.environ`，三个 `MAVIS_*` 都在，取最像会话级的那个。
+> - 「读 `AGENTS.md`」**未验**：从会话内部看不见「常驻规则到底加载了哪几份」——
+>   它不像 `CLAUDE.md` 那样在注入内容里留痕。**这一格原来被我填成 ✅，那是照着
+>   「绝大多数家都 ✅」推的，不是量出来的**；表头写着「四列都是量出来的，不是从
+>   文档推的」，所以留空比猜一个强。真要确认，从会话外看一眼它注入的规则文件清单。
+
+> ⚠️ **这一行只写简称 `MCode`。** 那家厂商的全名是活动用户**投过**的公司之一，
+> `test_no_maintainer_data_in_repo` 盯着「被跟踪的文件里不许出现投过的公司名」
+> ——2026-10-13 头一次加这一档时就是被它拦下的，报的是 `M******`。
+> 与别处换 `<公司>` 一样：形状一点没少，只是不把那句话留在版本库里。
+> 信号 `MAVIS_SESSION_TRANSFER_CLIENT` 与简称都不是那个串，照样能认。
 | Codex CLI | ✅ | ✅ | ❌ **拦** | 没有可用的 |
 | OpenCode | ✅（首命中即停） | ✅ | **未实测** | `OPENCODE=1`（没接） |
 | Deep Code (DeepSeek) | ✅ | ✅ | **未实测**（`/` 开菜单，技能进不进那个菜单没量到） | 没装，量不到 |
@@ -45,15 +62,29 @@
 三件事从这张表读出来：
 
 1. **几乎每家都不用为它生成任何东西。** 读 `AGENTS.md` + 扫 `.agents/skills/` 这两列
-   全是 ✅，所以两族壳已经把它们全接住了。真需要单独伺候的只有 Claude 一家
+   大多是 ✅，所以两族壳已经把它们全接住了。真需要单独伺候的只有 Claude 一家
    （它不扫 `.agents/skills/`，所以生成器给 `.claude/skills/` 也落一份）。
    **别为「支持某家工具」去新建一族目录** —— 先量这两列，多半是零个新文件。
-2. **后六家落 `generic` 就是对的，不是漏了。** `generic` 那一档给的是免斜杠形式，
-   而 Codex / Crush / Goose / Amp 四家**实测不吃斜杠**，正好对上；OpenCode 与
-   Deep Code 是**未实测**，按「没测过 → 给裸形式」处理（裸形式各家都敲得动，
-   留一个敲不动的斜杠才是每条引导都作废）。Crush 有信号（`CRUSH=1`）却**没接**：
-   接了只会让自检多印一个工具名，命令形式一个字都不变 —— 探测的唯一下游是
-   `COMMAND_SYNTAX` 那张表，判据是「吃不吃斜杠」，不是「认不认得出」。
+   ⚠️ 「大多是」而不是「全是」：表里已有一格是「未验」（MCode 读不读 `AGENTS.md`），
+   **这一列空着就是还没量，别拿「别家都 ✅」填**。
+2. **后六家落 `generic` 就是对的，不是漏了。**
+   **`generic` 那一档给的是哪种形式，2026-10-13 从免斜杠翻成了带斜杠。**
+   原来的判据是「没实测 → 给裸形式」，理由是「裸形式各家都敲得动（触发词接得住），
+   留一个敲不动的斜杠才是每条引导都作废」。前半句在 harness 里不成立：**裸形式不是
+   命令，只是聊天框里的一段文字**，触发词接得住的是模型、不是宿主。
+
+   而两种错法的**可见性不同**：带错斜杠，工具报错或列出命令；缺斜杠，用户根本不知道
+   有这条命令（`AGENTS.md`「每一处引导都要写出该敲的命令」那一节）。这张表里量过的是 **8 家吃斜杠、
+   4 家不吃、2 家未实测** —— 认不出来的那一批更可能落在吃斜杠的一边。
+   真拦的 Codex 已经自己一格（`JOBS_CODE_TOOL=codex`），不再靠 generic 兜底。
+
+   代价说清楚：**Crush / Goose / Amp 三家实测不吃斜杠，但探测不到、也没有格子**，
+   它们现在会拿到敲不动的斜杠。要救得手工指定，而它们又**没有可用的信号**
+   （Crush 有 `CRUSH=1`，但接了只会让自检多印一个工具名、命令形式一个字都不变——
+   探测的唯一下游是 `COMMAND_SYNTAX` 那张表，判据是「吃不吃斜杠」不是「认不认得出」；
+   Goose 与 Amp 连信号都没有）。这一格只能由用户按这张表自己填，是「规则在」与
+   「兜得住」之间真实存在的缺口，不假装它闭合了。
+   OpenCode 与 Deep Code 本来就未实测，仍按多数派走。
 3. **Gemini CLI 那一行整条删掉了（2026-09-30）。** 分清「停的是哪一层」再动手：
    npm 包**还在发版**（0.61.0，2026-09-24），关的是**个人版登录通道** ——
    登录返回 `reasonCode: "UNSUPPORTED_CLIENT"` / `tierId: "free-tier"`，
@@ -178,15 +209,20 @@ AI 工具无关。
   | `antigravity` | `slash` | 用户 2026-09-28 当场在 `/` 面板测过 `/job-scrape` 能匹配 |
   | `qwen` | `slash` | 0.24.7 把每个技能注册成 `/<技能名>`（2026-09-30 核；本机先前那版 0.14.0 不注册，结论按新版翻） |
   | `mimo` | `slash` | `MiMo：command/index.ts` 把技能以 `source: "skill"` 塞进命令表，`MiMo：skill/index.ts` 的注释写着「用户手敲斜杠照样能用」（2026-09-30 读源码） |
-  | `codex`（只能手工指定，表里没有它那一格） | `no-slash`（= 默认档） | `codex.exe` 0.159.0 里印着 `Unrecognized command '/-'. Type "/" for a list of supported commands.`（`tui\src\bottom_pane\chat_composer\inline_input.rs`）；技能是以 `<skills_instructions>` 注入给模型的，不注册成斜杠项 |
-  | `generic` | `no-slash` | 兜「没实测过的工具」 |
+  | `mavis` | `slash` | 用户 2026-10-13 当场确认；信号 `MAVIS_SESSION_TRANSFER_CLIENT` 是逐个量出来的（见上面接入面表那一行） |
+  | `codex`（探测不到，只能手工指定） | `no-slash` | `codex.exe` 0.159.0 里印着 `Unrecognized command '/-'. Type "/" for a list of supported commands.`（`tui\src\bottom_pane\chat_composer\inline_input.rs`）；技能是以 `<skills_instructions>` 注入给模型的，不注册成斜杠项 |
+  | `generic` | `slash` | 兜「认不出来的那一批」。**2026-10-13 从 `no-slash` 翻过来的**，理由与代价见上面第 2 条 |
   | ~~`gemini`~~ | — | **2026-09-30 整格删掉**：那家已停（见上面那张接入面表的第 3 条）。它原来在这一档是**实测过的** —— bundle 里的 `SkillCommandLoader.ts` 确实把技能注册成 `/<技能名>`；删格的理由不是量错，是那家工具装不上了 |
 
-**默认值是 `"no-slash"`，但它现在只兜没测过的那一类**：实测吃斜杠的五家在表里各自
-有格，默认值不再顺手把几家扣进去。方向没变——裸形式各家都敲得动（触发词接得住），
-留着一个敲不动的斜杠则每一条引导都作废。取值口径在 `doctor.command_syntax()` 一处，
-`adapt_commands()`、包不包 stdout、印不印那一行工具名三处都从它读，
-不再各写一遍 `tool == "claude"`。
+**默认值是 `"slash"`（2026-10-13 从 `"no-slash"` 翻过来的）**：它兜的是**认不出来的那一批**，
+而那批更可能落在吃斜杠的一边。免斜杠现在**只有 `codex` 一格**，它自己占着，
+不再靠默认值兜。取值口径在 `doctor.command_syntax()` 一处，`adapt_commands()`、
+包不包 stdout、印不印那一行工具名三处都从它读，不再各写一遍 `tool == "claude"`。
+
+> ⚠️ **`codex` 那一格在 2026-10-13 之前是不存在的**——那时免斜杠靠默认值兜，
+> 而 `codex` 探测不到（`CODEX` 那个变量根本不存在）、自动落 `generic`。
+> 把它单独立格之后，「手工指定」第一次成了**有效**操作：
+> `JOBS_CODE_TOOL=codex` 与面板上那个开关是仅有的两条退路。
 
 > 这张表的第一版把除 Claude 以外的各家全写成 `no-slash`，理由就是「斜杠会被客户端
 > 当成内置指令拦掉」。那句话是从 Codex 一家的行为推广出去的，其余几家当时**没有
@@ -216,7 +252,7 @@ AI 工具无关。
 | Qwen Code | `QWEN_CODE=1` | 它的 ShellExecutionService 给自己起的每个子 shell 注入（`cli.js` 里两处 `cpSpawn` 的 `env:` 块，2026-09-30 核） |
 | MiMo Code | `MIMOCODE=1` | 主进程里 `process.env.MIMOCODE = "1"`（`MiMo：packages/opencode/src/index.ts`，紧邻 `AGENT=1`），子进程继承。它是 opencode 的分支，但**不设** `OPENCODE`，所以这个变量能唯一认出它 |
 | Cursor、Codex CLI、Goose、Amp | 没有可识别标记 | 集成终端里 `TERM_PROGRAM` 是 `vscode` 不是 `cursor`；落 `generic` 那一档。**Codex 正好该落这里**——它是实测拦斜杠的那家，没有信号反而把它放进了安全档，所以既不为它加信号、也不给表里加格 |
-| Crush / OpenCode | 有信号（`CRUSH=1` / `OPENCODE=1`）却**没接** | 接了只改自检里那行工具名，命令形式一个字都不变：Crush 实测不吃斜杠（`generic` 已经对），OpenCode 未实测（按没测过处理，也是 `generic`）。判据是「吃不吃斜杠」，不是「认不认得出」 |
+| Crush / OpenCode | 有信号（`CRUSH=1` / `OPENCODE=1`）却**没接** | 接了只改自检里那行工具名，命令形式一个字都不变。判据是「吃不吃斜杠」，不是「认不认得出」。⚠️ 2026-10-13 起这层顾虑变了：Crush 实测**不吃**斜杠、OpenCode 未实测，两者落 `generic` 会拿到敲不动的斜杠——**所以「接上」现在能改变命令形式了**（各加一格 `no-slash`）。留着的唯一理由是没量过它们的桌面端与 CLI 是否同一形态，别为凑一家去猜 |
 | ~~Gemini CLI~~ | ~~`GEMINI_CLI=1`~~ | **2026-09-30 删。** 它是**真信号**（那家确实给子 shell 注入过），与下面那批凭空写的假变量不是一回事；删的理由是那家已停，认一个装不上的工具没有意义 |
 
 ⚠️ **只许用实测过的信号。** 上一版写的 `CLAUDE_CODE`、`CLAUDE`、`CURSOR_VERSION`、
@@ -232,7 +268,8 @@ Qoder 会话里存在」，看不到它们是不是桌面端也注入。这不�
 不准；真敲不动的时候还有触发词，把要办的事说出来照样接得住。国际版那个
 `QODER_CLI=1`（计划文档 §6 记着）在这个真会话里**复现不出来**，只有 `-cn` 那份，
 所以没用它——将来测到了再加，不为凑一家去猜；认不出来就落 `generic`，
-那是免斜杠那一档。手工纠正：`JOBS_CODE_TOOL=claude|antigravity|mimo|qoder|qwen|generic`
+那是**带斜杠**那一档（2026-10-13 改，见上面第 2 条）。手工纠正：
+`JOBS_CODE_TOOL=claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`
 （覆盖优先于自动探测，任意名字原样透传；自检末尾印的那串可选值是从表里派生的，
 不是手抄的字面量）。
 
@@ -241,14 +278,20 @@ Qoder 会话里存在」，看不到它们是不是桌面端也注入。这不�
 于是 2026-09-29 把几家翻成吃斜杠之后**一行都不用改就全绿**，而面板继续给
 Qoder / agy 免斜杠 —— 抄件与正本分叉不会自己喊，所以现在由
 `ThePanelCarriesTheSameTable` 逐格对拍（名单不等，或又出现按单家公司硬编码的判断
-→ 红）。表外的名字（`codex` / `cursor` / `crush` / `opencode`）仍然**有意**归一到
-`generic`：两档行为一致，差别只在那一行叫什么名字。
+→ 红）。表外的名字（`codex` 除外）仍然**有意**归一到 `generic`：归一之后差别只在那一行
+叫什么名字。`codex` 2026-10-13 起自己一格——它探测不到，但归一之后**命令形式也不再
+跟着它走**了，所以那不是「只差个名字」。
 
-换工具丢的东西**只剩斜杠那一层字形，而且只剩一家丢**：五家工具（Claude Code、
-Antigravity CLI (agy)、Qoder、Qwen Code、MiMo Code）都吃 `/job-apply` 这种敲法
-（Claude 还带补全）；只有 Codex（连同认不出来的助手）要把它换成 `job-apply`，
-或直接把要办的事说出来——**同一批壳、同一行触发词**。分档的正本在上面那张表
-（`doctor.COMMAND_SYNTAX`），落地的地方是 `doctor.adapt_commands()`。
+换工具丢的东西**只剩斜杠那一层字形，而且只剩一家丢**：六家工具（Claude Code、
+Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code）都吃 `/job-apply` 这种敲法
+（Claude 还带补全）；**认不出来的那一批现在也吃**（2026-10-13 改）；只有 Codex 要把它
+换成 `job-apply`，或直接把要办的事说出来——**同一批壳、同一行触发词**。分档的正本
+在上面那张表（`doctor.COMMAND_SYNTAX`），落地的地方是 `doctor.adapt_commands()`。
+
+> 这句话的**句式带守卫**：`tests/test_docs_accuracy.py::TheToolCountIsTheEnumeration`
+> 钉的是「『N 家工具』后面括号里点名的家数要等于那个汉字数字」。
+> 2026-10-13 改写这一句时它当场报「找不到那句——句式改了就把这条一起改」，
+> **拦的正是「改写之后数字与点名脱钩、守卫从此空转」**。所以这一句要改就照原句式改。
 
 > 这一段原来写的是「换工具唯一真正失去的是语法糖：斜杠命令**和自然语言自动触发**，
 > 两者都是 Claude Code 读 `.claude/` 得来的」。斜杠那一半成立，自动触发那一半已经被
