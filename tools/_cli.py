@@ -373,6 +373,93 @@ def parse_today(value, *, flag: str = "--today"):
         raise SystemExit(2)
 
 
+#: 职位库里**不是岗位条目**的顶层键。它们是工具自己写的旁路数据，
+#: 值不是字典是设计内的 —— `ingest.py` 的 `data.setdefault("query_log", [])`
+#: 写在顶层，而扁平格式的职位库岗位条目也在顶层，两边撞在一起。
+#:
+#: 后果（2026-10-13 实测）：一次带 `--query` 的入库之后，`writeback` / `archive` /
+#: `prescreen` / `audit_pipeline` / `export_web_data` / `outreach_header` /
+#: `stale_materials` / `doctor` 全部当场 AttributeError 或退出码 2 停下。
+#:
+#: **不能靠「把它挪到别的文件」解决** —— `tests/test_the_ingest_is_the_only_way_in.py`
+#: 里有一条测试钉住了「query_log 就在 `seen_jobs.json` 里、两次入库留下两条」，
+#: 那是仓库有意的设计（`query_yield` 靠它区分「跑了没产出」与「还没跑过」）。
+#: 也不能挪进 `_meta` 之类的字典：顶层任何字典都会被当成一条岗位，
+#: `decided_status` 从中读出 `"new"`，一条记账凭空变成一个待评岗位。
+#:
+#: 所以是**读取端**该认出它 —— 见 `JobView`。
+NON_JOB_KEYS = frozenset({"query_log"})
+
+
+class JobView(dict):
+    """职位条目视图：读时隐去 `NON_JOB_KEYS`，写时穿透到源字典。
+
+    **为什么需要它。** 扁平格式的职位库顶层同时住着两样东西：岗位条目，
+    以及 `ingest` 写进去的 `query_log`。所有消费方都写的是
+    `for k, e in seen.items(): e.get(...)`，于是一个数组值的键让八个工具
+    当场 AttributeError。
+
+    逐个给消费方加 `isinstance(e, dict)` 是**打地鼠**：`audit_pipeline` 一处文件
+    就有十几处遍历，改到第八处还会遇到下一个。这正是本文件 `unreadable_rows`
+    那段注释说的「散写的守卫盖不全」—— 守卫该收在这里一处。
+
+    **实测收益（2026-10-13）。** 把那一批工具逐个跑过一遍：出问题的有七个 ——
+    `writeback` / `archive` / `prescreen` / `audit_pipeline` / `export_web_data` /
+    `outreach_header` / `stale_materials`，症状是 `AttributeError: 'list' object has
+    no attribute 'get'` 或退出码 2。收口之后十个工具全绿。
+    （测试条数的那笔账记在别处：同一个根因还让这个用户的职位库停在扁平格式上，
+    把顶层条目收进 seen 子键之后全量测试从 74 条失败降到 39 条 —— 那是格式迁移的
+    收益，不是这一处的。）
+
+    **写穿透。** `writeback` / `ingest` / `serve` 都是「就地改完再把外层
+    `store` 整份写回」，所以这个视图必须把写操作落到源字典上，
+    否则它们的改动会丢。`__setitem__` / `update` / `pop` / `setdefault` /
+    `__delitem__` / `popitem` / `clear` 逐个覆盖，`json.dumps(data)` 拿到的
+    仍是完整的源字典（含 `query_log`），**账本一个字都不会少**。
+    """
+
+    def __init__(self, src: dict):
+        dict.__init__(self)
+        self._src = src
+        self._reload()
+
+    def _reload(self) -> None:
+        dict.clear(self)
+        dict.update(self, {k: v for k, v in self._src.items()
+                           if k not in NON_JOB_KEYS})
+
+    def __setitem__(self, k, v):
+        self._src[k] = v
+        dict.__setitem__(self, k, v)
+
+    def __delitem__(self, k):
+        self._src.pop(k, None)
+        dict.pop(self, k, None)
+
+    def update(self, *a, **kw):
+        self._src.update(*a, **kw)
+        self._reload()
+
+    def setdefault(self, k, default=None):
+        v = self._src.setdefault(k, default)
+        self._reload()
+        return v
+
+    def pop(self, k, *d):
+        v = self._src.pop(k, *d)
+        self._reload()
+        return v
+
+    def popitem(self):
+        k, v = self._src.popitem()
+        self._reload()
+        return k, v
+
+    def clear(self):
+        self._src.clear()
+        self._reload()
+
+
 def seen_of(store):
     """从 `seen_jobs.json` 的内容里取出岗位字典，**两代格式都认**。
 
@@ -383,9 +470,17 @@ def seen_of(store):
     `writeback.py` 的注释早就点名了这个危险，只是没人把它收成一处。
 
     返回的是**原字典的引用**，就地改完把外层 `store` 写回去仍然对（老格式下
-    外层就是它自己）。
+    外层就是它自己）。**老格式这一路额外套一层 `JobView`**：扁平库里顶层还住着
+    `query_log` 这类旁路数据，而下游全都按「顶层每个值都是岗位」来遍历 ——
+    判据见 `JobView` 的 docstring。新格式（岗位收在 store 的 seen 子键下）里没有
+    这类顶层键，原样返回，不套壳（少一层对象、少一个行为变化面）。
     """
-    return store.get("seen", store) if isinstance(store, dict) else {}
+    if not isinstance(store, dict):
+        return {}
+    inner = store.get("seen")
+    if isinstance(inner, dict):
+        return inner
+    return JobView(store)
 
 def unreadable_rows(seen) -> list:
     """职位库里**读不出来**的那几条的键：值不是字典的。

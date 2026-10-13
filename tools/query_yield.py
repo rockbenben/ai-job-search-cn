@@ -672,7 +672,13 @@ def main(argv=None) -> int:
     if not store.is_file():
         raise SystemExit(_cli.no_store(store))
     doc = _cli.read_json(store)
-    seen = doc.get("seen", doc)
+    # **走 `_cli.seen_of`，别自己写 `doc.get("seen", doc)`。** 扁平格式的职位库顶层
+    # 还住着 `query_log` 这个旁路数据（它必须留在那儿，见
+    # `tests/test_the_ingest_is_the_only_way_in.py`），而下面 `collect(seen)` 按
+    # 「顶层每个值都是岗位」遍历 —— 2026-10-13 实测：自己写这一行就是一次
+    # `AttributeError: 'list' object has no attribute 'get'`。
+    # `seen_of` 是收口处，它认得这两代格式，也会隐去非岗位的键。
+    seen = _cli.seen_of(doc)
     # **归档的岗也要算进产出。** 词表量的是「这个词在这个平台带来过什么」——
     # 那是历史，不随岗位出局而消失。只读热库的话，出局岗一归档，
     # 挖空的词就丢了产出记录，下一轮又被推荐成「最值钱的格子」，
