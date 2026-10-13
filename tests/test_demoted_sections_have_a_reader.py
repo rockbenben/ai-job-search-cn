@@ -34,6 +34,7 @@ DEMOTED = {
     "三条脊梁的取舍记录（那三条为什么不进图、README 四步版）": "docs/why/spine.md",
     "跟进裁定说过两次的记录": "docs/why/followup.md",
     "浏览器判据表关掉三家那一轮的经过": "docs/why/browser-gate.md",
+    "并行分派那四条各自真发生过的事": "docs/why/parallel-dispatch.md",
 }
 
 #: 每个落点在 `AGENTS.md` 里**实测到的指针条数**，判据是「不少于这条下限」。
@@ -59,6 +60,7 @@ POINTER_FLOOR = {
     "docs/why/spine.md": 2,
     "docs/why/followup.md": 1,
     "docs/why/browser-gate.md": 1,
+    "docs/why/parallel-dispatch.md": 1,
 }
 
 
