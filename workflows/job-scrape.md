@@ -216,7 +216,7 @@ python tools/portal_budget.py --round     # 这一轮该跑的通道，一行一
 >
 > 它和三处同时打架，而且打的是同一个点：
 >
-> - `cdp-portals.md`「三条从这张表读出来的结论」第 1 条：**「猎聘 CLI 限流 ≠
+> - `cdp-portals.md`「四条从这张表读出来的结论」第 1 条：**「猎聘 CLI 限流 ≠
 >   这一轮没有猎聘」**，并实测浏览器容量更大（21 页 × 42 条 vs CLI 10 页 × 20 条）；
 > - `portal_budget.py` 的实现：CLI 冷却时 `--check liepin-browser` **放行**，只降速；
 > - 本文件 Step 0.46 已经写着「跳的是通道，不是整家……CLI 冷却时它按放慢后的间隔照跑」。

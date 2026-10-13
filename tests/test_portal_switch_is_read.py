@@ -157,7 +157,7 @@ class TheFourPortalsAreJudgedFromMeasurement(unittest.TestCase):
     def test_the_measured_table_exists_and_covers_four(self):
         doc = self._doc()
         self.assertIn("四家逐个实测", doc)
-        head = doc[doc.index("四家逐个实测"):doc.index("### 三条从这张表读出来的结论")]
+        head = doc[doc.index("四家逐个实测"):doc.index("### 四条从这张表读出来的结论")]
         for name in ("猎聘", "BOSS", "智联", "前程无忧"):
             self.assertIn(name, head, f"实测表里没有 {name}")
         # 没打通的格子要如实写，不许留空或猜
