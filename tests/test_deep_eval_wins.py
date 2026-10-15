@@ -24,9 +24,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import build_dashboard as bd  # noqa: E402
 import export_web_data as ex  # noqa: E402
+from _live import is_gate_fail  # noqa: E402
 
 EVAL_MD = """# 岗位评估 — 某岗 @ 某公司
 
@@ -186,9 +188,11 @@ class EvaluationParsesAllRealFormats(unittest.TestCase):
         bad = []
         for f in files:
             t = f.read_text(encoding="utf-8", errors="replace")
-            # 硬性条件没过的评估按框架就是不打分，四维整列是「—」——
-            # 那是规定的样子，不是解析失败。
-            if "不打分（硬性条件没过）" in t or "结论：不满足硬性条件" in t:
+            # 硬性条件没过的评估按框架就是不打分——那是规定的样子，不是解析失败。
+            # 判据收在 `_live.is_gate_fail`（**只有一份**）：原来这里自己抄了
+            # 一份，还比 `test_eval_table_layouts` 少认一种写法，两处因此
+            # 对同一份文件给出不同答案。
+            if is_gate_fail(t):
                 continue
             ev = bd.parse_evaluation(t)
             if not ev["score"] or not ev["verdict"]:

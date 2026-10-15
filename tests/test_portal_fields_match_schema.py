@@ -52,6 +52,12 @@ SCORING_FIELDS = {
     "benefits": "第 2 维「五险一金是基线，补充公积金是加分」「非现金部分逐条折算」",
     "addressDetail": "第 4.2 通勤提示：「你在 X，公司在 Y，约 N 分钟」",
     "recruiter": "信息可信度：谁在发这个岗（企业 HR / 猎头 / 人力资源机构）",
+    # **2026-10-14 补进这份名单的。** 此前它们不在 `SCORING_FIELDS` 里，
+    # 于是「两份清单逐字对应」这句话是假的，而守卫照样绿 —— 守的那份名单
+    # 恰好漏掉了缺的那两项。实测：猎聘 CLI 上 `recruiterTitle` 覆盖 58%，
+    # 三家浏览器通道 0-3%，而 `_cli.counterpart_of`（渠道判定）读它。
+    "recruiterSurname": "台账 `contact_person` 列，三处读它：跟进称呼「<姓>女士」还是「团队」",
+    "recruiterTitle": "渠道判定第三档：对面是 HR 还是用人方本人（`_cli.counterpart_of`）",
     "employmentType": "硬门「外包/驻场/派遣」判的就是用工形式本身",
     "validThrough": "/job-rank Step 3：截止 7 天内标 🔥、已过期转 expired",
 }

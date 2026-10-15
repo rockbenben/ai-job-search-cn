@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import audit_pipeline as A  # noqa: E402
+import _cli  # noqa: E402
 
 RANK = (ROOT / "workflows" / "job-rank.md").read_text(encoding="utf-8")
 

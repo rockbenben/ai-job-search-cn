@@ -44,11 +44,13 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import audit_pipeline as ap  # noqa: E402
+import _cli  # noqa: E402  # noqa: E402
 
 EVAL = (ROOT / "workflows" / "reference"
         / "04-job-evaluation.md").read_text(encoding="utf-8")
 RANK = (ROOT / "workflows" / "job-rank.md").read_text(encoding="utf-8")
 TPL = (ROOT / "profile.example" / "candidate.md").read_text(encoding="utf-8")
+CLI = ROOT / "tools" / "_cli.py"
 AUDIT = (ROOT / "tools" / "audit_pipeline.py").read_text(encoding="utf-8")
 
 
@@ -195,26 +197,28 @@ class TheAuditCanActuallySeeIt(unittest.TestCase):
                         ("10 年以上智能座舱/服务型产品经验", 10),
                         ("8 年及以上智能家居/人居 AI 行业经验", 8)):
             with self.subTest(frag=frag):
-                m = ap._YEARS_REQ.search(frag)
+                m = _cli.YEARS_REQ.search(frag)
                 self.assertIsNotNone(m, frag)
                 self.assertEqual(int(m.group(1)), n)
                 qual = re.sub(r"[*\s]", "", m.group(2))
-                self.assertNotIn(qual, ap._YEARS_BARE, f"「{qual}」被当成裸年限了")
+                self.assertNotIn(qual, _cli.YEARS_BARE, f"「{qual}」被当成裸年限了")
 
     def test_a_bare_requirement_is_left_alone(self):
         """裸年限确实是门 —— 别把它也报成误用。"""
         for frag in ("8 年以上相关经验", "5 年以上工作经验", "3 年以上经验"):
             with self.subTest(frag=frag):
-                m = ap._YEARS_REQ.search(frag)
+                m = _cli.YEARS_REQ.search(frag)
                 self.assertIsNotNone(m, frag)
-                self.assertIn(re.sub(r"[*\s]", "", m.group(2)), ap._YEARS_BARE)
+                self.assertIn(re.sub(r"[*\s]", "", m.group(2)), _cli.YEARS_BARE)
 
     def test_xiangguan_counts_as_bare(self):
         """「相关」最松，故意算裸年限 —— **宁可放过，不可误杀**：
         算成裸的就拿总年限比，门更容易 PASS。"""
-        self.assertIn("相关", ap._YEARS_BARE)
-        i = AUDIT.index("_YEARS_BARE = {")
-        self.assertRegex(flat(AUDIT[i - 300:i]), r"宁可放过，不可误杀")
+        self.assertIn("相关", _cli.YEARS_BARE)
+        i = (ROOT / "tools" / "_cli.py").read_text(encoding="utf-8").index(
+            "YEARS_BARE = {")
+        self.assertRegex(flat((ROOT / "tools" / "_cli.py").read_text(
+            encoding="utf-8")[i - 300:i]), r"宁可放过，不可误杀")
 
     def test_it_reads_the_evaluation_not_the_jd(self):
         """JD 原文就引在深评那张表里 —— 不必回头去读 JD，
@@ -373,8 +377,8 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
         rows = self._live()
         bare = []
         for name, why in rows:
-            m = ap._YEARS_REQ.search(why)
-            if m and re.sub(r"[*\s]", "", m.group(2)) in ap._YEARS_BARE:
+            m = _cli.YEARS_REQ.search(why)
+            if m and re.sub(r"[*\s]", "", m.group(2)) in _cli.YEARS_BARE:
                 bare.append((name, m.group(0)))
         self.assertLessEqual(
             len(bare), len(rows) * 0.2,

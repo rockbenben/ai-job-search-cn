@@ -257,7 +257,13 @@ def _missing_alive(user: str) -> dict:
     真实的额度**。这正是本函数存在的理由（见 `browser_todo` 的 docstring：
     手挑会漏掉叠加层）—— 只是当时只想到了叠加层这一条。
 
-    判据不自己写：`_cli.is_out_verdict` 是判词出局与否的唯一定义。
+    ## 第三条出局路径现在由**调用方**挡
+
+    本函数只滤 `expired` / `skipped` 与已有正文的；**判词那一条搬到了
+    `browser_todo`**（它才是决定待办名单的那一层，`tests/
+    test_a_settled_job_is_not_still_on_the_worklist.py` 钉住它不许沉回来）。
+    判据不自己写：`doctor.is_out_verdict` 是判词出局与否的唯一定义，
+    本文件顶部从 `doctor` 导入，`build_dashboard` 是同一份的正本。
     """
     p = ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
     if not p.is_file():
@@ -422,8 +428,8 @@ def run(user: str, entries: list[dict], apply: bool, fetch=fetch_one,
             # 搜索页，账号当场被标「行为异常」、要短信验证。同一家、同一个 IP，
             # **按原速**换通道就是把软限流升级成硬风控——所以封 CLI 那条时，
             # 闸门把浏览器那条放慢（间隔 ×`SLOW_GAP_FACTOR`），不是拦住
-            # （原来这儿还写着「每轮上限 3」，那个旋钮 2026-08-26 已删）
-            # （`portal_budget.check` 里那条不对称规则，2026-08-21 从硬停改的）。
+            # （原来这儿还写着「每轮上限 3」，那个旋钮已删；`portal_budget.check`
+            # 里那条不对称规则也是从「硬停」改成「放慢」的）。
             # 光在这里 break 只挡住了本进程，下一条命令照样走进去。
             #
             # **渠道名要写全，别写平台名。** 写 `猎聘` 也能对，但那是靠

@@ -88,6 +88,7 @@ def pay_dim(entry: dict, floor: float, expect) -> int | None:
     if not pkg or pkg.get("low") is None:
         return None
     low = pkg["low"]
+    high = pkg.get("high")
     if low >= expect[1]:
         return PAY_TOP
     if low >= expect[0]:
@@ -95,6 +96,12 @@ def pay_dim(entry: dict, floor: float, expect) -> int | None:
     if low >= floor:
         return PAY_OK
     if pkg.get("assumed12") and low / 12 * OPTIMISTIC_MONTHS >= floor:
+        return PAY_OK
+    # **区间跨过底线 = 按「过了底线」计**（2026-10-15 本人裁定）。
+    # 原话：「30-60 过了45的线」——指 `20-40K·15薪`（年包 30-60 万）这一档。
+    # 此前这一档按「下沿够不着」给 25，而那条 job 判词因此从值得投被压到边缘。
+    # 判据在 `profile/candidate.md`「薪资」一节。
+    if high is not None and high >= floor:
         return PAY_OK
     return PAY_LOW
 
@@ -132,6 +139,10 @@ def pay_note(entry: dict, floor: float, expect) -> str | None:
         return (f"{how}。12 薪下沿 {low:g} 万够不着 {floor:g} 万底线，"
                 f"按 {OPTIMISTIC_MONTHS} 薪算 {low / 12 * OPTIMISTIC_MONTHS:.0f} 万才过"
                 f"——所以这一项是「几薪」说了算")
+    if high is not None and high >= floor:
+        return (f"{how}。下沿 {low:g} 万低于 {floor:g} 万底线，但上沿 {high:g} 万过了"
+                f"——按 2026-10-15 定的口径，区间跨过底线即按「过了底线」计这一档，"
+                f"真实区间得在沟通时问")
     return f"{how}。下沿 {low:g} 万够不着 {floor:g} 万底线"
 
 

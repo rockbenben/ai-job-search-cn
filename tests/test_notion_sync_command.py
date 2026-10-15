@@ -51,19 +51,5 @@ class NotionSyncCommandSpec(unittest.TestCase):
             "spec lost the rule that CV/cover-letter content never syncs to Notion",
         )
 
-    @unittest.skipUnless(
-        _HAVE_YAML,
-        "PyYAML not installed (the CI Python-test job omits it; the lint job runs lint_skills.py directly)",
-    )
-    def test_lint_skills_passes(self):
-        result = subprocess.run(
-            [sys.executable, str(REPO / "tools" / "lint_skills.py")],
-            cwd=REPO,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(result.returncode, 0, f"lint_skills.py failed:\n{result.stdout}{result.stderr}")
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -84,6 +84,20 @@ def _verdict_moved(in_store, in_file) -> bool:
     （`name_the_exclusion.py`）。2026-08-30 某连锁餐饮公司那份 JD（同一份挂了四处）一次翻案 4 个岗时撞见。
 
     其余情况照旧整串比 —— 一边是硬门 FAIL、另一边是「值得投」，那是真的变了。
+
+    ## 但「两边都 FAIL」还要再分一次：门名变了算不算
+
+    原来一律「不算漂移」，防的是拿存档那四个字覆盖库里带门名的完整写法。
+    **而档位没变、门名变了的情况被一并挡掉了。** 实测 2026-10-15：一条深评
+    从「年限门按领域限定不是门」重判之后，理由从
+    `硬门 FAIL (工作年限)` 变成 `硬门 FAIL (候选人明确排除)` —— 档位相同、
+    **理由整个换了**，而库里一直挂着旧的那个，读的人看到的是一条已经不成立
+    的出局理由。
+
+    **但「两边都带门名且不同」这一条要写准**：只有两边**都**带门名、比出来
+    不同，才算换了理由。**一边带一边不带不算** —— 那是「更全」与「更少」，
+    按 `tests/test_writeback_does_not_downgrade_the_store.py` 的原话，
+    拿少的那份覆盖多的就是**降级**，而那一轮刚把门名与理由补回去过。
     """
     a = _cli.strip_triage(in_store)
     b = _cli.strip_triage(in_file)
@@ -92,9 +106,17 @@ def _verdict_moved(in_store, in_file) -> bool:
     fa = a.startswith(_cli.GATE_FAIL_PREFIXES)
     fb = b.startswith(_cli.GATE_FAIL_PREFIXES)
     if fa and fb:
-        # 两边都判了硬门 —— 谁写得细谁留着，不算漂移
-        return False
+        # 两边都判了硬门。档位相同不算漂移；门名**两边都有且不同**才算 ——
+        # 一边有名字一边没有，是「更全 vs 更少」，不许拿少的盖多的。
+        na, nb = _gate_name_of(a), _gate_name_of(b)
+        return bool(na and nb and na != nb)
     return True
+
+
+def _gate_name_of(verdict: str) -> str:
+    """`硬门 FAIL (工作年限)` → `工作年限`；没有括号就返回空串。"""
+    m = re.search(r"[（(]([^）)]*)[）)]", str(verdict or ""))
+    return (m.group(1).strip() if m else "")
 
 
 def cap_for(skill: int) -> str:
@@ -134,8 +156,8 @@ _WARN = re.compile(r"⚠[^。]*。?")
 #:   2. 它还写着「预筛 / 未抓 JD / 粗筛」，而 `来源` 已经标成深评回写 ——
 #:      **且它自己一次都没提「深评」**。
 #:
-#: ⚠️ 最后那半句是 2026-08-31 补的，补之前形状 2 **全是误报**。当天把那
-#: 18 条摊开逐条看：**18 条全都含「深评」二字**，讲的正是深评与粗筛的关系 ——
+#: ⚠️ 最后那半句是复核那批 18 条时补的，补之前形状 2 **全是误报**。摊开逐条看：
+#: **18 条全都含「深评」二字**，讲的正是深评与粗筛的关系 ——
 #:
 #:     深评翻案（粗筛 68 值得投 → 深评 67 可以考虑）。判词被技能 58 压下来。
 #:     这家的工作强度粗筛没有信号，深评读完 JD 才补上。
@@ -222,6 +244,59 @@ def read_dir(d: Path):
     return (m.group(1), score, verdict, dims, pair, notes), ""
 
 
+def _gate_states(had: dict) -> dict:
+    """库里 `rank_breakdown.硬性条件` 那些值 → 与 `parse_gates` 同一种状态键。
+
+    库里存的是 `PASS` / `FAIL` / `FLAG` / `不适用`（`export` 的
+    `gates_from_breakdown` 读的就是这几种），而 `parse_gates` 给的是
+    `pass` / `fail` / `flag` / `na`。**两边不同形**，不归一就没法比。
+    """
+    out = {}
+    for name, raw in (had or {}).items():
+        t = re.sub(r"[*\s]", "", str(raw or ""))
+        if t in ("PASS", "满足", "通过"):
+            out[_cli.gate_of(name) or name] = "pass"
+        elif t in ("FAIL", "不满足", "不通过"):
+            out[_cli.gate_of(name) or name] = "fail"
+        elif t in ("FLAG", "要留意"):
+            out[_cli.gate_of(name) or name] = "flag"
+        else:
+            out[_cli.gate_of(name) or name] = "na"
+    return out
+
+
+#: `parse_gates` 的状态键 → 存盘那张表用的写法。**只用这四种**：
+#: `export.gates_from_breakdown` 读的就是它们，写别的等于写一份读不出来的。
+_GATE_TOKEN = {"pass": "PASS", "fail": "FAIL", "flag": "FLAG", "na": "不适用"}
+
+
+def _gate_txt(gates: dict) -> str:
+    """那张表印给人看的一行。`plain()` 收的是字符串，dict 得先摊开。"""
+    return "；".join(f"{n} {ex.plain(str(v))}"
+                     for n, v in sorted((gates or {}).items()))
+
+
+def _gate_is_fail(raw) -> bool:
+    """库里那张表的某一格是不是判了 FAIL（认两种写法：`FAIL` 与「不满足」）。"""
+    t = re.sub(r"[*\s]", "", str(raw or ""))
+    return t.startswith("FAIL") or t.startswith("不满足") or t.startswith("不通过")
+
+
+def _eval_text(d) -> str:
+    """这个投递目录里的 `evaluation.md` 全文。读不到返回空串。"""
+    p = d / "evaluation.md"
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _total_years(user: str) -> int:
+    """资料里的**总年限**。读不出当 0 —— 那时判据不会触发，而不是乱拒收。"""
+    yrs = _cli.candidate_years(user, ROOT)
+    return max(yrs) if yrs else 0
+
+
 def pick_entry(cands: list, dirname: str):
     """一个 URL 下有多条时，靠目录名里的职位名认。返回 (条目, 说不清的原因)。"""
     if len(cands) == 1:
@@ -279,7 +354,12 @@ def main(argv=None) -> int:
 
 
     apps = ROOT / "users" / user / "documents" / "applications"
-    drift, refused, orphan, unreadable, gone = [], [], [], [], []
+    drift, orphan, unreadable, gone = [], [], [], []
+    #: 拒收有两种**互不相干**的原因：认不出是哪个岗（改目录名）与文件自己写高了
+    #: （改评估文件）。**分开存** —— 原来共用一个 `refused`，而收尾只印了后者的
+    #: 那句「评估文件自身把结论写高了」，于是另一种被指去了完全不对的方向。
+    #: 实测 2026-10-15：活动用户 3 条拒收全是前者，而用户读到的是后者的指导。
+    refused_ambiguous, refused_cap, refused_years = [], [], []
     if apps.is_dir():
         for d in sorted(x for x in apps.iterdir() if x.is_dir()):
             got, why = read_dir(d)
@@ -303,14 +383,35 @@ def main(argv=None) -> int:
                 continue
             e, why_amb = pick_entry(cands, d.name)
             if e is None:
-                refused.append(f"{d.name}：{why_amb}")
+                refused_ambiguous.append(f"{d.name}：{why_amb}")
                 continue
             skill = dims.get("技能与经验")
             # 文件自身违反天花板 → 拒收。把违规值写进库等于把病搬家。
             if isinstance(skill, int) and band_rank(verdict) < band_rank(cap_for(skill)):
-                refused.append(
+                refused_cap.append(
                     f"{d.name}：文件写「{verdict}」，但技能 {skill} 这一档最高只到"
                     f"「{cap_for(skill)}」——先改评估文件，再跑本工具")
+                continue
+            # **年限门把「领域」当成年数判了 → 同样拒收。**
+            # `04-job-evaluation.md`「年限门：那个数带不带领域限定」：引文是
+            # 「N 年以上 <领域> 经验」而 N ≤ 他总年限时，那道门按总年限判就是过的
+            # —— 缺的是那个领域，不是年数，该写进业务领域分，不该一票否决。
+            #
+            # **这一格原来不在，于是 14 份深评带着同一个错判词写进了库**
+            # （实测 2026-10-14），而发现它的是审计——审计是**偶然**撞见的：
+            # 它只扫库里的存量，写盘那一刻没人拦。
+            # 只有**判了 FAIL** 才轮到那条判据说话 —— 判 PASS / FLAG 的照常写回，
+            # 它引了带领域限定的原话是**正常的**（那本来就是原文）。
+            _yv, _yr = _cli.years_row(_eval_text(d))
+            is_domain, quote = (
+                _cli.years_gate_is_domain_only(_yr, _total_years(user))
+                if ("FAIL" in _yv and "FLAG" not in _yv) else (False, ""))
+            if is_domain:
+                refused_years.append(
+                    f"{d.name}：工作年限判了「不满足」，可它引的是「{quote}」——"
+                    f"那是领域要求，不是年数门槛（04「年限门：那个数带不带"
+                    f"领域限定」）。缺的是那个领域，按 04 该写进业务领域分。"
+                    f"先改评估文件，再跑本工具")
                 continue
             changes = []
             if e.get("rank_score") != score:
@@ -324,6 +425,56 @@ def main(argv=None) -> int:
                                f" → {ex.plain(verdict)}")
             if not e.get("evaluated"):
                 changes.append("补标已深评")
+            # **硬门表也要回写。** 库里那份 `rank_breakdown.硬性条件` 是面板 `gates`
+            # 的直读来源，而这一格原来不在回写范围里 —— 于是「深评改了硬门结论、
+            # 库没跟着改」会留下一个**自相矛盾**的条目：判词已经是「可以考虑」，
+            # 硬门表里还挂着 FAIL，面板会同时印「有一条不满足就别投」和可投判词。
+            #
+            # 实测 2026-10-15：有一条重判（年限门按领域限定不是门）之后
+            # 写回分数与判词都对，只有这张表停在旧的「工作年限: FAIL」，
+            # 审计当场报「硬性条件不满足却仍判可投」。此前 464 份里硬门结论
+            # 从没被改过，所以这一格第一次被撞上——**而撞上就是一条矛盾**。
+            #
+            # 口径：整张表按 `evaluation.md` 重放，不做逐门 diff —— 门名与判定
+            # 都以那份文件为源（与上面分数、判词、四维分同一个源）。
+            _gates_now = {g["name"]: g.get("state") for g in ex.parse_gates(_eval_text(d))}
+            _gates_had = dict(e.get("rank_breakdown") or {}).get("硬性条件") or {}
+            # **只修「库里说 FAIL、而深评不是 FAIL」的那几道门。**
+            #
+            # 整张表重放看着更彻底，实测会碰 **107 条**，而其中绝大多数只是
+            # 措辞归一（库里 `外包驻场派遣` 满足、正本 `外包/驻场/派遣` PASS）——
+            # 门名写法不同就让同一个判定比成了不同。把 107 条存量按一次有损解析
+            # 重写，正是这个仓库反复在治的形状。
+            #
+            # **真正要修的只有一种**：库里挂着 FAIL、深评已经不判它，而判词又是
+            # 可投的档 —— 那是**自相矛盾**（面板会同时印「有一条不满足就别投」和
+            # 可投判词）。实测 2026-10-15，有一条重判（年限门按领域限定
+            # 不是门）之后就是它。
+            _flip = {}
+            for gname, raw in _gates_had.items():
+                canon = _cli.gate_of(gname) or gname
+                now = _gates_now.get(canon)
+                if now in ("pass", "flag") and _gate_is_fail(raw):
+                    _flip[canon] = _GATE_TOKEN[now]
+            if _flip:
+                changes.append("硬门表 "
+                               + "；".join(f"{k} {ex.plain(v)}"
+                                          for k, v in sorted(_flip.items()))
+                               + "（深评已改，库里还挂着）")
+            # **`status` 也要比。** 原来只写分、判词和 `evaluated`，`status` 一直
+            # 停在 `new` —— 而 `prescreen.py` 会把它推成 `ranked`。于是「只深评过、
+            # 没走过预筛」的岗两边算的不是一回事：导出器按「有分或有判词就算结案」
+            # 把它导出（`export_web_data.py`「有判词就是已结案，必须导出」），
+            # 计数器和另外五个消费者按 `status == "ranked"` 数「已结案」，**不算它**。
+            # 实测 2026-10-14：1353 与 1354 差的就是这一条，五个消费者
+            # （`build_dashboard.py`、`audit_pipeline.py`、`fetch_details.py`、
+            # `gap_split.py`、`_cli.py`）全都少算同一个岗。
+            #
+            # **放进比对而不是只放进写入** —— 只写的话这一条永远轮不到：它的分和
+            # 判词都已经对得上，漂移检测报不出东西，而它恰恰是唯一错的那一格。
+            # `skipped` / `expired` 是另外两种出局，深评不该把它们翻回 ranked。
+            if e.get("status") not in ("ranked", "skipped", "expired"):
+                changes.append(f"状态 {e.get('status')} → ranked")
             b = e.get("rank_breakdown") or {}
             if isinstance(skill, int) and b.get("技能与经验") != skill:
                 changes.append(f"技能拆解 {b.get('技能与经验')} → {skill}")
@@ -370,13 +521,27 @@ def main(argv=None) -> int:
             if args.apply:
                 e["rank_score"], e["rank_verdict"] = score, verdict
                 e["evaluated"] = True
+                if e.get("status") not in ("skipped", "expired"):
+                    e["status"] = "ranked"
                 b = e.setdefault("rank_breakdown", {})
-                for k in ("技能与经验", "薪资与职级", "强度与公司性质", "发展与风险"):
+                for k in _cli.WEIGHTED_DIMS:      # 正本在 _cli，别造第二份
                     if isinstance(dims.get(k), int):
                         b[k] = dims[k]
                 if pair:
                     b["四维"] = f"专业能力{pair.group(1)}×0.6+业务域{pair.group(2)}×0.4"
                 b["来源"] = "深评（writeback.py 从 evaluation.md 回写）"
+                # **硬门表跟着一张张表一起重放。** 少了这一格，库与深评文件会各说
+                # 各的：判词已经是「可以考虑」，硬门表里还挂着 FAIL
+                # （实测 2026-10-15，有一条重判之后）。
+                #
+                # **面板当下看不出来** —— `export_web_data` 优先读 `evaluation.md`
+                # 那张表，库里这份只在**没有深评文件**时才被读到。所以它是个
+                # 潜伏的不一致：深评一旦被删掉或归档，旧的 FAIL 立刻露出来，
+                # 而那时没人会说这是哪来的。
+                if _gates_now:
+                    _b2 = dict(b.get("硬性条件") or {})
+                    _b2.update(_flip)
+                    b["硬性条件"] = _b2
 
     # 库内残留（与目录无关，也是「深评之后没人收尾」的账）
     n_prefix = n_park = 0
@@ -400,8 +565,8 @@ def main(argv=None) -> int:
 
     # ---------- 报告（给人看的措辞，不带内部码） ----------
     verb = "已写回" if args.apply else "待写回（加 --apply 生效）"
-    if not (drift or refused or orphan or gone or n_prefix or n_park or unreadable
-            or stale_basis):
+    if not (drift or refused_ambiguous or refused_cap or orphan or gone or n_prefix
+            or n_park or unreadable or stale_basis):
         print("库与深评档案一致，没有要写回的。")
         return 0
     if unreadable:
@@ -450,10 +615,28 @@ def main(argv=None) -> int:
               f"{'、'.join(gone[:3])}{' 等' if len(gone) > 3 else ''}")
         print("  这些不用管。它们是出局两周以上的岗，存档里分数与结论都原样留着；"
               "想重新判定先跑 python tools/archive.py --revive --apply")
-    if refused:
-        print(f"✗ {len(refused)} 个目录被拒收——评估文件自身把结论写高了：")
-        for r in refused:
+    if refused_ambiguous:
+        # **这一支原来没有自己的收尾。** 它和「文件写高了」共用一个 refused，
+        # 收尾只印了后者那句，于是这两种人被指去了同一个方向，而其中一个方向
+        # 完全不对——认不出是哪个岗，要改的是**目录名**，不是评估文件的内容。
+        print(f"✗ {len(refused_ambiguous)} 个目录认不出对应哪个岗，这次没写回：")
+        for r in refused_ambiguous:
             print("  " + r)
+        print("  改法：把目录名改成含完整职位名，再跑本工具。"
+              "（同一个职位链接下挂了多个岗时，只有职位名能认出是哪一个；"
+              "猜一个写进库，等于把深评挂到别人的岗位上。）")
+    if refused_cap:
+        print(f"✗ {len(refused_cap)} 个目录被拒收——评估文件自身把结论写高了：")
+        for r in refused_cap:
+            print("  " + r)
+    if refused_years:
+        print(f"✗ {len(refused_years)} 个目录被拒收——"
+              "年限门把「领域要求」当成年数判了：")
+        for r in refused_years:
+            print("  " + r)
+        print("  改法：那一条按 04「年限门：那个数带不带领域限定」重判——"
+              "领域缺口写进业务领域分，不按硬性条件一票否决。改完再跑本工具。")
+    if refused_ambiguous or refused_cap or refused_years:
         return 1
     return 0
 

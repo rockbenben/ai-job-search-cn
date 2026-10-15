@@ -117,7 +117,16 @@ class TheQueueMustBeAbleToDrain(unittest.TestCase):
         j = AUTO.index("### 每批都要跑的机械步骤")
         seg = AUTO[i:j]
         k = seg.index("stale_materials.py")
-        note = seg[k:k + 700]
+        # **范围取「这条命令到下一条命令」，不是定长窗口。** 原来写的是往后 700 字：
+        # 那是照着当时的排版量出来的，而排版一变就失效 —— 2026-10-14 把夹在命令与
+        # 它自己注释尾巴之间的那段 ⚠️ 挪到块尾（那才是它该待的地方，见
+        # `job-auto.md` 收尾那段），「再跑一遍」落到 +718、「每一轮」落到 +738，
+        # 刚好出窗，两条断言里的一条红了。**红的是窗，不是内容。**
+        #
+        # 按命令切块之后，两种排版都过：判据问的是「这段说明里有没有说清
+        # 不补的代价」，而不是「它离命令有多远」。
+        end = seg.index("\n    python tools/", k)
+        note = seg[k:end]
         self.assertIn("重跑日期", note, "没说不是 0 多半是那行戳没写")
         self.assertTrue(re.search(r"再跑一遍|每一轮", note),
                         "没说清不补的代价是下一轮重跑同样几个岗")
