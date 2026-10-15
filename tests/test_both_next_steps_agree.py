@@ -255,6 +255,250 @@ class MoneyComesBeforeMorePractice(unittest.TestCase):
         self.assertNotIn("interview_preps", line)
 
 
+class TheBatchEntryIsHandedOver(unittest.TestCase):
+    """「已排名、一个材料都还没出」时，两个出口都得给**一次敲完**的批量入口。
+
+    这一支原来只给单岗链接 `/job-apply <url>`。理由是「排序结果写在机器读的
+    文件里，人能看的只有总览页，所以他得先去挑一个」——**它对单岗成立，
+    对这一支不成立**：这一支的条件是「有可投的已评岗没材料」，而用户不知道
+    该做什么时问的是「我手上还有什么没做完的」，答案是一批。
+
+    后果不是多敲一次：面板叫他一个一个敲，而他之所以在敲第 3 个，恰恰是因为
+    他不知道有批量那条路。
+
+    `test_both_next_steps_agree.py` 顶上把这个形状记成「已经栽过两次」。
+    """
+
+    @staticmethod
+    def _panel(top=None, n_sellable=0, n_unranked=0):
+        counts = {"applied": 0, "ready": 0, "ready_strong": 0, "interviewing": 0,
+                  "offers": 0, "ranked": 120, "scraped": 543, "materials": 0,
+                  "replied": 0, "decided": 0, "applied_months": [],
+                  "direct_decided": 0, "direct_replied": 0}
+        return bd.next_step(counts, True, top_ranked_url=top,
+                            n_sellable=n_sellable, n_unranked=n_unranked)
+
+    @staticmethod
+    def _doctor(**over):
+        st = {"in_repo": True, "user": "u", "gaps": {}, "scraped": 12,
+              "ranked": 12, "materials": 0, "applied": 0, "ready": 0,
+              "interviewing": 0, "offers": 0, "n_sellable": 0, "n_unranked": 0}
+        st.update(over)
+        return "\n".join(doctor.next_step({"node": True, "web_build": True}, st))
+
+    def test_all_ranked_and_none_sellable_sends_both_to_restocking(self):
+        """一个能投的都没有 → 两边都得指向 `/job-auto`，不是 `/job-apply` 也不是
+        `/job-scrape`。
+
+        `/job-scrape` 也不行：它抓完自动评分但**不出材料**，敲完还是一排没材料
+        的岗——`test_the_next_step_is_the_spine.py` 顶上记的就是这件事，
+        2026-10-14 面板那条「名单见底」的分支也一并改成了 `/job-auto`。
+        """
+        _text, panel_cmd = self._panel()
+        self.assertEqual(panel_cmd, "/job-auto")
+        said = self._doctor(scraped=12, ranked=12, materials=0, applied=0,
+                            ready=0, n_sellable=0)
+        self.assertIn("/job-auto", said, f"自检给的命令与面板不一致：{said}")
+        self.assertNotIn("/job-apply", said, f"自检还在叫人去出材料：{said}")
+
+    def test_some_sellable_left_sends_both_to_the_batch_entry(self):
+        """反向支点：还有可投的 → 两边都指向一次敲完的批量入口。
+
+        `AGENTS.md`「一条引导对应一条命令」：给 `--top` / `可以考虑` / `全部`
+        三个里挑一个让用户选，那正是引导要替他省掉的一步。
+        """
+        _text, panel_cmd = self._panel(top="https://x/1", n_sellable=8)
+        self.assertEqual(panel_cmd, "/job-apply 全部")
+        said = self._doctor(scraped=12, ranked=12, materials=0, applied=0,
+                            ready=0, n_sellable=8)
+        self.assertIn("/job-apply 全部", said, f"自检还在一个一个教：{said}")
+
+    def test_an_unknown_count_does_not_trip_the_restock(self):
+        """读不到那个数时**不许当成 0**——那是猜，而猜错的方向是「别发了，去抓」。
+
+        判据只看**第一行**：用户只读第一行（`test_two_entry_points_agree.py`
+        同一处写过这句）。「先把备好的用掉，名单见底了再去补货」那个收尾
+        里本来就带着 `/job-auto`，所以不能拿它当「有没有触发补货」的证据。
+        """
+        said = self._doctor(scraped=12, ranked=12, materials=0, applied=0,
+                            ready=0, n_sellable=None)
+        first = said.splitlines()[0]
+        self.assertNotIn("可以投的岗位只剩", first,
+                         f"读不到那个数就被说成名单见底：{first}")
+
+
+class RestockingOutranksSendingWhenTheListIsThin(unittest.TestCase):
+    """**名单见底时，两个出口都要先说去补货，哪怕手上还有材料没投。**
+
+    ## 这条是用户 2026-10-14 的裁定
+
+    原话：「**还有材料没投的时候也会先说去补货。这是正确的**」。
+
+    面板那一支 2026-08-13 就有（`build_dashboard.SHORTLIST_FLOOR` 那一支，
+    立论是「补货的前置时间比名单见底的速度长」）。**终端没有**——于是
+    「手上 14 份材料没投、能投的只剩 3 个」这个状态下，面板说去补货、
+    自检说先把备好的发出去。
+
+    ## 它不是推翻 2026-08-29 那条裁定
+
+    「有材料没发 → 先发」前面多了一个前置判断：**名单还够不够**。
+    够就照旧先发。正本在 `AGENTS.md`「跟进归用户，工具不催」那一节 ——
+    **规则只活在一次会话里，换一轮就整条丢掉，这条规矩已经付过两次代价**。
+    """
+
+    @staticmethod
+    def _panel(n_sellable):
+        counts = {"applied": 9, "ready": 14, "ready_strong": 14, "ready_asked": 0,
+                  "ready_old": 0, "expired_unsent": 0, "interviewing": 0,
+                  "offers": 0, "ranked": 349, "scraped": 543, "materials": 23,
+                  "replied": 2, "decided": 9, "applied_months": [],
+                  "direct_decided": 4, "direct_replied": 1}
+        return bd.next_step(counts, True, n_sellable=n_sellable, n_unranked=0)
+
+    @staticmethod
+    def _doctor(n_sellable, **over):
+        st = {"in_repo": True, "user": "u", "gaps": {}, "scraped": 543,
+              "ranked": 349, "materials": 23, "applied": 9, "ready": 14,
+              "ready_strong": 14, "ready_asked": 0, "interviewing": 0,
+              "offers": 0, "n_sellable": n_sellable, "n_unranked": 0}
+        st.update(over)
+        return "\n".join(doctor.next_step({"node": True, "web_build": True}, st))
+
+    def test_both_restock_when_the_list_is_thin(self):
+        """能投的少于门槛 → 两边都说补货，哪怕手上 14 份材料没投。"""
+        p_text, p_cmd = self._panel(3)
+        self.assertEqual(p_cmd, "/job-auto", f"面板这一支变了：{p_text}")
+        self.assertIn("/job-auto", self._doctor(3), "自检还在叫人先发")
+
+    def test_both_still_send_when_the_list_is_not_thin(self):
+        """反向支点：名单还够 → 收窄别把「先发」一起吃掉。"""
+        p_text, p_cmd = self._panel(bd.SHORTLIST_FLOOR)
+        self.assertEqual(p_cmd, "/job-outcome <公司>", f"名单够却催补货：{p_text}")
+        self.assertIn("/job-outcome", self._doctor(bd.SHORTLIST_FLOOR))
+
+    def test_the_unranked_backlog_goes_to_rank_on_both_sides(self):
+        """有待评积压时两边都先去评库存 —— `/job-scrape` 死循环就是从这儿漏的。"""
+        counts = {"applied": 9, "ready": 14, "ready_strong": 14, "ready_asked": 0,
+                  "ready_old": 0, "expired_unsent": 0, "interviewing": 0,
+                  "offers": 0, "ranked": 349, "scraped": 543, "materials": 23,
+                  "replied": 2, "decided": 9, "applied_months": [],
+                  "direct_decided": 4, "direct_replied": 1}
+        p_text, p_cmd = bd.next_step(counts, True, n_sellable=3, n_unranked=180)
+        self.assertEqual(p_cmd, "/job-rank", f"面板这一支变了：{p_text}")
+        self.assertIn("/job-rank", self._doctor(3, n_unranked=180))
+
+    def test_doctors_floor_is_the_same_number(self):
+        """`doctor` 不 import 仓库模块，所以门槛是一份**正当副本** ——
+        相等由这一条钉住。同族：`QUIET_DAYS`、`AGENCY_WORDS`、`DATE_FORMATS`。
+
+        两处各写一个数，就能一处触发一处不触发，而**这个差别正好落在
+        「该不该先把备好的发出去」上**。
+        """
+        self.assertEqual(doctor.SHORTLIST_FLOOR, bd.SHORTLIST_FLOOR)
+
+    def test_the_panel_survives_a_count_it_was_never_given(self):
+        """`n_unranked` 的缺省值是 `None`，而 `next_step` 原来直接 `> 0`。
+
+        **那是个 `TypeError`，不是一条难看的建议** —— 面板整页出不来。
+        现有两个调用方都传了数，所以它一直藏着；2026-10-14 把
+        「读不到就交回 None」的约定接到 `doctor` 那侧之后，
+        `None` 变成了真实可达的值。
+
+        判据是「不许炸」，不是「None 该走哪一支」——读不到就是读不到，
+        不许拿它当 0 去催补货。
+        """
+        counts = {"scraped": 543, "ranked": 349, "materials": 23, "applied": 9,
+                  "interviewing": 0, "offers": 0, "ready": 14, "ready_strong": 14,
+                  "replied": 2, "decided": 9, "applied_months": [],
+                  "direct_decided": 4, "direct_replied": 1}
+        for n_sellable in (0, 3, None):
+            with self.subTest(n_sellable=n_sellable):
+                text, cmd = bd.next_step(dict(counts), True,
+                                         n_sellable=n_sellable)
+                self.assertTrue(text and cmd, f"这一格什么都没说：{text!r}")
+
+
+class NobodyTellsYouToRecordAnApplicationYouDidNotSend(unittest.TestCase):
+    """备好的**一个都发不出去**时，两个出口都不许把 `/job-outcome` 交出来。
+
+    ## 这一条踩的是安全铁律，不是措辞
+
+    `_ready_text` / `doctor` 那一支在 `ready_strong == 0` 时说的是
+    「**别当群发名单**」——「可以考虑」按 `04` 的定义是「先问清楚关键信息再决定」。
+    而两个出口原来都无条件把 `/job-outcome <公司>` 当成下一步：**前半句叫他别发，
+    后半句叫他记一笔投递。**
+
+    记一笔不是记个备忘：它写进 `job_search_tracker.csv`，往后回复率、漏斗、
+    面试/offer 三条分支全从那一行长出来。`workflows/job-auto.md`
+    「什么归机器，什么永远归人」那张表的判据是
+    「**后果是不是只有用户承担**」——替用户认定「投出去了」正好是他承担。
+
+    「有材料没发 → 先发」那条裁定（2026-08-29）的前提是备好的那些**发得出去**；
+    一个都发不出去时，那个前提不成立。
+
+    ## 该给的是什么
+
+    那一档缺的是「投前必问」。`04` 规定**写不出来就说明它不属于这一档**
+    （`job-apply.md` 补法表原话），所以 `/job-apply 可以考虑` 逼每个岗自己
+    结一次案，而不是替他记一笔假的。都列了要问什么的话，那就没有命令可敲——
+    人就在页面上，命令留空是诚实的。
+    """
+
+    @staticmethod
+    def _panel(**over):
+        counts = {"applied": 30, "ready": 30, "ready_strong": 0, "ready_asked": 3,
+                  "ready_old": 0, "expired_unsent": 0, "interviewing": 0,
+                  "offers": 0, "ranked": 120, "scraped": 300, "materials": 30,
+                  "replied": 0, "decided": 5, "applied_months": [],
+                  "direct_decided": 4, "direct_replied": 1}
+        counts.update(over)
+        return bd.next_step(counts, True, n_sellable=30, n_unranked=0)
+
+    @staticmethod
+    def _doctor(**over):
+        st = {"in_repo": True, "user": "u", "gaps": {}, "scraped": 300,
+              "ranked": 120, "materials": 30, "applied": 30, "ready": 30,
+              "ready_strong": 0, "ready_asked": 3, "interviewing": 0,
+              "offers": 0, "n_sellable": 30}
+        st.update(over)
+        return "\n".join(doctor.next_step({"node": True, "web_build": True}, st))
+
+    def test_the_missing_questions_become_the_command(self):
+        _text, panel_cmd = self._panel()
+        self.assertEqual(panel_cmd, "/job-apply 可以考虑")
+        self.assertIn("/job-apply 可以考虑", self._doctor())
+
+    def test_neither_side_offers_to_record_an_unsent_application(self):
+        """**这才是代价那一半。** 指错的那一步不是少说了什么。"""
+        _text, panel_cmd = self._panel()
+        self.assertNotIn("/job-outcome", panel_cmd or "",
+                         "一边说「别当群发名单」一边叫他记一笔投递")
+        self.assertNotIn("/job-outcome", self._doctor())
+        self.assertNotIn("我投了", self._doctor(),
+                         "这一档一个都还没发，那句「发完点一下我投了」是假的")
+
+    def test_when_every_question_is_written_there_is_nothing_to_run(self):
+        """都列了要问什么 → 没有命令可敲，命令留空是诚实的。"""
+        _text, panel_cmd = self._panel(ready_asked=30)
+        self.assertEqual(panel_cmd, "", "没有命令可敲时给了一条命令")
+        self.assertNotIn("/job-outcome", self._doctor(ready_asked=30))
+
+    def test_a_state_that_can_actually_be_sent_is_untouched(self):
+        """反向支点：还有发得出去的 → 仍然「发出去 → 记一笔」。"""
+        _text, panel_cmd = self._panel(ready_strong=17)
+        self.assertEqual(panel_cmd, "/job-outcome <公司>")
+        self.assertIn("/job-outcome", self._doctor(ready_strong=17))
+
+    def test_an_old_snapshot_without_the_split_stays_on_the_old_answer(self):
+        """`ready_strong` 拿不到时不能当成 0 —— 那是猜。
+
+        `count_ready` 的约定一直是：读不到的数交回 `None`，调用方退回不分档的
+        旧文案。把「不知道」读成「一个都发不出去」，方向正好是最坏的那个。
+        """
+        _text, panel_cmd = self._panel(ready_strong=None)
+        self.assertEqual(panel_cmd, "/job-outcome <公司>")
+
+
 class BothNextStepsAgree(unittest.TestCase):
     def test_the_alarm_threshold_has_one_value(self):
         """门槛是一个数。两处各写一个，就能一处触发一处不触发。"""

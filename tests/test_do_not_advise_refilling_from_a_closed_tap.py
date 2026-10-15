@@ -178,9 +178,17 @@ class ItReachesBothPiecesOfAdvice(unittest.TestCase):
         self.assertIn("旺季用来补新的", got)
         self.assertNotIn("关掉了", got)
 
-    def test_the_scrape_branch_carries_it(self):
-        i = BD.index("跑一轮补货，抓完会自动评分排序")
-        self.assertIn("off_supply_note", BD[i:i + 300])
+    def test_the_restock_branch_carries_it(self):
+        """锚点那句 2026-10-14 改过（「跑一轮补货」→「跑一轮 /job-auto 补货」）。
+
+        **锚点跟着文案走，判据没变**：要验的还是「关掉了一家主力渠道时，
+        补货那条建议会把这件事说出来」，而不是那句文案长什么样。
+        原来那句「跑一轮补货，抓完会自动评分排序」是 2026-08-13 写的，
+        而同一支的命令当天就已经该是 `/job-auto`（它抓完不出材料）——
+        2026-10-14 一并改对。
+        """
+        i = BD.index("越少越不该停下找岗")
+        self.assertIn("off_supply_note", BD[i:i + 400])
 
     def test_the_exporter_feeds_it(self):
         self.assertIn('counts["off_supply"] = off_supply(_portals)', EX)

@@ -19,7 +19,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "tools"))
+sys.path.insert(0, str(REPO_ROOT / "tests"))
 import build_dashboard as bd  # noqa: E402
+from _srcscan import code_of  # noqa: E402
 
 
 def _app(url, dirname="甲公司_岗A", preps=()):
@@ -90,9 +92,28 @@ class LinearPathStillWorksTests(unittest.TestCase):
         ns, _ = _step(_job(status="new", rank_score=None, rank_verdict=None))
         self.assertIn("/job-rank", ns.get("command") or "")
 
-    def test_ranked_no_materials_points_at_the_top_job(self):
+    def test_ranked_no_materials_points_at_the_batch_entry(self):
+        """**这一条原来指向单岗 `/job-apply https://x/1`。**
+
+        旧理由是「排序结果写在机器读的文件里，人能看的只有总览页，所以他得先去挑一个」
+        ——**它对单岗成立，对这一支不成立**。这一支的条件是「有可投的已评岗没材料」，
+        而用户不知道该做什么时问的是「我手上还有什么没做完的」，答案是一批。
+
+        后果不是多敲一次：面板叫他一个一个敲，而他之所以在敲第 3 个，
+        恰恰是因为他不知道有批量那条路（`job-apply.md`「按档批量」那一节的
+        `全部` =「除了不投的都准备好」就是为这句话准备的）。
+
+        `AGENTS.md` 另一条同样约束这里：**一条引导对应一条命令**——
+        给出 `--top` / `可以考虑` / `全部` 三个里挑一个让用户选，那正是引导要替他省掉的。
+        """
         ns, _ = _step(_job())
-        self.assertIn("/job-apply https://x/1", ns.get("command") or "")
+        self.assertEqual(ns.get("command"), "/job-apply 全部",
+                         f"已排名未出材料还在一个一个教：{ns}")
+
+    def test_the_batch_entry_says_batch_not_top_job(self):
+        """文案不许再说「头部岗」——那条措辞就是单岗时代的残留。"""
+        ns, _ = _step(_job())
+        self.assertNotIn("头部岗", ns["text"], f"文案还停在单岗：{ns['text']}")
 
     def test_materials_ready_says_go_send(self):
         ns, _ = _step(_job(), apps=[_app("https://x/1")])
@@ -180,3 +201,44 @@ class MaterialsNudgeFollowsTheBatchGate(unittest.TestCase):
                and _re.sub(r"^粗筛[：:]\s*", "", j.get("verdict") or "")
                not in ("强匹配", "值得投")]
         self.assertEqual(bad, [], f"这些岗被催去出材料，而它们的判词不出话术：{bad[:8]}")
+
+
+class TheLiveExporterAlsoHasAVerdictGate(unittest.TestCase):
+    """**守卫钉的是夹具，活的那条导出路径当时没有闸门。**
+
+    上面 `MaterialsNudgeFollowsTheBatchGate` 与 `NonLinearStateTests`
+    走的都是 `bd.build_model`，而 `build_dashboard.py` 顶上明写
+    「`build_model()` 只有测试在调」。它挑头部岗靠的是 `stage == "ranked"`
+    ——低分档落在 `low`、硬门 FAIL 落在 `gate_fail`，**闸门在 `stage` 里**。
+
+    而 `export_web_data` 自己算 `top` 时只判 `score is not None`。
+    **「不建议」「跳过」是有分数的**（同一个文件里那条守卫自己写着这件事），
+    按 `job-apply.md` 的批量闸门这两根本不出话术 —— 于是它们照样被当成
+    「排好了，去出材料」的头部岗，而面板给出的命令是一条不会产出话术的命令。
+
+    `bd.next_step` 的 docstring 其实已经把契约写明了：
+
+        参数里 `top_ranked_url` 为 None 表示**没有可投的已评岗**
+        （全是 gate_fail / 低分）
+
+    所以这条钉的是**生产者遵守那个契约**，不是给消费者再加一道闸。
+    """
+
+    @staticmethod
+    def _top_expr():
+        return code_of("tools/export_web_data.py", "    top = next(")
+
+    def test_the_live_top_rejects_the_bands_that_produce_nothing(self):
+        seg = self._top_expr()
+        self.assertIn("is_sellable", seg,
+                      "活的导出路径算 top 时没有判词闸门——"
+                      "「不建议」「跳过」是有分数的，会被当成头部可投岗")
+
+    def test_the_gate_is_the_exported_one_not_a_second_list(self):
+        """闸门走 `is_sellable` 正本，不许在这里内联一份判词白名单。
+
+        `export_web_data` 自己写着判词是「自由度很高的字段」，白名单每次变动的
+        默认后果是「漏一个」—— 抄第二份只会让那份漏掉，而漏掉的那次是静默的。
+        """
+        self.assertNotIn("值得投", self._top_expr(),
+                         "判词白名单被抄了第二份")

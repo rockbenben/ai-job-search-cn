@@ -616,27 +616,37 @@ class FunnelCellsAreClickableSoCountsMustMatch(unittest.TestCase):
                       f"禁用与「有没有筛选键」脱钩了：{expr!r} —— "
                       "前两格会变成按下去什么都不发生的假按钮")
 
-    def test_a_drained_shortlist_sends_you_back_to_scraping(self):
-        """名单见底时必须叫人去搜新岗——这条分支原来整个不存在。
+    def test_a_drained_shortlist_sends_you_back_to_restocking(self):
+        """名单见底时必须叫人去补新岗——这条分支原来整个不存在。
 
         只要投过一次，`applied > 0` 那支就永远接管，在「还有 N 个材料没投」与
-        「都投出去了，等回复」之间来回，**没有任何一条路通向 /job-scrape**。而同一
+        「都投出去了，等回复」之间来回，**没有任何一条路通向补货**。而同一
         时刻终端自检说的是「跑 /job-scrape 补充名单」。两份实现给出**不同的行动
         建议**，用户看哪个算哪个——实测用户就是因此问出「怎么让你继续抓取」。
 
         流程是个环（投完要回去找），而面板把它画成了一条走到头的线。
+
+        **2026-10-14：命令从 `/job-scrape` 改成 `/job-auto`，分支本身没动。**
+        这一支的理由是 `SHORTLIST_FLOOR` 常量 docstring 里那句「**补货的前置
+        时间比名单见底的速度长**，所以要在见底之前就提醒」——`/job-auto` 同样
+        先抓，那条理由一点没丢。而 `/job-scrape` 抓完自动评分却**不出材料**，
+        敲完他手上是一排没材料的岗，还得再敲一条才走得到能发的那一步
+        （`test_the_next_step_is_the_spine.py` 顶上记的就是同一件事，
+        2026-08-30 把终端那一支改成了 `/job-auto`）。
         """
         counts = {"scraped": 543, "ranked": 349, "materials": 23,
                   "applied": 9, "interviewing": 0}
         for n in (0, 1, bd.SHORTLIST_FLOOR - 1):
             with self.subTest(sellable=n):
                 _, cmd = bd.next_step(counts, True, "https://x/1", n_sellable=n)
-                self.assertEqual(cmd, "/job-scrape",
+                self.assertEqual(cmd, "/job-auto",
                                  f"可以投只剩 {n} 个，却没叫人去补货")
+                self.assertNotIn("/job-scrape", cmd,
+                                 "补货那条停在半路：抓完没有材料，还得再敲一条")
         # 名单还够时不要瞎催——补货提示天天弹就等于没有提示
         _, cmd = bd.next_step(counts, True, "https://x/1",
                               n_sellable=bd.SHORTLIST_FLOOR)
-        self.assertNotEqual(cmd, "/job-scrape", "名单还够就别催补货")
+        self.assertNotEqual(cmd, "/job-auto", "名单还够就别催补货")
 
     def test_interviews_outrank_restocking(self):
         """有面试在跑时，备面比补货要紧——补货不能抢它的位置。"""

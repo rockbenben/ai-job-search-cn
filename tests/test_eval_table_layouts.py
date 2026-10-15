@@ -25,8 +25,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import export_web_data as ex  # noqa: E402
+from _live import is_gate_fail  # noqa: E402
 
 THREE_COL = """## 四维打分
 
@@ -98,18 +100,6 @@ class BothLayoutsParse(unittest.TestCase):
         self.assertIn("区间覆盖期望", d4["薪资与职级"]["note"])
 
 
-def is_gate_fail(text: str) -> bool:
-    """硬性条件没过的评估：按 `04-job-evaluation.md` 第一步，**不打分**。
-
-    这类文件的四维表整列是「—」、综合分写「不打分（硬性条件没过）」，
-    是**框架要求的样子**，不是解析失败。下面几条控制测试原本假设
-    「每份评估都有分」，那个前提在 gate-fail 文件出现之前一直成立。
-    """
-    return ("不打分（硬性条件没过）" in text
-            or "结论：不满足硬性条件" in text
-            or "| FAIL |" in text)
-
-
 def _has_dim_section(t: str) -> bool:
     """这份评估里有没有评分明细那一节。
 
@@ -118,6 +108,60 @@ def _has_dim_section(t: str) -> bool:
     用例静默变空转。
     """
     return any(a in t for a in ex.DIM_SECTION_ALIASES)
+
+
+class TheGateFailExemptionDoesNotWiden(unittest.TestCase):
+    """豁免硬门 FAIL 的是「语法」，**放宽它的代价是把真故障放过**。
+
+    下面这几条钉的是**反方向**：放宽判据最容易出的事故不是漏认，而是
+    认得太宽——把一份正常打了分、只是解析器读不出的评估也当成「框架规定
+    不打分」，于是守卫再也不红。实测 464 份里这类有 **0** 份，那是因为
+    标题锚在 `##` 上；哪天有人图省事改成全文搜「不满足硬性条件」，
+    硬性条件那张表里逐条的「不满足」就会把打分的那份一起吞掉。
+
+    这是 `04-job-evaluation.md` 的硬性条件表**逐行**都在写「不满足」的那种
+    文件——它打了分，却处处命中这三个字面量。
+    """
+
+    SCORED_WITH_FAILING_ROWS = """# 深评：某公司 - 某产品经理
+
+- 评估日期：2026-10-13
+
+## 硬性条件
+
+| 门槛 | 判定 | 依据 |
+|---|---|---|
+| 工作年限 | **不满足** | JD 写 5 年，他 3 年 |
+| 候选人明确排除 | 不满足 | 无 |
+| 年龄 | 不适用 | JD 没写 |
+
+## 四维打分
+
+| 维度 | 权重 | 分 | 依据 |
+|---|---|---|---|
+| 技能与经验 | 30% | **55** | 见下 |
+| 薪资与职级 | 25% | **62** | 区间覆盖期望 |
+"""
+
+    def test_a_scored_evaluation_is_not_exempted(self):
+        self.assertFalse(
+            is_gate_fail(self.SCORED_WITH_FAILING_ROWS),
+            "一份打了分的评估被判成硬门 FAIL —— 守卫从此再也抓不到真故障")
+
+    def test_each_known_phrasing_is_recognised(self):
+        for phrase in ("不打分（硬性条件没过）", "结论：不满足硬性条件", "| FAIL |"):
+            with self.subTest(phrase=phrase):
+                self.assertTrue(is_gate_fail(f"## 某节\n\n{phrase}\n"))
+
+    def test_the_heading_form_is_recognised(self):
+        """第四种写法：结论直接写进 `##` 标题。
+
+        实测活动用户 2026-10-14：`某上海大型智能硬件公司_解决方案产品经理
+        （AI启蒙教育）` 走的是 `## 不满足硬性条件，不打分` —— 两种旧写法
+        都没命中，红了三条守卫，而**那份评估写得完全正确**
+        （`04-job-evaluation.md`：「硬门不过的职位不打分」）。
+        """
+        self.assertTrue(is_gate_fail("## 不满足硬性条件，不打分\n\n后文。\n"))
 
 
 class RealEvaluationsAllYieldDimensions(unittest.TestCase):

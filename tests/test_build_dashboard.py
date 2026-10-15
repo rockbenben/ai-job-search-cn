@@ -252,7 +252,16 @@ class NextStepTests(unittest.TestCase):
                          "/job-auto")
         self.assertEqual(bd.next_step(self._c(scraped=5, ranked=0), True)[1], "/job-rank")
         cmd = bd.next_step(self._c(scraped=5, ranked=3, materials=0), True, "https://x/1")[1]
-        self.assertEqual(cmd, "/job-apply https://x/1")
+        # **这一条原来断言 `/job-apply https://x/1`（单岗），2026-10-14 改成批量入口。**
+        #
+        # 旧理由是「排序结果写在机器读的文件里，人能看的只有总览页，所以他得先去挑一个」——
+        # 它对**单岗**成立，对这一支不成立。这一支的条件是「有可投的已评岗没材料」，
+        # 而用户不知道该做什么时问的是「我手上还有什么没做完的」，答案是一批。
+        # 面板叫他一个一个敲，他之所以真去敲第 3 个，恰恰是因为他不知道有批量那条路。
+        #
+        # `AGENTS.md`「一条引导对应一条命令」：给 `--top` / `可以考虑` / `全部`
+        # 三个里挑一个让用户选，那正是引导要替他省掉的一步 —— 所以是 `全部`。
+        self.assertEqual(cmd, "/job-apply 全部")
         # 材料就绪但还没投：投递本身在招聘网站上做、没有命令可跑，但**投完那一步有**。
         # 引导要一直给到「下一个能敲的命令」，不能停在「去投吧」——那正是用户反馈的
         # 问题（每个环节都要知道下一步怎么用命令行互动）。

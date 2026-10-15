@@ -45,7 +45,9 @@ import build_dashboard as bd  # noqa: E402
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
 #: 段落分隔。写成常量是因为这份文件由补丁脚本改过 ——
-#: 字面反斜杠在 shell heredoc 里会被吃掉（见 CONTRIBUTING「改脚本」）。
+#: 字面反斜杠在 shell heredoc 里会被吃掉（见 `docs/finding-gaps.md`
+#: 「第十把：把 markdown 渲染出来看」末段）。这里原来写的是
+#: CONTRIBUTING「改脚本」，而全仓没有那一节 —— 指针从一开始就没落点。
 NL = chr(10)
 
 
@@ -173,6 +175,64 @@ class ZeroStateGivesTheSpine(unittest.TestCase):
         """恢复态不受这条影响 —— 收窄错了会把两件事一起弄坏。"""
         self.assertEqual(
             bd.next_step(self._counts(scraped=5), True)[1], "/job-rank")
+
+
+class TheRestockNudgeIsAlsoSpineDeep(unittest.TestCase):
+    """「名单见底 → 去补货」那条**面板独有**的提前提醒，给的也得是 `/job-auto`。
+
+    ## 为什么单列一条
+
+    终端自检没有这个分支——它顺着流水线走到底就落到 `/job-auto`。面板有，
+    因为 `build_dashboard.SHORTLIST_FLOOR` 那一支的立论是**补货有前置时间，
+    晚说不如早说**（见那个常量的 docstring）。分支本身是对的，2026-10-14
+    之前错的是它给的命令：`/job-scrape`。
+
+    ## 错在哪
+
+    `/job-scrape` 抓完自动评分，但**不出材料**——敲完他手上是一排没材料的岗，
+    还得再敲一条才走得到能发的那一步。这正是本文件开头记的那次修复：
+    零起点那一支原来印 `/job-scrape`，2026-08-30 改成 `/job-auto`，
+    理由逐字相同。**同一个仓库里对同一件事有两种答案，而窄的那一支
+    （面板）没人记得一起改。**
+
+    `test_both_next_steps_agree.py` 顶上把这个形状记成「已经栽过两次」。
+    """
+
+    @staticmethod
+    def _restock(n_unranked=0):
+        counts = {"scraped": 300, "ranked": 120, "materials": 0, "applied": 0,
+                  "interviewing": 0, "offers": 0, "replied": 0, "decided": 0,
+                  "applied_months": [], "direct_decided": 0, "direct_replied": 0}
+        return bd.next_step(counts, True, n_sellable=2, n_unranked=n_unranked)
+
+    def test_it_names_the_command_that_also_makes_materials(self):
+        text, cmd = self._restock()
+        self.assertEqual(cmd, "/job-auto",
+                         f"补货那条又停在半路：{text}")
+
+    def test_it_does_not_send_him_back_to_scrape_alone(self):
+        _text, cmd = self._restock()
+        self.assertNotIn("/job-scrape", cmd)
+
+    def test_the_unranked_backlog_still_goes_to_rank_first(self):
+        """**反向支点：收窄别把这一支也吃了。**
+
+        有「抓到但没评」的积压时，补货的第一步是**把库存评完**，不是再去抓 ——
+        否则 `/job-scrape` → `/job-scrape` 死循环（新抓的没评分，`n_sellable`
+        永远是 0）。见 `build_dashboard.next_step` 里那段注释。
+        """
+        text, cmd = self._restock(n_unranked=200)
+        self.assertEqual(cmd, "/job-rank", f"有待评积压时不该先去抓：{text}")
+
+    def test_the_sentence_matches_the_number_it_prints(self):
+        """**那句话里不许再出现「在跑」。**
+
+        `n_sellable` 含「可以考虑」，而那一档按 `04` 的定义是「先问清楚再决定」——
+        是一个待办不是一个动作。叫它「在跑的岗」会把「4 个可以考虑」说成
+        「4 个能投的」，而他实际一个都还没决定投不投。
+        """
+        text, _cmd = self._restock()
+        self.assertNotIn("在跑", text, f"那句话和它印出来的数对不上：{text}")
 
 
 class TheNextStepDoesNotReadTheSilence(unittest.TestCase):

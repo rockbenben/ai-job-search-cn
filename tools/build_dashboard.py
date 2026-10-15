@@ -89,12 +89,19 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 #: 「可以投的岗位」少于这个数就该去补货。**这是全仓库唯一的「够不够」定义**，
-#: 面板催补货、`/job-auto --target` 的默认值、前端的材料缺口提示都以它为准。
+#: 面板催补货、前端的材料缺口提示都以它为准。
+#: （`/job-auto --target` **曾经**默认取它，2026-08-13 按 `job-auto.md` 那条
+#: 改掉了 —— 现在 auto 不再拿它当目标。）
 #:
 #: 取 5 的理由与前端 `App.tsx` 的 `MATERIALS_FLOOR` 同源（那边是同一个 5，
 #: 管的是「材料缺口」提示）：手上少于 5 个能投的岗时，投递这件事随时可能停摆，
-#: 而 `/job-scrape` + `/job-rank` 走一轮要几分钟——**补货的前置时间比名单见底的
-#: 速度长**，所以要在见底之前就提醒，不能等到 0。
+#: 而补货走一轮要几分钟——**补货的前置时间比名单见底的速度长**，
+#: 所以要在见底之前就提醒，不能等到 0。
+#:
+#: **这一支 2026-10-14 给的命令是 `/job-auto`**（原来写的是
+#: 「`/job-scrape` + `/job-rank` 走一轮」，那句有两处过时：`/job-scrape`
+#: 抓完已经自动评分，而它也不出材料）。`/job-auto` 同样先抓，
+#: 「前置时间比见底长」那条理由一点没丢。
 #:
 #: > 这个数被拍过第二次：`/job-auto` 的 `--target` 一度写成 10，而本常量是 5，
 #: > 两个数管同一件事（手上要有几个能投的岗）。同一概念两个数，用户看面板和看
@@ -539,8 +546,7 @@ def _ready_text(left: int, strong=None, old_n: int = 0,
         「展开看每个岗的疑问」原来一直挂在这句话尾巴上 —— 而实测
         2026-08-31：这一档 56 个里只有 9 个真列了要问什么。对另外 47 个，
         那半句指着一份**不存在的东西**：他去展开，什么也没有，然后连带
-        不信这一整句。`doctor` 那一侧 2026-08-30 就为同一件事分了两枚章，
-        这一侧没跟。
+        不信这一整句。`doctor` 那一侧早为同一件事分了两枚章，这一侧没跟。
 
         指地方不算引导（`AGENTS.md`「每一处引导都要写出该敲的命令」）：
         这件事只有一个答案，写出来就是了 —— `/job-apply 可以考虑` 对
@@ -655,16 +661,18 @@ def next_step(counts: dict, profile_ok: bool, top_ranked_url=None,
     # 出来，用户第二次说同一句话。规则只活在一次会话里，换一轮就整条丢掉；
     # 正本现在在 `AGENTS.md`「跟进归用户，工具不催」那一节。
     #
-    # 撤的是**推动作**，不是数据：`decided` / `replied` / `_why_silent`
-    # 都还在，投后分析（`/job-html-report`）照常算回复率。
+    # 撤的是**推动作**，不是数据：`decided` / `replied` 都还在，
+    # 投后分析（`/job-html-report`）照常算回复率。
+    # （`_why_silent` 跟着推动作一起删了 —— 它只服务于催的那条路。）
     # `/job-outcome followup` 这条命令本身也保留 —— 他想催的时候敲得到，
     # 只是工具不再替他决定该催了。
 
     # **名单见底优先于「去投递」。** 这一条原来整个不存在：只要投过一次，
     # 下面 `applied > 0` 那支就永远接管，在「还有 N 个材料没投」与
-    # 「都投出去了，等回复」之间来回，**没有任何一条路通向 /job-scrape**。
+    # 「都投出去了，等回复」之间来回，**没有任何一条路通向补货**。
     # 而同一时刻终端自检说的是「跑 /job-scrape 补充名单 —— 手上在跑的岗越少，
-    # 越不该停下找岗」。两份实现给出不同的行动建议，用户看哪个算哪个。
+    # 越不该停下找岗」（那是 2026-08-13 之前的话，2026-08-29 改成 `/job-auto`）。
+    # 两份实现给出不同的行动建议，用户看哪个算哪个。
     #
     # 放在这里而不是更后面：手上还有 3 个能投的岗时，「去投那 3 个」和
     # 「去补货」都对，但**补货有前置时间**，晚说不如早说；而面试已经在跑
@@ -679,18 +687,42 @@ def next_step(counts: dict, profile_ok: bool, top_ranked_url=None,
         # 是 0——于是被指回 /job-scrape，/job-scrape → /job-scrape 死循环（新抓的没评分，
         # n_sellable 永远是 0），而 doctor 在同一状态下说的是「跑 /job-rank」。
         # 见底分支插在所有「还没评」分支**之前**，就必须自己把这种状态让出去。
-        if n_unranked > 0:
+        # `n_unranked` 的缺省值是 `None`，而这里原来直接 `n_unranked > 0` ——
+        # **任何省掉它的调用方都会炸 `TypeError`，整个面板出不来**。
+        # 现有两个调用方都传了数，所以它一直没露；2026-10-14 把
+        # `doctor.count_restock` 接上「读不到就交回 None」的约定之后，
+        # `None` 成了一个真实可达的值。
+        # 判据用 `isinstance`，与上面 `n_sellable` 那一行同一个写法。
+        if isinstance(n_unranked, int) and n_unranked > 0:
             return (f"可以投的名单快见底，而还有 {n_unranked} 个抓到没评的："
                     f"先跑 /job-rank 把库存评完，不够再抓", "/job-rank")
         left_txt = f"只剩 {n_sellable} 个" if n_sellable else "一个都不剩了"
         # 老提示教人抓完手动接打分，已过时：/job-scrape 抓完默认自动评分
         # （job-scrape.md Step 5.5），面板再教人手动接一步，等于把已经焊死的接缝
         # 重新说成断的。
-        return (f"可以投的岗位{left_txt}——手上在跑的岗越少，越不该停下找岗。"
-                f"跑一轮补货，抓完会自动评分排序"
+        #
+        # **2026-10-14 两处改动，都是这一支自己的问题：**
+        #
+        # **一、命令从 `/job-scrape` 换成 `/job-auto`。** 它抓完自动评分，但
+        # **不出材料** —— 敲完他手上是一排没材料的岗，还得再敲一条才走得到
+        # 能发的那一步。`tests/test_the_next_step_is_the_spine.py` 正文原话
+        # 就是这个，而终端那一支因此被钉成 `/job-auto`。面板这一支给
+        # `/job-scrape`，等于同一个仓库里对同一件事有两种答案。
+        # `/job-auto` 把抓、评、出材料一气跑完，**并不丢这一支的理由** ——
+        # 上面那句「补货有前置时间，晚说不如早说」照样成立，它先抓的。
+        #
+        # **二、「手上在跑的岗」这个说法和那个数对不上。** `n_sellable` 走
+        # `is_sellable`，含「可以考虑」；而「可以考虑」按 `04` 的定义是
+        # **先问清楚再决定，是一个待办不是一个动作**，不是「在跑」。
+        # 4 个「可以考虑」+ 0 个强档时，原来那句会说他「手上只剩 4 个在跑的」——
+        # 而他实际有 **0 个能直接发**。删掉「在跑」，数与话就对上了。
+        # **数本身不动**：那个数与页面行集同源是刻意的（见 `export_web_data`
+        # 里 `n_sellable` 上面那段），要改得连页面标签一起改，那是另一件事。
+        return (f"可以投的岗位{left_txt}——越少越不该停下找岗。"
+                f"跑一轮 /job-auto 补货，抓完会自动评分排序，接着出材料"
                 + (f"。{off_supply_note(counts.get('off_supply'))}"
                    if off_supply_note(counts.get("off_supply")) else ""),
-                "/job-scrape")
+                "/job-auto")
 
     if counts["applied"] > 0:
         # `applied` 是**已记录的投递数**，不是「有一笔没记的投递」。
@@ -731,6 +763,32 @@ def next_step(counts: dict, profile_ok: bool, top_ranked_url=None,
             # 季节那句起手是「另外：」，直接相加会读成「…下线）另外：」。
             if _season and not _head.rstrip().endswith(("。", "；", "，")):
                 _head = _head.rstrip() + "。"
+            # **备好的一个都不能直接发时，不给 `/job-outcome`。**
+            #
+            # `_ready_text` 在 `ready_strong == 0` 时说的是「**别当群发名单**」
+            # —— 而这里原来无条件交出 `/job-outcome <公司>`，那是「记一笔已投递」。
+            # 同一句话前半句叫他别发、后半句叫他记一笔投递，**自相矛盾**，
+            # 而且错的那一半踩的是全局安全铁律：记一笔 = 替用户认定「投出去了」，
+            # 它写进 `job_search_tracker.csv`，往后回复率、漏斗、面试/offer
+            # 三条分支全从这行记录长出来。`workflows/job-auto.md`
+            # 「什么归机器，什么永远归人」那张表的判据是
+            # 「**后果是不是只有用户承担**」——**记一笔正好是他承担**。
+            #
+            # 「有材料没发 → 先发」那条裁定（2026-08-29）的前提是备好的那些
+            # **发得出去**；一个都发不出去时，那个前提不成立。
+            #
+            # 该给的是补齐那一档缺的东西：`04` 规定「投前必问」写不出来
+            # 就说明它不属于这一档（`job-apply.md` 的补法表原话），所以
+            # `/job-apply 可以考虑` 逼着每个岗自己结一次案，而不是替他记一笔假的。
+            _rs = counts.get("ready_strong")
+            _ra = counts.get("ready_asked")
+            _maybe = left if _rs == 0 else None
+            if _maybe is not None and isinstance(_ra, int) and _ra >= _maybe:
+                # 都列了要问什么 → 没有什么可敲的了，人就在页面上，自己看。
+                # 命令留空是诚实的：这一页没有第二条命令可给。
+                return (_head + _season, "")
+            if _maybe is not None:
+                return (_head + _season, "/job-apply 可以考虑")
             return (_head + _season, "/job-outcome <公司>")
         # 手上的都发完了 —— 下一步是补货，不是催。
         #
@@ -761,10 +819,24 @@ def next_step(counts: dict, profile_ok: bool, top_ranked_url=None,
                 f"下轮 /job-scrape 收录到即可", "/job-outcome <公司>")
 
     if top_ranked_url:
-        return ("排好了，给头部岗生成材料", f"/job-apply {top_ranked_url}")
+        # **给批量入口，不给单岗链接。**
+        #
+        # 原来这里是 `f"/job-apply {top_ranked_url}"` ——「排好了，给头部岗生成材料」。
+        # 那个理由是「排序结果写在机器读的文件里，人能看的只有总览页，所以他得先
+        # 去挑一个」（`doctor` 同一支的注释原话）。**它对单岗成立，对这一支不成立**：
+        # 这一支的条件是「有可投的已评岗没材料」，而**用户不知道该做什么时问的正是
+        # 「我手上还有什么没做完的」**，答案是一批，不是那一个。
+        #
+        # 后果不是多敲一次：面板叫他一个一个敲，而他之所以在敲第 3 个，
+        # 恰恰是因为他不知道有批量那条路。`job-apply.md`「按档批量」那一节
+        # （`全部` = 「除了不投的都准备好」）就是为这句话准备的。
+        #
+        # `top_ranked_url` 现在只当**条件**用（有没有可投的已评岗），不再当答案 ——
+        # 它在 `export_web_data` 里算出来时就已经是「可投」那三档里最高分的一个了。
+        return ("排好了，把可投的批量出材料", "/job-apply 全部")
 
     # 到这里：没有可投的已评岗。区分「还没评」与「评完了但没一个能投」。
-    if n_unranked > 0:
+    if isinstance(n_unranked, int) and n_unranked > 0:
         return (f"还有 {n_unranked} 个抓到但没评的职位：跑 /job-rank 批量打分", "/job-rank")
     if counts["ranked"] > 0:
         return ("已评的职位没有一个通过筛选（硬性条件没过，或者分太低）——先去找更多岗，"
@@ -993,10 +1065,17 @@ def parse_outreach(text: str) -> dict:
 
 
 #: 五个档位。判词只可能是它们之一，所以直接按字面找最稳。
-#: 正本在 `_cli.VERDICTS`（2026-08-20 收拢；此前四个文件各写一份）。
+#: 正本在 `_cli.VERDICTS` —— 此前四个文件各写一份，后来收拢到那里。
 #: 这里原来叫 `VERDICT_BANDS` —— 和 `scoring.VERDICT_BANDS`（分数档
 #: `((75,"强匹配"), …)`）同名不同物，读的人只能靠猜。2026-08-30 改回本名。
 VERDICTS = _cli.VERDICTS
+
+
+#: 把结论写进 `##` 标题的那一种：`## 不满足硬性条件，不打分`。
+#:
+#: 锚在标题上而不是全文搜「不满足硬性条件」，因为**硬性条件那张表里逐条都有
+#: 「不满足」**——全文搜会把一份正常打了分的评估也当成硬门 FAIL。
+GATE_FAIL_HEADING = re.compile(r"^#{1,6}\s*\**\s*不满足硬性条件", re.M)
 
 
 def is_gate_fail(text: str) -> bool:
@@ -1004,9 +1083,21 @@ def is_gate_fail(text: str) -> bool:
 
     判据放在这里而不是 `writeback.py`，是因为**面板这条路也要用**：
     `export_web_data` 依赖本模块，反向依赖会成环。writeback 引用这一份。
+
+    **第三种写法原来漏在这里。** 认的两种是「不打分（硬性条件过硬）」与
+    「结论：不满足硬性条件」，而真实产出的那一批走的是**标题式**
+    `## 不满足硬性条件，不打分`（实测活动用户那份 AI 启蒙教育评估就是这么写的）
+
+    —— 于是它落进「读不出综合得分」那一支，被报成**解析失败**。
+    守卫 `tests/_live.py` 早就认标题式了（`413a96c` 那次补的），**只有生产侧没跟上**，
+    两边对同一份文件给出不同答案。
+
+    标题是「这一份停在这儿了」的结构信号，行内措辞不是——而那张表里恰恰逐条
+    写着「不满足」，所以只能锚标题。
     """
     return ("不打分（硬性条件没过）" in text
-            or "结论：不满足硬性条件" in text)
+            or "结论：不满足硬性条件" in text
+            or bool(GATE_FAIL_HEADING.search(text)))
 
 
 def parse_evaluation(text: str) -> dict:

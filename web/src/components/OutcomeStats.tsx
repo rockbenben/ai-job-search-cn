@@ -185,7 +185,8 @@ export function OutcomeStatsPanel({ s }: { s: OutcomeStats }) {
                   （「想快一点，就多找企业直招的岗」）在鼓励的事。
                   实测活动用户 2026-08-22：直招 22 个、0 回音——他已经走过这条路了。
                   同一时刻「下一步」那一行说的是「回头审一遍简历」，
-                  两处给的暗示相反。判据与措辞同源见 `build_dashboard._why_silent`。 */}
+                  两处给的暗示相反。
+                  判据在 `tools/export_web_data.py` 的 `outcome_stats`，措辞同 `tracker`。 */}
               {/* `?? 20` 那个兜底值就是刚收拢掉的抄件本身——门槛缺了就
                   **不下这个结论**，而不是拿一个可能已经过时的数硬判
                   （同 `build_dashboard` 的「裸 import，不给兜底」）。 */}

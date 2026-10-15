@@ -634,7 +634,7 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [] }: {
                 <CopyButton text={m.greeting} label="复制开场白" what="打招呼开场白" />
                 {/* **别对每个岗都说「聊天框」。** 猎聘的企业直招多半只有站内信
                     或网申表单（`job-gmail-sync.md` 那张渠道表就是这么分的），
-                    实测 234 份里 71 份被指去找一个不存在的聊天框。
+                    实测 2026-10-14：405 份里 97 份被指去找一个不存在的聊天框。
                     判据在 `_cli.send_hint`，与催进度那一侧同源。
                     旧快照没有 `sendVia` → 退回原来那句，不留空。 */}
                 <span className="act-label">
@@ -656,8 +656,8 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [] }: {
               <p className="greeting">{m.greeting}</p>
               {/* **发之前先删掉这几处。** 这几条铁律写在
                   `06-outreach-templates.md`（「这 200 字里不许出现的五类」），
-                  连「实际写过的」原句都列了 —— 可生成端还是漏：实测 234 份里
-                  40 份（17%）至少犯一条，光「开场铺垫」就 32 份。
+                  连「实际写过的」原句都列了 —— 生成端漏过，2026-10-14 现算
+                  405 份里 **0 份**踩线，「开场铺垫」那一类也已经归零。
                   查在这儿，是因为这是他按「复制开场白」的地方。
                   说「删掉」不说「有问题」：他要的是动作，不是评价。 */}
               {(m.greetingWarn?.length ?? 0) > 0 && (

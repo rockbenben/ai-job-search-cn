@@ -251,12 +251,8 @@ class NoCodeReachesTheExportedPanel(unittest.TestCase):
     def test_the_scan_sees_the_payload(self):
         self.assertGreater(len(self.data.get("jobs") or []), 20)
 
-    #: 存量是 2026-08-31 修好之前落盘的几句：预筛把「状态 applied」写进了
-    #: `rank_breakdown.依据`，同一句同时进 `skipReason` 与 `skillWhy`，所以
-    #: 一个岗数出两处。**这个数只许往下走。** 改一处 `prescreen` 治不了已经
-    #: 落盘的字（那要重跑那几个岗的判断），而为了清几行文字去动用户的数据
-    #: 不划算 —— 它们会随着那几个岗归档自己消失。新写的一处当场把这条顶红。
-    BASELINE = 2
+    #: 存量清理：原 2026-08-31 的 2 处「状态 applied」已全部收敛订正，实际已归零。
+    BASELINE = 0
 
     def test_no_prose_field_carries_a_status_code(self):
         leaks = _leaks(self.data)

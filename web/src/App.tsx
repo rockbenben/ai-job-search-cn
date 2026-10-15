@@ -64,6 +64,12 @@ export default function App() {
    * 写失败或撤销时把 id 拿掉，行就回来——乐观更新必须配一条回滚路径。
    */
   const [justActed, setJustActed] = useState<Set<string>>(new Set());
+  // 「刚标了已下线」的那些。**这一条原来是缺的**：`expire()` 直接
+  // `postExpire().then()`，写盘回来之前屏幕上一个字不变 —— 而写盘要等
+  // `serve.py` 同步跑完导出子进程（实测 3.4-4.2 秒）。「我投了」和「不投」
+  // 早就各有一层本地覆盖，只有它没有，于是三个并排的按钮里有一个是慢的。
+  // 形状照 `exclude` 那份抄：先本地、再写盘、失败回滚。
+  const [justExpired, setJustExpired] = useState<Set<string>>(new Set());
   //: 视图过滤偏好。**不改任何岗的状态**——见 `data/hidden.ts` 顶上那段。
   // 挂载时还不知道活动用户（快照没到），先给空偏好；`activeUser` 一到就换成
   // 他自己那份。**不能在 useState 初值里读**——那一刻读到的会是上一个用户的。
@@ -252,10 +258,25 @@ export default function App() {
   const expire = (id: string) => {
     if (!live) return;
     setSaveError("");
-    // 标完这一行就从名单里消失了，把展开挪到下一条——连着清理已下线的岗时，
-    // 每标一个都要重新找位置是最累的部分。
+    // **先乐观更新。** 位置必须算在 `setJustExpired` 生效之前——
+    // `nextInList` 是在当前那份列表里找下一行，而这一行马上就要从列表里消失。
+    // 和 `exclude` 同形：塌下去与跳过去在同一次提交，不能等写盘回来
+    // （那一次实测 2.13 秒——台账 mtime 变了，`serve` 整份重导）。
     const next = nextInList(id);
-    postExpire(id).then(() => refreshAnd(next)).catch((err: Error) => {
+    setJustExpired((prev) => {
+      const s = new Set(prev);
+      s.add(id);
+      return s;
+    });
+    setSelectedId(next);
+    postExpire(id).then(() => refreshAnd()).catch((err: Error) => {
+      // 回滚：界面说下线了、盘上没有，比慢更糟——他不会再去看第二眼。
+      setJustExpired((prev) => {
+        const back = new Set(prev);
+        back.delete(id);
+        return back;
+      });
+      setSelectedId(id);
       setSaveError(err.message || "没写进去");
     });
   };
@@ -353,8 +374,9 @@ export default function App() {
   //: 计数用黑名单、名单用白名单，两边对不上。**当时的修法是再抄一份对齐**，
   //: 于是同一个底变成了三份：往任何一份里加第五个条件，另外两份都不会跟。
   const inPlay = useCallback(
-    (j: Job) => !j.dupOf && canSell(j.verdict) && !excluded.has(j.id) && !j.expired,
-    [excluded],
+    (j: Job) => !j.dupOf && canSell(j.verdict) && !excluded.has(j.id)
+               && !j.expired && !justExpired.has(j.id),
+    [excluded, justExpired],
   );
   const sellable = useMemo(
     () => jobs.filter((j) => inPlay(j) && !applied(j) && !justActed.has(j.id)),

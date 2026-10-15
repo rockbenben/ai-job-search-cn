@@ -401,7 +401,7 @@ def apply_restore(job_id: str) -> dict:
             "撤销于": date.today().isoformat(),
         }
         entry["status"] = "new"
-        for f in ("rank_score", "rank_verdict", "rank_breakdown", "rank_date"):
+        for f in _cli.RANK_FIELDS:
             entry.pop(f, None)
     else:
         # 打过分的退回 ranked，没打过的退回 new —— 别一律退成 new，
@@ -440,10 +440,9 @@ _WRITE_LOCK = threading.Lock()
 #: → `_cli.atomic_write` 全是启动时 import 进来的对象。改了它们不重启，服务照旧
 #: 按旧逻辑写盘。
 #:
-#: 2026-08-13 一天之内撞了三次：
-#:   ① 上午 —— 新加的 `outcomeStats` 手动导出后存在、页面查无此块；
-#:   ② 第 5 轮 —— 进程比代码老五小时，导出把新字段覆盖回旧格式（改成子进程解决）；
-#:   ③ 第 10 轮 —— 刚把 tracker 换成原子写，而跑着的服务里还是裸 write_text。
+#: 一天之内连撞三次同一个坑：新加的 `outcomeStats` 手动导出后存在、页面查无此块；
+#: 进程比代码老五小时，导出把新字段覆盖回旧格式（这条改成子进程解决）；
+#: 刚把 tracker 换成原子写，跑着的服务里还是裸 write_text。
 #:
 #: 前两次的处理都是「写一段注释提醒重启」。**三次之后该承认：注释不是机制。**
 #: 这里只做最轻的一件事——发现代码变了就在终端喊一声，并给出该敲什么。
@@ -452,21 +451,14 @@ _WRITE_LOCK = threading.Lock()
 #: `sys.modules` 缓存——改了代码生不生效，取决于「服务起来之后有没有解封过一次」，
 #: 不确定。而它写的是 `portal_budget.json`（封控冷却），跑旧代码等于按旧规则解封。
 #: 顶层 import 和函数内 import 在这件事上没有区别，都要看住。
-#: `followups.py` / `gap_split.py` 是 2026-08-21 新进来的：`build_dashboard`
-#: 顶上 `from followups import QUIET_DAYS`，`export_web_data` 顶上
-#: `from gap_split import FORMULA, read_pair`。两个都是**这个进程里已经加载了的
-#: 模块**，改了不重启就还是旧值（静默线几天、算式认哪些字），而这份名单
-#: 正是为了不让这种事静默发生 —— 上面那句「顶层 import 和函数内 import
-#: 在这件事上没有区别」说的就是它们。
 #: **这份名单不再手写。** 手写的会漂，而且是静默地漂 —— 实测 2026-08-24：
 #: 从 `serve.py` 顺着 import 走一遍，这个进程实际会加载 11 个仓库模块，
 #: 而手写名单只有 8 个，漏掉 `doctor` / `query_yield` / `archive` 三个。
 #: 三个都在 `sys.modules` 里，改了不重启就是旧代码 —— 正是这份名单要拦的事，
-#: 而它自己漏了。上面那句「顶层 import 和函数内 import 在这件事上没有区别」
-#: 说的就是它们（`export_web_data` 在函数里 `import doctor`）。
-#:
-#: `followups` / `gap_split` 2026-08-21 也是这么手工补进来的 —— 补一次漂一次。
-#: 改成**从 import 图现推**：只用 `ast`，零依赖，永远跟得上。
+#: 而它自己漏了（`export_web_data` 还在函数里 `import doctor`，上面那句
+#: 「顶层 import 和函数内 import 在这件事上没有区别」说的就是它）。
+#: `followups.py` / `gap_split.py` 后来也是一次次手工补进来的 ——
+#: 补一次漂一次。改成**从 import 图现推**：只用 `ast`，零依赖，永远跟得上。
 #: 下面那个手写的当**兜底下限**：真解析不出来时不能反而少看住几个。
 _CODE_FLOOR = ("serve.py", "export_web_data.py", "build_dashboard.py",
                "tracker.py", "_cli.py", "portal_budget.py",
@@ -536,7 +528,7 @@ def with_detected_tool(raw: bytes, tool: str) -> bytes:
 
     导出器在导出那一刻把 detectedTool 烤进 data.json，而 data.json 只在
     「上游数据变了」时才重导——换个 AI 工具起服务、或并行会话（另一个工具
-    先导出过一份）都不会让它失效。实测 2026-09-12：Claude Code 会话起的面板，
+    先导出过一份）都不会让它失效。实测过：Claude Code 会话起的面板，
     端的是早先 Antigravity 会话导出的快照，整页命令用了那份快照所对应的工具档。
     （当时那两档的差别是斜杠；2026-10-13 起免斜杠只剩 Codex 一家，所以这一句
     只讲「按起服务的环境盖」，不再断言具体是哪种字形——那一层会再变。）
@@ -679,7 +671,7 @@ def needs_reexport(data: Path, user: str, newest_source: float) -> bool:
     2. **它够不够新。** 严格早于才算新鲜：mtime 撞在同一刻时宁可多导一次，
        也不要卡在过期状态上。导完必然严格新于上游，不会反复触发。
     3. **它是不是今天导的。** 导出器往 `data.json` 里写的有一批**相对今天**的
-       句子：逐岗的「今天投的」「2026-08-10 投的（3 天前）」「已经 11 天没动静」
+       句子：逐岗的「今天投的」「昨天投的（1 天前）」「已经 11 天没动静」
        （`build_dashboard.job_next_step`）、封控的「今晚 23:14 自动恢复」
        。上游一夜没动过，前两条判据就都说「还新鲜」，
        于是第二天早上页面把昨天投的岗称作「今天投的」，刚过静默线的岗还在说
