@@ -37,11 +37,17 @@ class SendBeforeScrape(unittest.TestCase):
         lines = doctor.next_step({}, st)
         self.assertIn("12 个岗材料备好了还没发", lines[0],
                       "第一行不是「去发」——用户只读第一行")
-        # 正文里提一句「名单见底了再去 /job-scrape」是对的（那是之后的事），
+        # 正文里提一句「名单见底了再去 /job-auto 补货」是对的（那是之后的事），
         # 不许的是把抓取摆成**这一步**该做的事。所以只看它出现在哪：
         # 必须跟在「再去」后面，不能自成一条建议。
+        #
+        # **盯的是 `/job-auto` 而不是 `/job-scrape`（2026-10-14）。**
+        # 原来这里扫的是 `/job-scrape`，而自检里那一条已经被换掉两次
+        # （2026-08-29、2026-10-14），换到最后自检的「下一步」里一个
+        # `/job-scrape` 都不剩了 —— **扫的东西没了，这条守卫就空转**。
+        # 抓取那条命令现在是 `/job-auto`，它才该被盯住。
         for ln in lines:
-            if "/job-scrape" in ln:
+            if "/job-auto" in ln:
                 self.assertIn("再去", ln,
                               f"抓取被当成了这一步的建议：{ln.strip()}")
 

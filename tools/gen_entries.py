@@ -49,8 +49,8 @@ SETTINGS_ALLOW = (
 
 SETTINGS_DEFAULT_MODE = "acceptEdits"
 
-#: Gemini CLI 的权限文件**不生成**（2026-09-29 Task 9 Step 1 取证后撤回），
-#: 那家工具本身也在 2026-09-30 从本仓库的支持名单里整条删掉。
+#: Gemini CLI 的权限文件**不生成**：2026-09-29/30 取证后整份撤回，
+#: 那家工具本身也从本仓库的支持名单里整条删掉。
 #:
 #: 原来这一份是按「以为的样子」写的，读的是本机装好的 0.58.0 安装包里的 settings
 #: schema（`node_modules/@google/gemini-cli/bundle/chunk-*.js`，schema 里连 label
@@ -71,11 +71,11 @@ SETTINGS_DEFAULT_MODE = "acceptEdits"
 #: "See shell tool command restrictions for matching details"，bundle 里够不着实现）。
 #: 所以整份撤回，不再猜。
 #:
-#: **2026-09-30 补的三条，都是当天现量的：**
-#:   1. 那家已停：npm 包还在发版（0.61.0，2026-09-24），但个人版登录通道关了
+#: **撤回之后又现量过一轮，三条都是当天量的：**
+#:   1. 那家已停：npm 包还在发版（0.61.0），但个人版登录通道关了
 #:      —— 登录返回 `reasonCode: "UNSUPPORTED_CLIENT"` / `tierId: "free-tier"`，
 #:      拿一个假 `GEMINI_API_KEY` 也绕不过去；官方把命令行这条线指向
-#:      Antigravity CLI（用户 2026-09-30 告知）。所以探测那一档、渲染表那一格、
+#:      Antigravity CLI（用户当日告知）。所以探测那一档、渲染表那一格、
 #:      `--print gemini` 这个片段一起删了 —— 不再教任何人粘它。
 #:   2. **后继的 agy 不读这份文件**：本机的 `agy` 二进制里
 #:      `.gemini/settings.json`、`run_shell_command(`、`confirmationRequired`、
@@ -99,8 +99,8 @@ GENERATED_NOTE = ("由 tools/gen_entries.py 生成，"
 
 #: 可粘片段的工具名。**每家一份**，不是把 Claude 那四条抄给别家 ——
 #: 上一版 `--print agy` 印的就是 Claude 的清单，里面那条 `Skill(...)` 是
-#: Claude 独有语法，而那段是要贴进 SETUP.md 给用户照粘的（2026-09-29 评审抓到）。
-#: `gemini` 2026-09-30 从这里删掉（那家已停，理由在上面那段）。
+#: Claude 独有语法，而那段是要贴进 SETUP.md 给用户照粘的（评审抓到）。
+#: `gemini` 也在 2026-09-29/30 那轮从这里删掉（那家已停，理由在上面那段）。
 SNIPPET_TOOLS = ("claude", "codex", "agy")
 
 

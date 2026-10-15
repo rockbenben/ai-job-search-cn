@@ -42,12 +42,15 @@ REF = re.compile(r"`?([\w\-./]+\.md)`?\s*(?:里|的|中)?\s*[「『]([^」』\n]
 def docs() -> dict:
     out = {}
     # `docs/tool-entries.md` 是 2026-09-29 Task 10 从 AGENTS.md 搬出去的那一节。
-    # 搬出去的节要是没人扫，「某文件的『某节』」这类指针就在新家失联也没人知道，
+    # `docs/finding-gaps.md` 是 2026-10-14 从 `CONTRIBUTING.md` 里"怎么先找到还没被
+    # 守住的地方"那一节（连它底下 8 个小节）整节搬出去的。搬出去的节要是没人扫，
+    # 「某文件的『某节』」这类指针就在新家失联也没人知道，
     # 而指向它的引用（workflows/job-auto.md 就有一条）也会被 `target not in d`
     # 那一行直接放过 —— 搬家把一道判据搬成空转。
     for p in (list((ROOT / "workflows").rglob("*.md"))
               + [ROOT / "AGENTS.md", ROOT / "CLAUDE.md",
-                 ROOT / "docs" / "tool-entries.md"]
+                 ROOT / "docs" / "tool-entries.md",
+                 ROOT / "docs" / "finding-gaps.md"]
               + sorted((ROOT / "docs" / "why").glob("*.md"))):
         out[p.name] = (p.relative_to(ROOT).as_posix(), p.read_text(encoding="utf-8"))
     return out

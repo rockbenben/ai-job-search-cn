@@ -216,7 +216,7 @@ NEUTRALITY_FORBIDDEN = ("WebFetch", "WebSearch", "AskUserQuestion",
                         # Workflow bodies are the tool-neutral half: AGENTS.md
                         # sends every other tool to the index (「直接按「工作流索引」
                         # 读取并执行对应文件」, whose table lives in
-                        # workflows/INDEX.md since 2026-09-29). So a body must not
+                        # workflows/INDEX.md). So a body must not
                         # talk about itself as a *skill* - that is one tool's
                         # packaging, and phrases like "in this skill directory"
                         # send the reader somewhere that only exists under

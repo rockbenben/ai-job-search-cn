@@ -17,7 +17,7 @@
 同时也接触你的个人数据（简历、资料、投递记录）。这个组合本身就是主要风险面，无法
 彻底消除，只能收窄。项目目前的应对方式：
 
-- **不可信输入规则**：**凡是读职位描述的命令**——`/job-apply`、`/job-rank`、`/job-cv`、`/job-interview`、`/job-outcome`、`/job-setup`——都把职位描述文本当作数据，绝不当作指令 ——
+- **不可信输入规则**：**凡是读职位描述的命令**——`/job-scrape`、`/job-auto`、`/job-apply`、`/job-rank`、`/job-cv`、`/job-upskill`、`/job-interview`、`/job-offer`、`/job-outcome`、`/job-setup`、`/job-expand`、`/job-notion-sync`（**12 条；正本是 `tests/test_commands_chain_automatically.py` 的 `JD_READERS`，那份是逐条验过的**）——都把职位描述文本当作数据，绝不当作指令 ——
   提示词明确要求智能体不要执行职位描述里嵌入的指令，也不要抓取职位文本里出现的链接
   （用户自己提供的职位 URL 是唯一例外）。背调类调研只从用户确认过的公司身份出发，
   绝不从职位正文里的链接出发。

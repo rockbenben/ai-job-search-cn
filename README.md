@@ -18,7 +18,7 @@
 
 **一个 AI 编码工具 + Node 22.18+，就能开始。** 不用装别的——搜职位的 CLI 直接跑在 Node 上（零依赖、无编译步骤）。**先自己确认一下 `node --version`**：各家 AI 工具的装法不一样（有的走 npm、有的是原生可执行文件），从你手上那个工具反推不出「机器上有没有 Node」，而这一条量一次就知道。
 
-> 本文的命令都按正本形式写（带开头的 `/`）。你这家的工具要是不认这种写法，**去掉开头的斜杠**照样触发，详见「[不用 Claude Code 也行](#不用-claude-code-也行)」。
+> 本文的命令都按正本形式写（带开头的 `/`），**认不出来的助手也照给斜杠**（2026-10-13 改）—— 裸形式不是命令，只是聊天框里的一段文字，接得住的是模型、不是宿主。唯一真拦的是 Codex，它自己有一档。详见「[不用 Claude Code 也行](#不用-claude-code-也行)」。
 
 **所以第一次用是零额外依赖的**：一个 AI 编码工具加 Node，`/job-setup` → `/job-auto` 就能拿到真实的排序名单和投递材料。
 
@@ -78,8 +78,6 @@
 
 随时可以跑 `/job-dashboard` 看总览，或 `/job-user` 在多个求职者之间切换。
 
-简历照片可选——互联网/大厂投递通常可略，体制内、传统行业常要。放 `users/<你>/resume/photo.jpg`（**与你自己那份 `main.typ` 同目录**，不是仓库根的 `resume/`——Typst 不允许引用入口目录之外的文件），再在 `main.typ` 里用 `照片: "photo.jpg"` 启用，详见 [SETUP.md](SETUP.md)。
-
 完整命令清单见 [`workflows/INDEX.md`](workflows/INDEX.md)——上面没展开的那几条都在里面，例如 `/job-expand`、`/job-refresh`、`/job-gmail-sync`、`/job-notion-sync`、`/job-add-template`、`/job-reset`。
 
 ### 为什么是「国内维度」
@@ -119,6 +117,8 @@ users/<你的名字>/documents/cv/     ← 简历放这里（<你的名字> 见 
 ```
 
 **格式：PDF 最省事**，`.md` / `.txt` / `.tex` 也行。**Word（`.doc`/`.docx`）读不了**——先在 Word 里「另存为 → PDF」。学历证书放 `diplomas/`、领英导出放 `linkedin/`、推荐信放 `references/`，都不是必须的。完整说明见 [`documents/README.md`](documents/README.md)。
+
+简历照片**可选**（体制内、传统行业常要，互联网/大厂通常可略）——放在你自己那份简历**同目录**下，不是仓库根的 `resume/`；连怎么在模板里启用、用 PNG 要注意什么，[`SETUP.md`](SETUP.md) 第 4 节都写了。
 
 > 目录要等 `/job-setup` 建好用户之后才有。没有简历也能开始——那时它改成直接问你。
 
@@ -217,11 +217,11 @@ node .agents/skills/liepin-search/cli/src/cli.ts detail "<职位URL>" --format p
 - **在 Claude Code、Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code 里**：带斜杠就是原生形态（`/job-auto`、`/job-rank`、`/job-apply <职位链接>`），这几家都把每个技能注册成 `/<名>`。
 - **在 Codex CLI 里**：去掉开头的斜杠，直接输入 `job-auto`、`job-rank`、`job-apply <职位链接>`。
   > 它把开头的 `/` 留给自己的内置指令——二进制里那句原文是 `Unrecognized command '/-'. Type "/" for a list of supported commands.`。逐家的实测出处与分档的判据正本在 `docs/tool-entries.md`（那张表就是 `tools/doctor.py` 的 `COMMAND_SYNTAX`）。
-- **在认不出来的助手与编辑器内置助手里**（Cursor 等）：**照给带斜杠的形式**（2026-10-13 改）。默认档曾是「去斜杠」，理由是「裸形式各家都敲得动」——那句话不成立：裸形式不是命令，只是聊天框里的一段文字，触发词接得住的是模型、不是宿主。逐家量过 12 家，8 家吃斜杠，真拦的只有 Codex，而它自己有一档。
+- **在认不出来的助手与编辑器内置助手里**（Cursor 等）：**照给带斜杠的形式**（2026-10-13 改）。默认档曾是「去斜杠」，理由是「裸形式各家都敲得动」——那句话不成立：裸形式不是命令，只是聊天框里的一段文字，触发词接得住的是模型、不是宿主。逐家量过 12 家，**6 家**吃斜杠，真拦的只有 Codex，而它自己有一档。
   > 探测错了可以手工改：面板上「能敲哪些命令」里有开关，或设 `JOBS_CODE_TOOL=<工具名>`（可选值自检末尾会印）。
 - **直接用自然语言**：说求职者的人话即可，例如「自动跑一轮」、「帮我给手上的岗位打分」、「投这个岗 <链接>」、「刷一下在线简历」。本仓库在 `.agents/skills/` 下配置了完整的 Agent 技能与触发词，AI 会自动识别意图并执行完全相同的工作流。
 
-**那 `.claude/` 是干什么的？** 它是 Claude Code 的接入件，不是本仓库的一部分逻辑：`.claude/skills/` 是 Claude Code 找命令与自动触发技能的**固定路径**（每条命令一份壳，由 `tools/gen_entries.py` 从 `workflows/INDEX.md` 与 `tools/_entries.py` 生成，外加一份手写的求职咨询壳；壳里只有触发词和工具权限，正文一句「读取并严格执行 `workflows/<名>.md`」）；`.claude/settings.json`是它的权限预批清单。两者加上 `CLAUDE.md` **没有一行正文**——正文全部在 `workflows/`，谁都读得到。原来那 19 份 `.claude/commands/` 命令 stub 已经删掉：斜杠命令这一层壳两族都给，不再需要第二落点。**这里不写壳有几份**——加一条命令就多一份壳，写死的数字没人钉着只会变成假话（判据与实测记录在 `docs/tool-entries.md`）。
+**那 `.claude/` 是干什么的？** 它是 Claude Code 的接入件，不是本仓库的一部分逻辑：`.claude/skills/` 是 Claude Code 找命令与自动触发技能的**固定路径**（每条命令一份壳，由 `tools/gen_entries.py` 从 `workflows/INDEX.md` 与 `tools/_entries.py` 生成，外加一份手写的求职咨询壳；壳里只有触发词和工具权限，正文一句「读取并严格执行 `workflows/<名>.md`」）；`.claude/settings.json`是它的权限预批清单。两者加上 `CLAUDE.md` **没有一行正文**——正文全部在 `workflows/`，谁都读得到。原来那批 `.claude/commands/` 命令 stub 已经删掉：斜杠命令这一层壳两族都给，不再需要第二落点。**这里不写壳有几份**——加一条命令就多一份壳，写死的数字没人钉着只会变成假话（判据与实测记录在 `docs/tool-entries.md`）。
 
 **这一节只说结论，实测经过不在这儿。** 把 `.claude/` 整个挪走会丢什么、曾经从那次实验下过的那句结论怎么被 2026-09-29 那批两族壳推翻、两族对不对得上由哪几条测试钉着——正本在 `docs/tool-entries.md`。
 
@@ -236,7 +236,7 @@ node .agents/skills/liepin-search/cli/src/cli.ts detail "<职位URL>" --format p
 - **浏览器渠道用的是你自己的登录会话**：有账号风控/封禁风险，**风险自负**。保持低频、不批量开页，撞到验证码**立即停手、不硬闯**；框架遵守各站 `robots.txt`（[细则](workflows/reference/cdp-portals.md)）。
 - **职位描述是不可信输入**：工作流不执行其中的指令、不抓取其正文里的链接。详见 [SECURITY.md](SECURITY.md)。
 - **诚实底线**：所有投递材料的主张都必须能在你的资料里找到出处，能力缺口如实承认，绝不编造或用近义词充数——一旦面试穿帮，代价远大于说得漂亮。
-- **有几条命令没被真实跑过（截至 v1.0.0）**：`/job-gmail-sync`、`/job-html-report`、`/job-add-template`、`/job-offer` 一份产出都没有；`/job-interview` 只有一份面试记录。
+- **有几条命令没被真实跑过（2026-10-14 复查，与 v1.0.0 时列的同四条）**：`/job-gmail-sync`、`/job-html-report`、`/job-add-template`、`/job-offer` 一份产出都没有；`/job-interview` 仍只有一份面试记录（`reports/` 里那份是 `/job-resume` 的，不是 html-report）。
 - **它们有单元测试、也过 CI，但没有「真跑完一轮」的实测背书**——撞到问题请开 issue。
 - **走熟了的是这几条**：`/job-setup`、`/job-scrape`、`/job-rank`、`/job-apply`、`/job-cv`、`/job-outcome`、`/job-dashboard`、`/job-upskill`、`/job-resume`。
 

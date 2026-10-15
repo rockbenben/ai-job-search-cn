@@ -26,7 +26,7 @@ allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuesti
 逐家实测，Claude Code、Qoder、Antigravity (agy)、Qwen Code、MiMo Code、MCode **都吃斜杠**
 （技能就注册成 `/<名>`，参数原样送到）；**要去掉斜杠的只有 Codex CLI** —— 它把开头的 `/`
 留给自己的内置指令，在那儿给 `job-apply <职位链接>`，或直接把要办的事说成「投这个岗 <链接>」。
-**认不出来的助手也照给带斜杠**（2026-10-13 改：逐家量过 12 家、8 家吃斜杠，认不出来的那一批
+**认不出来的助手也照给带斜杠**（2026-10-13 改：逐家量过 12 家，**6 家吃斜杠**；认不出来的那一批
 更可能落在吃斜杠的一边；理由与代价见 `docs/tool-entries.md` 表下第 2 条）——所以这段里的
 `/job-apply` 在别处也不用改写。
 判据在 `AGENTS.md`「每一处引导都要写出该敲的命令」——**这份壳两族逐字相同、

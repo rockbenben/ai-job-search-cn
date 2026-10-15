@@ -120,7 +120,7 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
         - 带错斜杠 → 工具报错或列出命令，**看得见**，用户当场知道不对；
         - 缺斜杠   → 复制出来的是一段普通文字，用户**不知道**有这条命令。
 
-        而 `docs/tool-entries.md` 量过 12 家，**8 家吃斜杠**——
+        而 `docs/tool-entries.md` 量过 12 家，**6 家吃斜杠**——
         认不出来的那一批更可能落在吃斜杠的一边。真拦的（Codex）
         2026-10-13 起自己一格，不再靠 generic 兜底。
         """

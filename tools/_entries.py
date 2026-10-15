@@ -5,12 +5,12 @@
 面板帮助也读它）；另一个是本文件的 `MANIFEST`（索引表补不上的那一半：触发词、
 额外权限）。壳正文一律指向 `workflows/`，一个字都不复述。
 
-为什么必须**两族**（`.claude/skills/` 与 `.agents/skills/`）：Claude Code 2.1.282
-（2026-09-29 取证那天装着的那一版）的运行时技能根只有 `.claude/skills`（项目）与
+为什么必须**两族**（`.claude/skills/` 与 `.agents/skills/`）：2026-09-29/30 逐家取证，
+Claude Code 2.1.282（那两天装着的那一版）的运行时技能根只有 `.claude/skills`（项目）与
 `~/.claude/skills`（用户）；
 `.agents/skills` 在它的二进制里只是 `claude import` 的**搬运源**，不是发现根。
 而 agy / Codex / Qoder / Qwen Code / MiMo Code 读的都是 `.agents/skills`
-（2026-09-30 逐家核过；Gemini CLI 原来在这一串里，那家已停，整条删掉）。
+（Gemini CLI 原来在这一串里，那家已停，整条删掉）。
 所以一处生成、两处落地：
 两族共用 `render_shell()` 这**一个**函数，字节必然相同 —— 盘上逐字节对照的那条
 （`tests/test_shell_families_are_byte_identical.py`）跟着壳文件一起落地，见计划里的 Task 5。
@@ -233,7 +233,7 @@ MANIFEST: dict[str, dict] = {
         # 3) jd_store.py —— 「想先看看某个岗当初漏掉的是什么，
         #    `python tools/jd_store.py --show <职位链接>` 把库里那份 JD 正文印出来」
         #    （job-auto.md「单独看一个仍然可以」那段）：重判一个岗而不重开页面的那条路，运行时真会敲。
-        # （原来还有第 4 条 audit_pipeline.py —— 2026-09-29 评审抓到「裸围栏两头盲」
+        # （原来还有第 4 条 audit_pipeline.py —— 评审抓到「裸围栏两头盲」
         #  之后，循环那段围栏贴上了 bash，它的 --sections / --actionable /
         #  --rewrite-list 三步现在由围栏直接派生，显式批就是重复授权，删。）
         "extra_tools": (

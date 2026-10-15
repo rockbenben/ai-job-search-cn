@@ -63,7 +63,10 @@ def _docs() -> dict:
     # （权威不许落在那儿，见 `tools/security_guards.py` 顶部那条教训）。
     # Task 12 的落点 `docs/why/*.md` 同理：搬出去的记录要是没人扫，指向它们的
     # 「某文件的『某节』」就在新家失联也没人知道。
+    # 2026-10-14 的落点是 `docs/finding-gaps.md`（从 `CONTRIBUTING.md` 里"怎么先找到
+    # 还没被守住的地方"那一节整节搬出去的）—— 这份当时漏了，两条报同一件事。
     for n in ((ROOT / "docs" / "tool-entries.md",)
+              + (ROOT / "docs" / "finding-gaps.md",)
               + tuple(sorted((ROOT / "docs" / "why").glob("*.md")))):
         if n.is_file():
             out[str(n.relative_to(ROOT))] = n.read_text(encoding="utf-8")
@@ -435,9 +438,10 @@ class PythonNamesResolve(unittest.TestCase):
 
     - **文件扩展名不算**：`` `serve.py` `` 会被拆成 `serve` + `py`。
       第一版没排除，30 条命中里 29 条是这个（先怀疑仪器，又一次）。
-    - **讲这条规则本身的行放过**：修好之后正文里留着
-      「却把函数名写成了 `build_dashboard.read_active_user`」的说明，
-      不放过就会撞上自己的反例 —— 这个仓库的常客。
+    - **讲这条规则本身的行放过**：判据得能解释自己，所以含「却把函数名写成了」
+      「查无此」这类**复述坏例子**的行跳过（见上面 `_scan` 里的豁免）。
+      `workflows/job-user.md` 里那三行复述当时已经删了 —— 正文留着的是实测事实，
+      复述的价值归判据，不归正文；判据留着，它防的是下一次。
     """
 
     EXT = {"py", "json", "md", "csv", "typ", "tex", "pdf", "html",

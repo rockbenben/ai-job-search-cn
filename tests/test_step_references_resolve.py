@@ -212,31 +212,15 @@ class StepReferencesResolve(unittest.TestCase):
             "这些 Step 没按编号顺序出现 —— 编号说的就是顺序，"
             "照着做的执行者会被支到别处再回来：" + " · ".join(bad))
 
-    def test_the_order_check_can_fail(self):
-        """变异内建：拿 `HEAD` 里那份未修的原文回测，必须报出那一处。
-
-        比合成用例硬 —— 它是真实存在过的缺陷。取不到 git 时跳过。
-        """
-        import re
-        import subprocess
-
-        try:
-            out = subprocess.run(
-                ["git", "show", "HEAD:workflows/job-scrape.md"],
-                cwd=ROOT, capture_output=True, timeout=30)
-        except (OSError, subprocess.SubprocessError):
-            self.skipTest("跑不了 git")
-        if out.returncode != 0:
-            self.skipTest("取不到 HEAD 的那份文件")
-        PAT = re.compile(r"^#{2,4}\s*(?:Step|第)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:步)?\s*[:：]")
-        nums = [float(m.group(1))
-                for ln in out.stdout.decode("utf-8").splitlines()
-                if (m := PAT.match(ln))]
-        if sorted(nums) == nums:
-            self.skipTest("HEAD 里那份已经是修好的了（提交过之后就会这样）")
-        self.assertTrue(
-            any(nums[i] < nums[i - 1] for i in range(1, len(nums))),
-            "判据对着一份真实的乱序文件都不亮 —— 它没在工作")
+    # **这里原来有一条拿 `git show HEAD:workflows/job-scrape.md` 回测的负对照，
+    # 2026-10-14 删掉。** 它要的是「修复之前那份乱序原文」，而修复早已提交 ——
+    # HEAD 上永远是修好的那份，于是它每次都走
+    # 「HEAD 里那份已经是修好的了」这一支跳过，**而且永远不会再生效**：
+    # 修复不可能被撤销。真实原文也取不回来了（那次修复早于本仓库压平历史的那一刀）。
+    #
+    # 下面 `test_the_detector_can_fail` 用钉死的字面量守同一件事，它会一直有效；
+    # 真实文件那一侧由同文件的正向用例读真文件守着。两侧都在，丢的只是那个
+    # 「更强但已失效」的第三份。
 
     def test_the_detector_can_fail(self):
         self.assertIn("1.7", headings("### Step 1.7：这一轮评哪几个"))

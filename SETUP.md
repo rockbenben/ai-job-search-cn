@@ -39,7 +39,7 @@
 | | 装什么 | 解锁 |
 |---|---|---|
 | **① 必装** | **一个能读 `AGENTS.md` 并执行工作流的 AI 编码工具** + **Node 22.18+**（见下方「运行时」一节） | 填资料 `/job-setup`、**搜职位 `/job-scrape`**、**打分排序 `/job-rank`**、面试准备 `/job-interview`、记投递 `/job-outcome`、学习计划 `/job-upskill`、切换用户 `/job-user` |
-| **② 要出简历 PDF 就装** | Typst（中文字体一般已自带） | `/job-apply` 编译 PDF（不装只给 `.typ` 源文件） |
+| **② 要出简历 PDF 就装** | Typst（中文字体一般已自带） | `/job-cv` 编译定制简历、`/job-resume` 校验（不装只给 `.typ` 源文件）。**`/job-apply` 不出简历**——它发主简历，定制走 `/job-cv` |
 | **③ 强烈建议装** | Python 3.10+（流水线全程只用标准库） | `/job-dashboard` 总览页；**以及 `/job-setup` 重跑「改搜索词」那节时先读每个词抓过的真实战绩（抓到多少岗、哪几个跑偏）、`/job-rank` 的预筛淘汰、`/job-scrape` 的 JD 详情库、`/job-outcome` 的催进度判定、`/job-upskill` 的缺口分格、`/job-add-template` 的模板撞名检查、`/job-auto` 的词表写回、`/job-refresh` 的刷新记录、以及 `/job-rank`/`/job-outcome`/`/job-gmail-sync`/`/job-interview`/`/job-user`/`/job-cv`/`/job-reset`/`/job-scrape --no-rank` 收尾刷新面板数据**——这几条命令没有它仍能跑，但各少一环（`/job-rank` 不做淘汰、每轮重抓 JD；`/job-setup` 改词时没战绩可看，只能自己想）。另外仓库自带的四个检查脚本也用它 |
 | ④ 可选 | poppler（提供 `pdftotext` 与 `pdftoppm`） | 简历 PDF 的文本层校验与视觉检查（不装则跳过并说明；两个都在 poppler 里，一条安装命令带齐） |
 | ⑤ 可选·进阶 | 能开浏览器的 AI 工具（Claude Code 装 Claude 浏览器扩展即可） | BOSS 直聘 / 智联 / 前程无忧（没有则退 `site:` 兜底）。见 3.1 |
@@ -62,7 +62,7 @@
 > 它把开头的 `/` 留给自己的内置指令（实测出处见 `docs/tool-entries.md`），
 > 2026-10-13 起它自己一格 `no-slash`。
 > Cursor 与 Codex 至今没有可识别标记，所以它们落 `generic`；而 `generic` 那一档
-> 2026-10-13 从「去斜杠」翻成了**带斜杠**（逐家量过 12 家，8 家吃斜杠，认不出来的
+> 2026-10-13 从「去斜杠」翻成了**带斜杠**（逐家量过 12 家，**6 家吃斜杠**；认不出来的
 > 更可能落在吃斜杠的一边——理由与代价见 `docs/tool-entries.md` 表下第 2 条）。
 > 所以本文的示例在 Cursor 一类助手里也照敲 `/job-auto`。认错了手工指定：
 > `JOBS_CODE_TOOL=claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`。
@@ -214,7 +214,7 @@ STSong → Noto Serif CJK SC`）。**这条不命中不要紧**——实测过�
 
 **一个都没命中时不会有任何报错。** 实测行为是：Typst 打印
 `warning: unknown font family`、**exit 0**、照样产出 PDF，而且 **PDF 文本层完整可提取**
-——所以 `/job-apply` 的 ATS 文本层校验**也会通过**。你会拿到一份渲染成豆腐块、却过了
+——所以 `/job-cv` 的 ATS 文本层校验**也会通过**。你会拿到一份渲染成豆腐块、却过了
 全部自动检查的简历，一路投出去都不会有人提醒你。
 
 **自己确认一句就够**（有任何输出即正常）：
@@ -228,7 +228,7 @@ typst fonts | Select-String -Pattern "Noto Sans SC|Source Han Sans|Microsoft YaH
 ```
 
 一条都没有 → 先装字体再编译简历。
-（`/job-apply` 的第 5c 步也会做这个检查并停下告知，但自己先确认一次更省事。
+（`/job-cv` 的第 5c 步也会做这个检查并停下告知，但自己先确认一次更省事。
 **不要**拿「stderr 有没有 `unknown font family`」当判据——回退链跨平台，任何平台都必然
 为另两个平台的字体报 warning，那不是错误。）
 
@@ -247,7 +247,7 @@ macOS: [MacTeX](https://tug.org/mactex/)；Linux: `texlive-full`）与中文宏�
 - **Debian/Ubuntu：** `sudo apt install poppler-utils`
 - **Windows：** `choco install poppler`
 
-缺少 `pdftotext` 时，`/job-apply` 会跳过这步机械校验并告警，退回到目视关键词检查——
+缺少 `pdftotext` 时，`/job-cv` 与 `/job-resume` 会跳过这步机械校验并告警，退回到目视关键词检查——
 其余一切照常。
 
 ## 2. 获取代码
@@ -507,7 +507,7 @@ typst compile "users/<你的名字>/documents/applications/<公司>_<岗位>/res
 ```
 
 这些命令针对默认的 Typst 简历模板。如果你想换用自己的模板（Typst 或 LaTeX），运行 `/job-add-template`
-—— 它会采集模板的编译引擎、字体、样式规则与页数上限，试编译通过后接入出材料的命令。详见 README 里的模板相关小节。
+—— 它会采集模板的编译引擎、字体、样式规则与页数上限，试编译通过后接入出材料的命令。详见 `workflows/job-add-template.md`。
 
 ## 7. 各家工具的权限文件：哪份是真的、哪份本仓库不生成
 
