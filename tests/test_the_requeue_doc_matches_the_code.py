@@ -20,9 +20,7 @@
 （`check_doc_claims_vs_reality`），但它盯的是职位库里的字段覆盖率，
 盯不到这里 —— 所以这份守卫自己去比。
 """
-import ast
 import json
-import re
 import sys
 import tempfile
 import unittest
@@ -31,6 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
+import _cli  # noqa: E402
 import audit_pipeline as AP  # noqa: E402
 from _srcscan import strip_comments  # noqa: E402
 
@@ -46,11 +45,38 @@ def _doc() -> str:
 
 
 def _popped_fields() -> list:
-    """从代码里把「要抹掉哪几个字段」那个元组读出来 —— 不在测试里抄一份。"""
-    code = strip_comments(SRC)
-    m = re.search(r'for f in (\([^)]*\)):\s*\n\s*e\.pop\(f, None\)', code)
-    assert m, "找不到抹字段那一行 —— 写法变了，这份守卫要跟着改"
-    return list(ast.literal_eval(m.group(1)))
+    """**真跑一遍**，读回哪些字段真的被抹掉了。
+
+    原来这里正则 `audit_pipeline.py` 里**字面**写着的那个元组 —— 于是判据钉住的是
+    「那一行长什么样」，不是「抹掉了什么」。2026-10-14 把那个字面量提成
+    `_cli.RANK_FIELDS`（`audit_pipeline` 两处 + `serve.py` 一处共用）之后，正则当场
+    失效、三条用例一起红，红的方式是 `assert None`：**看着像环境坏了，其实是锚没了**。
+
+    改法照的是本文件下面 `test_the_code_really_requeues_the_third_class` 用的那条路
+    —— 喂一份临时语料进真代码，读回结果。**带一个控制字段**：它要是也一起没了，
+    说明这一支变成了「全抹」，那读出来的名单就只是「跑过」的同义词。
+
+    语料里的 rank 字段是**从 `_cli.RANK_FIELDS` 播种的**，不是抄四个名字：
+    抄一份的话，将来往那个元组里加第 5 个字段，语料里压根没有它，抹没抹都看不见，
+    判据会对着一个已经不准的数字继续绿（变异实测：加一个字段，全绿）。
+    """
+    entry = {f: "x" for f in _cli.RANK_FIELDS}
+    entry.update({
+        "url": "https://x/1", "title": "医药数据产品经理",
+        "company": "示例科技", "status": "ranked", "workYears": "5年以上",
+        "rank_verdict": "硬门 FAIL (候选人明确排除（航空航天））",
+        "rank_score": 40, "rank_date": "2026-10-14",
+        "rank_breakdown": {"依据": "x"},
+        "note_kept": "控制字段",
+    })
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        p = _store(root, {"a": entry}, excludes="生物医药")
+        _requeue(root)
+        after = json.loads(p.read_text(encoding="utf-8"))["seen"]["a"]
+    assert after.get("note_kept") == "控制字段", (
+        "连控制字段都被抹了 —— 这一支成了「全抹」，读出来的名单说明不了任何事")
+    return sorted(set(entry) - set(after))
 
 
 def _store(root: Path, entries: dict, excludes="生物医药"):

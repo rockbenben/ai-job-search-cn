@@ -109,6 +109,12 @@ JUDGED_CONSTANTS = {
     "RESUME_STALE_DAYS": "test_the_thresholds_match",
     "QUIET_DAYS": "test_the_silence_line_has_one_value",
     "NO_REPLY_ALARM": "test_the_alarm_threshold_has_one_value",
+    # 2026-10-14：自检接上「名单见底时补货优先于先发」那一支时加的。
+    # `doctor` 按硬约定不 import 仓库模块，所以这个门槛是一份**正当副本**。
+    # 它比前三个更险一点：那三个印的是一句话里的数字，这个决定的是
+    # **「手上还有材料没投的时候，到底叫他先发还是先补」**——
+    # 两处各写一个数，差一个就足以让两个出口在这个状态下给相反的答案。
+    "SHORTLIST_FLOOR": "test_doctors_floor_is_the_same_number",
 }
 
 

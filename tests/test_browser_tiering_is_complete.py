@@ -52,6 +52,16 @@ TIER3 = re.compile(r"`site:`|site: 兜底")
 
 def docs():
     yield from sorted((ROOT / "workflows").rglob("*.md"))
+    # **`profile.example/` 也要扫** —— 上一版只在这里加了一段说明、没加这一行，
+    # 变异实测当场露馅：把旧文案放回去，整套测试照样全绿。
+    yield from sorted((ROOT / "profile.example").glob("*.md"))
+    # **`profile.example/` 也要扫。** `/job-setup` 从这里起手生成
+    # `profile/search-queries.md`（`job-setup.md` 第 5 步），所以模板里那份阶梯
+    # 会**原样进到每个新用户的资料里**。2026-10-14 那里还写着旧的两层
+    # （「有 web-access skill 时走 CDP，否则退 site:」——把第 1 层整个漏了），
+    # 而这份名单里没有它，所以没人拦。这已经是同一处漏网第二次了：
+    # 第一版只扫 workflows + AGENTS/CLAUDE，`SETUP.md` 里那句「CDP 为主、
+    # site: 兜底」也一直没人拦，直到把名单扩开。
     # SETUP.md / README.md 也讲这套顺位，而且是**用户先读到**的那两份——
     # 第一版只扫 workflows + AGENTS/CLAUDE，于是 SETUP.md 里那句
     # 「覆盖方式是 CDP 为主、site: 兜底」（跳过第 1 层）一直没人拦。

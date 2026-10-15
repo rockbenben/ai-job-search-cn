@@ -132,7 +132,7 @@ class TheSameQuestionOnManyJobsIsReported(unittest.TestCase):
     这条在**清干净之后的**真语料上恒为空（2026-09-02 清完是 0），
     所以必须有对照用例，否则「干净」和「坏了」长得一模一样 ——
     这一课当天刚付过学费：新加的两条正则写窄了，检查器报 0，
-    而 24 份还挂在盘上（见 `_cli._GREETING_TENURE` 的台阶第十格）。
+    而 24 份还挂在盘上（见 `_cli.greeting_problems` 的说明里「当天的 0 份是假的」那段）。
     """
 
     def _apps(self, d, files):

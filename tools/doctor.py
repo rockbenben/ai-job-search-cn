@@ -656,9 +656,9 @@ def count_ready(udir, seen: dict) -> tuple[int, int | None, int | None]:
     **已经下线的**。后两类的判据只有导出器有——重复挂牌按「公司 + JD 正文前缀」
     归并，本文件既拿不到 JD 正文，也不该把那套归并逻辑抄第二遍。
 
-    抄的代价当场就出现了（2026-08-13）：先按公司名匹配，自检 101 / 面板 107；
-    改成 URL 精确匹配，变成 132 / 107——**两版都不对，而且错的方向还相反**。
-    差的 25 个正是 18 个重复挂牌加 7 个已下线。
+    抄的代价当场就出现了（2026-08-13）：这个数试过两版 —— 按公司名匹配是
+    自检 101 / 面板 107，改成 URL 精确匹配变成 132 / 107，**两版都不对，
+    而且错的方向还相反**；差的 25 个正是 18 个重复挂牌加 7 个已下线。
 
     所以：**面板快照在就用它**（`web/public/data.json` 只是个 JSON 文件，
     读它不违反「本文件不 import 仓库模块」那条——那条防的是循环依赖）。
@@ -737,6 +737,75 @@ def count_ready(udir, seen: dict) -> tuple[int, int | None, int | None]:
     return n, None, None
 
 
+def count_restock(udir) -> tuple[int | None, int | None]:
+    """`(还能投几个, 抓到但还没评的有几个)` ——读得到就报数，读不到交回 `None`。
+
+    这两个数是「名单见底 → 先去补货」那一支的判据，而它要分两岔：
+
+    - 还有「抓到但没评」的积压 → `/job-rank`（先把库存评完，否则
+      `/job-scrape` → `/job-scrape` 死循环：新抓的没评分，`n_sellable` 永远是 0）
+    - 没有积压 → `/job-auto`（抓岗、评分、出材料一条龙）
+
+    另一个用法在「一个材料都还没出」那支：`n_sellable == 0` 时那一句
+    换成「没有几个能投的，去找更多」而不是「批量出材料」。
+
+    ## 为什么必须是同一批数
+
+    面板那条 `build_dashboard.next_step` 走的就是导出器传进来的
+    `n_sellable` / `n_unranked`。终端自检当年没有这一支，于是「名单见底
+    该不该先补货」上两个出口给相反的答案 —— 面板说「去补货」，自检说
+    「先把备好的发出去」。`tests/test_both_next_steps_agree.py` 顶上把
+    这个形状记成「已经栽过两次」（2026-08-13、2026-08-22，两次都是
+    「一条规则加在一个出口上，另一个出口照旧」）。
+
+    ## 口径归导出器，这里只取数
+
+    同 `count_ready`：`doctor` 不 import 仓库任何模块（环境半坏时也要能跑），
+    重算一份判词必然和那边飘 —— 而 `export_web_data.is_sellable` 那条白名单
+    自己写着「判词是自由度很高的字段，每次变动的默认后果都是漏一个」。
+
+    ## 为什么不并进 `count_ready`
+
+    两件事：那个数是「材料备好没发」，这两个是「还能投几个 / 待评几个」；
+    而且 `count_ready` 的返回元组长度被 `test_ready_is_split_by_verdict.py`
+    钉成 3（那是 `ready` 分档那次修复留下的契约）。并进去会让那条守卫变成
+    「签名改了也算对」—— 改契约要改测试，而这里的理由不足以动它。
+
+    ## 一份快照读一次
+
+    两个数在 payload 的同一个 `nextStep` 里。分成两个函数就要把
+    「找快照 → 验身份 → 取键」那段抄两遍，而那段本身已经因为抄错过至少一次。
+
+    读不到快照（新 clone、没跑过导出、或老导出没有这两个键）就返回
+    `(None, None)`：调用方退回原来那条说法，不猜。
+    """
+    snap = udir.parent.parent / "web" / "public" / "data.json"
+    if not snap.is_file():
+        return None, None
+    try:
+        import json as _json
+        d = _json.loads(snap.read_text(encoding="utf-8"))
+    except Exception:
+        return None, None
+    # 身份要对上，否则读的是别的用户的进度（同 `count_ready`）。
+    if (d.get("activeUser") or "") != udir.name:
+        return None, None
+    ns = d.get("nextStep") or {}
+    out, un = ns.get("nSellable"), ns.get("nUnranked")
+    return (out if isinstance(out, int) else None,
+            un if isinstance(un, int) else None)
+
+
+#: 与 `build_dashboard.SHORTLIST_FLOOR` 同值 —— 「名单见底」的那个门槛。
+#: `doctor` 不 import 仓库模块（那是它存在的理由），所以这一份是正当副本，
+#: 相等由 `tests/test_both_next_steps_agree.py` 钉住 —— 与 `QUIET_DAYS`、
+#: `AGENCY_WORDS`、`DATE_FORMATS` 同一族处置。
+#:
+#: 那个数的理由（取 5、为什么要在见底之前就提醒）写在
+#: `build_dashboard` 那个常量的 docstring 里，这里不复述。
+SHORTLIST_FLOOR = 5
+
+
 #: 与 `_cli.LINK_LINE` 同值 —— `doctor` 不 import 仓库模块（那是它存在的理由），
 #: 所以这一份是**正当副本**，相等由 `test_link_line_agrees` 钉住。
 #: 本文件里原来抄了**四遍**，那四遍不是契约换来的，是复制粘贴。
@@ -753,8 +822,8 @@ def norm_url(u: str) -> str:
 
     **去重前必须先过这一步。** 同一课这个仓库交过几次学费，每次换一个变量：
 
-    - **协议**（2026-08-19 抓智联）：页面锚点给 `http://`，库里 08-11 存的同一批
-      岗是 `https://` —— 20 个新岗里 4 个重复入库，其中两个早就判过硬门 FAIL，
+    - **协议**（2026-08-19 抓智联）：页面锚点给 `http://`，库里同一批岗存的是
+      `https://` —— 20 个新岗里 4 个重复入库，其中两个早就判过硬门 FAIL，
       等于花账号额度把出局的岗又评了一遍。
     - **51job 的路径前缀**（2026-08-28 实测）：同一个职位号有两种挂法 ——
       `/all/<id>.html` 与 `/shanghai-<区码>/<id>.html`。历史入库的是前者，
@@ -770,7 +839,7 @@ def norm_url(u: str) -> str:
       `?refcode=…&preactionid=…&data_identity=…`，全是埋点参数，同一个岗每次
       搜到都换一串。库里存的是干净 URL，于是 **120 个「新岗」里 43 组是已经
       在库里的**。埋点参数不参与身份。
-    - **手机站前缀**（2026-09-02 实测）：从微信里点开一个岗复制出来的是
+    - **手机站前缀**（实测过一次）：从微信里点开一个岗复制出来的是
       `//m.liepin.com/job/<id>.shtml?mscid=wx_h5_001`。埋点参数上面剥掉了，
       `m.` 没人管，于是深评和话术都出好了、总览页上那个岗还是「没有材料」——
       材料目录靠 `原始链接：<URL>` 认岗，两边一个 `//m.…` 一个 `//www.…`。
@@ -859,7 +928,7 @@ def count_materials(udir: Path, seen: dict | None = None) -> int:
     # 两个原因，都在这几行里：
     #
     # 1. **只排了 `skipped`。** 面板走 `build_dashboard.is_parked`（不投 + 已下线
-    #    + 重复挂法）再加判词出局。实测 12 个目录的岗**已经下线**——催一个
+    #    + 重复挂法）再加判词出局。实测 2026-08-23 12 个目录的岗**已经下线**——催一个
     #    关掉的岗去投，比不催更糟（`is_parked` 的 docstring 记的就是这 12 个）。
     # 2. **按原始字符串比链接。** 同一个岗在两处存 `http://` 和 `https://` 是
     #    真实发生过的（`_cli.norm_url` 存在的理由）。比不上就漏排。
@@ -1096,7 +1165,7 @@ def placeholders(text: str) -> set:
     """一段文字里还没填的模板占位符（`[DEGREE]`、`[YOUR_NAME]` 这种）。
 
     **这条规则的正本。** 原来两处各编译一份同样的正则：这里，以及
-    `build_dashboard._PLACEHOLDER_RE` —— 同值、**不同名**，所以按名字找副本的
+    已删的 `build_dashboard._PLACEHOLDER_RE`（墓碑与合并日期在 `build_dashboard`）—— 同值、**不同名**，所以按名字找副本的
     那条守卫看不见它（`test_the_copies_in_doctor_still_match` 比的是同名的）。
 
     ⚠️ **那个洞 2026-09-01 补了一半。** 同一条守卫现在多了按**值**扫的
@@ -1109,7 +1178,7 @@ def placeholders(text: str) -> set:
 
     而它在那边的消费点是 `profile_ready`：
 
-        return not (tokens & set(_PLACEHOLDER_RE.findall(text)))
+        return not (tokens & set(build_dashboard._PLACEHOLDER_RE.findall(text)))
 
     那份正则一旦认不出占位符，`findall` 返回空、交集为空、这道门就判
     **「资料已就绪」**。面板于是接着建议去抓职位、去投递，`/job-apply`
@@ -1122,7 +1191,7 @@ def placeholders(text: str) -> set:
     溜得掉的是**那三种之外的**：模板哪天加一种新形状的占位符，两份正则各认
     一半时那条守卫照样绿 —— 它比的是「两边一致」，不是「两边都认得全」。
 
-    2026-08-31 合成一份。`build_dashboard` 本来就 import 本模块（依赖是单向的：
+    后来合成一份。`build_dashboard` 本来就 import 本模块（依赖是单向的：
     它可以用这里，这里不能用它），所以这个方向是现成的。
     """
     return set(_PLACEHOLDER.findall(text))
@@ -1414,11 +1483,11 @@ def check_repo(want_user: str = "") -> dict:
     tracker = udir / "job_search_tracker.csv"
     n_applied = n_intv = n_offer = 0
     n_replied = n_decided = 0
-    # 直招那批单拆一份。判据与 `build_dashboard._why_silent` 同源：
+    # 直招那批单拆一份。判据与已删的 `build_dashboard._why_silent` 同源：
     # 猎头代招的沉默说明不了简历的事，混在一起算会得出错的诊断。
     n_direct_decided = n_direct_replied = 0
     # 直招那组里，简历被打开过 / 没被打开过各有几个（面板上标的）。
-    # 判据见 `resume_unopened`；没标过的两边都不进。
+    # 判据是 seen 里的 `hr_viewed` 字段；没标过的两边都不进。
     n_viewed = n_unviewed = 0
     hv = {e.get("url"): e.get("hr_viewed")
           for e in seen.values() if isinstance(e, dict) and e.get("url")}
@@ -1427,7 +1496,7 @@ def check_repo(want_user: str = "") -> dict:
     hh = {e.get("url"): _via_headhunter(e)
           for e in seen.values() if isinstance(e, dict) and e.get("url")}
     # 哪些岗**有开场白**——零回音的诊断靠它分「简历到底有没有到对方手上」。
-    # 判据见 `chat_first`；口径要和 `export_web_data.outcome_stats` 的
+    # 判据见下（`outreach.md` 里有 `职位链接：` 那一行）；口径要和 `export_web_data.outcome_stats` 的
     # `chatDecided` 一致（那边看 `materials.greeting`，而那个串就是从这个
     # 文件的渠道 1 小节解析出来的，所以「有这个文件」≈「有开场白」）。
     #
@@ -1516,6 +1585,10 @@ def check_repo(want_user: str = "") -> dict:
     # 直接数，不减：手动投的岗有投递记录却没有材料目录，减法会把它多减一次
     # （同 `build_dashboard.next_step` 的 `ready`，那边 2026-08-12 实测报 104 实际 105）。
     st["ready"], st["ready_strong"], st["ready_asked"] = count_ready(udir, seen)
+    # 「还能投几个」「抓到但没评的有几个」——「名单见底 → 先去补货」那一支用它分岔，
+    # 「一个材料都还没出」那一支用它第一岔。读不到就是 `None`，退回旧文案
+    # （见 `count_restock`）。
+    st["n_sellable"], st["n_unranked"] = count_restock(udir)
     # 这批放了多久、有几个已经没了。光有个数说不出「有一批该先发」——
     # 判据见 `ready_age`；那 12 个白做的材料就是这一行存在的理由。
     st["ready_note"] = ready_note(udir)
@@ -1695,19 +1768,35 @@ def next_step(env: dict, st: dict) -> list[str]:
         blocked = gate("apply")
         if blocked:
             return blocked
-        # 原来这里只有一句「从名单里挑一个，跑 /job-apply <职位URL>」——**不可执行**。
+        # 原来这里只有一句「从名单里挑一个，跑 /job-apply <职位URL>」——不可执行。
         # 排序结果写在 `seen_jobs.json` 里（机器读的），人能看的只有总览页。
-        # 当场跑完 /job-rank 的人手上有那份清单，可**第二天回来跑自检的人没有**，
+        # 当场跑完 /job-rank 的人手上有那份清单，可第二天回来跑自检的人没有，
         # 而自检正是给「不知道该干什么」的人用的。整条链就这一处说不出该敲什么。
+        #
+        # 而且它只会一个一个教。「挑一个」在有几十个可投岗时等于叫他敲几十次；
+        # `/job-apply 全部`（「除了不投的都准备好」）才是这个状态下唯一的一次敲完。
+        #
+        # `n_sellable` 是 0 时才走第二岔——全评了、一个都不能投，那一句该说的是
+        # 「去找更多」，不是「批量出材料」（出材料那一步会一条都产不出来）。
+        # 读不到（没有快照）就退回原来那句，不猜（同 `count_ready` 的约定）。
+        if st.get("n_sellable") == 0:
+            # 命令是 `/job-auto`，不是 `/job-scrape`（2026-10-14）。
+            # 一个能投的都没有、手上也没有材料 —— `/job-scrape` 抓完自动评分
+            # 却不出材料，敲完还是一排没材料的岗。`/job-auto` 一条龙跑到材料。
+            # 面板那条「名单见底」的分支也刚改成同一个命令，两个出口不再分岔。
+            return ["抓到职位了、也评过，但没有几个能投的（硬性条件没过，或者分太低）。"
+                    "下一步：跑 /job-auto 接着找 —— 抓岗、评分、出材料一条龙，"
+                    "中途不用盯着；或者回头调整 profile 里的硬性条件与期望。"]
         lines = ["排好了，排序名单在总览页上。下一步："]
         if not env.get("web_build"):
             lines += ["",
                       "    cd web && npm install && npm run build   # 只需要一次",
                       "    cd .. && python tools/serve.py           # 打开总览页"]
         else:
-            lines += ["", "    python tools/serve.py      # 打开总览页，挑一个岗"]
+            lines += ["", "    python tools/serve.py      # 打开总览页，看排序和该问的问题"]
         lines += ["",
-                  "挑好之后复制那个岗的链接，跑 /job-apply <职位链接> 出投递材料。",
+                  "    /job-apply 全部           # 把除了不投的都备好料",
+                  "",
                   "（总览页上「不投 / 我投了」这类记号点一下就写回盘上。）"]
         return lines
 
@@ -1763,6 +1852,48 @@ def next_step(env: dict, st: dict) -> list[str]:
     # 不拿 materials − applied 去减（手动投的岗有投递记录却没材料目录，减法会多减）。
     ready = st.get("ready", 0)
     if ready > 0:
+        # ── 名单见底时，补货优先于「先发」。用户 2026-10-14 裁定 ──
+        #
+        # 原话：「还有材料没投的时候也会先说去补货。这是正确的」——
+        # 那是面板 `build_dashboard.next_step` 里 `SHORTLIST_FLOOR` 那一支
+        # 2026-08-13 就有的行为，本文件一直没有，于是两个出口在这个状态下
+        # 给相反的建议（面板「去补货」／自检「先把备好的发出去」）。
+        #
+        # 理由与面板那支相同（见那个常量的 docstring）：补货的前置时间比
+        # 名单见底的速度长，手上只剩 2 个能投的岗时，先去补那一轮回来，
+        # 投递才不会停摆。发完手上那 2 个再回来正是下一次循环的事。
+        #
+        # 它推翻的是 2026-08-29 那条裁定的前半句（「有材料没发 → 先发」）
+        # 在名单见底这个状态下的适用性；名单还够时那一支照旧。
+        # 正本改在 `AGENTS.md` 顶上那条裁定里 —— 规则只活在一次会话里，
+        # 换一轮就整条丢掉，这条规矩已经付过两次代价（见上面那段）。
+        _ns = st.get("n_sellable")
+        if isinstance(_ns, int) and _ns < SHORTLIST_FLOOR:
+            # 先评库存再抓 —— 否则 `/job-scrape` → `/job-scrape` 死循环
+            # （新抓的没评分，`n_sellable` 永远是 0）。
+            if st.get("n_unranked", 0):
+                return [f"可以投的名单快见底，而还有 {st['n_unranked']} 个抓到没评的："
+                        f"先跑 /job-rank 把库存评完，不够再抓", ""]
+            left = f"只剩 {_ns} 个" if _ns else "一个都不剩了"
+            return [f"可以投的岗位{left}——越少越不该停下找岗。"
+                    f"下一步：跑 /job-auto 补货，抓完会自动评分排序，接着出材料",
+                    "",
+                    f"手上那 {ready} 个备好的先放着（投完回来记一笔：/job-outcome <公司>）；",
+                    "补货有前置时间，先跑这一轮，投递才不会停摆。"]
+        def _send_and_record() -> list[str]:
+            """「发出去 → 记一笔」那套收尾。
+
+            它只有备好的发得出去时才成立 —— 所以它是一个函数、
+            由 `ready_strong` 那一支挑，而不是这一支默认的尾巴。
+            全是「可以考虑」时用它，等于在同一屏里说「别当群发名单」
+            又说「发完点一下我投了」。
+            """
+            return [
+                "    python tools/serve.py     # 打开总览页，展开一个岗，开场白点一下就复制",
+                "",
+                "发完在那一行点「我投了」就记上了（也可以跑 /job-outcome <公司>）。",
+                "名单见底了再去 /job-auto 补货，先把备好的用掉。",
+            ]
         # **按判词分两档说。** 「可以考虑」那一档按框架的定义是「先问清楚关键信息
         # 再决定」，不是可以直接发；和「值得投」加成一个数去催人发，等于替用户
         # 做了他还没做的决定。2026-08-13 实测：这里报的 63 里有 59 个是「可以考虑」，
@@ -1770,9 +1901,25 @@ def next_step(env: dict, st: dict) -> list[str]:
         strong = st.get("ready_strong")
         if strong is None or strong == ready:
             head = f"有 {ready} 个岗材料备好了还没发出去。下一步：把它们发出去 —— "
+            tail_lines = _send_and_record()
         elif strong == 0:
             head = (f"备好的 {ready} 个都是「可以考虑」这一档——先问清楚再决定，"
-                    f"不是直接发。下一步：一个个看过去 —— ")
+                    f"不是直接发。下一步：")
+            # 一个都发不出去时，不能把他推向「发完记一笔」。
+            # 那一档缺的是「投前必问」——`04` 规定写不出来就说明它不属于这一档，
+            # 所以 `/job-apply 可以考虑` 逼每个岗自己结一次案。
+            # 都列了要问什么的话没有什么可敲的，而这一支的判据是「给他一条命令」。
+            asked = st.get("ready_asked")
+            if isinstance(asked, int) and asked >= ready:
+                tail_lines = ["    python tools/serve.py     # 打开总览页，挨个看过去",
+                              "",
+                              "这些岗的评估里都列了要问什么——先问清楚，再决定投不投。",
+                              "名单见底了再去 /job-auto 补货。"]
+            else:
+                tail_lines = ["    /job-apply 可以考虑         # 一次补齐那几个岗缺的「投前必问」",
+                              "",
+                              "（补完挨个看过去：问清楚关键信息，再决定投不投。"
+                              "这一档不是群发名单。）"]
         else:
             # **「投之前先问清楚」默认那份清单存在，而多数岗上没有。**
             # 实测活动用户 2026-08-30：这一档 56 个里只有 9 个列了要问什么。
@@ -1796,12 +1943,8 @@ def next_step(env: dict, st: dict) -> list[str]:
             head = (f"有 {strong} 个「值得投」的材料备好了，先发这批"
                     f"（另外 {maybe} 个是「可以考虑」，投之前先问清楚{tail}）"
                     f"。下一步：把它们发出去 —— ")
-        return [head,
-                "",
-                "    python tools/serve.py     # 打开总览页，展开一个岗，开场白点一下就复制",
-                "",
-                "发完在那一行点「我投了」就记上了（也可以跑 /job-outcome <公司>）。",
-                "名单见底了再去 /job-auto 补货，先把备好的用掉。"]
+            tail_lines = _send_and_record()
+        return [head, "", *tail_lines]
     # **这一句踩了 2026-08-29 那条裁定的两半。** 原文（`AGENTS.md`
     # 「跟进归用户，工具不催」）：「**终端与面板的「下一步」都不提投递与回音**，
     # 状态照常按流水线判：有材料没发 → 先发；没有 → `/job-auto` 接着抓。」
@@ -1859,16 +2002,17 @@ _TOOL_LABELS = {
 #: 那是路径（workflows/job-apply.md）或 URL 里的片段，不是命令。
 _SLASH_CMD = re.compile(r"(?<![\w./-])/(job-[a-z][a-z-]*)")
 
-#: 每家工具的命令语法。2026-09-29 / 09-30 逐家实测：**六家吃斜杠，一家拦**。
+#: 每家工具的命令语法。逐家实测过：认得出来的那些**几乎都吃斜杠**，只有 Codex
+#: 把 `/` 留给自己的内置指令（最新一轮的数与翻过来的理由见下面那段）。各家怎么认的：
 #: Claude Code 的技能进它的斜杠表；Qoder 的 harness 自己写着技能可按 `/<名>` 请求；
 #: agy 的 `/` 面板用户当场测过（`/job-scrape` 能匹配）；Qwen Code 0.24.7 起把技能
 #: 注册成 `/<技能名>`；MiMo Code 的技能以 `source: "skill"` 进它的命令表；
 #: MCode 同形态（2026-10-13 用户确认，`MAVIS_SESSION_TRANSFER_CLIENT`
-#: 是量出来的信号）。**只有 Codex 把 `/` 留给自己的内置指令** —— 它的二进制里
-#: 印着 `Unrecognized command '/-'. Type "/" for a list of supported commands.`。
+#: 是量出来的信号）。Codex 那条是它二进制自己印着的：
+#: `Unrecognized command '/-'. Type "/" for a list of supported commands.`
 #: 这一格原来只把 `claude` 放进 `"slash"`、其余全去斜杠，理由写的正是「斜杠会被
-#: 客户端当成内置指令拦掉」——那句话对六家是错的，白扣了斜杠这一层形式。
-#: Gemini CLI 原来也在 `"slash"` 里，2026-09-30 整档删掉（那家已停，后继是 agy）。
+#: 客户端当成内置指令拦掉」——**那句话对逐家实测出来吃斜杠的那几家全是错的**，
+#: 白扣了斜杠这一层形式。Gemini CLI 那家已停（后继是 agy），它的格子已整档删掉。
 #: Codex 没有可用的探测信号（`CODEX` 这个变量不存在），自动探测落 `"generic"`。
 #
 #: ## 2026-10-13：`generic` 从免斜杠翻成带斜杠

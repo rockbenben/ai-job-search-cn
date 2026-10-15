@@ -55,6 +55,27 @@ ALLOWED = {
         "同上；相等由本文件 test_the_wasted_materials_line_agrees 钉住。"
         "这一句 2026-09-01 刚从 season_note 搬进 _ready_text——"
         "面板那份挂在季节上，季节一变整句消失，而终端那份从来只问「有没有」"),
+    # 2026-10-14：终端自检接上面「补货优先于先发」那一支时，两句话开始有两个
+    # 生产者 —— **而这正是要的那个形状**：同一个状态下两个出口必须说同一句话，
+    # 否则用户看哪个算哪个。逐字相同不是巧合，是这里唯一的防分叉手段。
+    #
+    # 键名要照 `norm()` 切出来的**片段**写，不是照原句：`{...}` 被摘掉之后，
+    # 一句话会被切成好几段。照整句写会一条都匹配不上，而
+    # `test_the_registry_is_not_stale` 只验「键能命中某句」、不验「命中的是
+    # 你要那一句」—— 写错时它照样绿，而失败信息会把人指向完全另一句话。
+    "越少越不该停下找岗": (
+        {"build_dashboard.py:next_step", "doctor.py:next_step"},
+        "同一状态下两个出口必须给同一个答案；相等由 "
+        "`tests/test_both_next_steps_agree.py::RestockingOutranksSendingWhenTheListIsThin` 钉住"),
+    "可以投的名单快见底": (
+        {"build_dashboard.py:next_step", "doctor.py:next_step"},
+        "同上；没有它，「有待评积压就先评库存」那条只在一个出口有防护，"
+        "`/job-scrape` → `/job-scrape` 死循环就是从那儿漏的"),
+    # 同一句话的**后半段**是另一个片段：`{n_unranked}` 把句子切成了三段，
+    # 每一段各自入库，所以登记也得逐段给。少一段，那一段照样红。
+    "把库存评完，不够再抓": (
+        {"build_dashboard.py:next_step", "doctor.py:next_step"},
+        "同上；同一句的后半段"),
 }
 
 

@@ -145,7 +145,7 @@ class ItCatchesTheHalfFilledProfile(unittest.TestCase):
         # **先证明它会亮。** 下面那两个 `continue` 都可能把循环体清空：
         # 没有 `candidate.md`、或资料里还留着占位符。真到那一步，这条会
         # **一次断言都不做地绿着** —— 而它守的正是「收紧判据别误伤现有用户」，
-        # 恒绿等于这道门不存在（CONTRIBUTING「用仪器之前先证明它会亮」）。
+        # 恒绿等于这道门不存在（`docs/finding-gaps.md`「用仪器之前先证明它会亮」）。
         #
         # 实测 2026-08-31：8 个用户里 7 个真的被断言到。数着，空了就明说 skip，
         # 不要让它变成一次看不见的通过。
