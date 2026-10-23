@@ -35,9 +35,14 @@ class TheSharedPostStillRefusesToSwallow(unittest.TestCase):
 
     def test_it_throws_with_the_server_message(self):
         i = EXCLUDED.index("async function post<")
-        seg = EXCLUDED[i:i + 900]
-        self.assertIn("throw new Error(data.error", seg,
+        seg = EXCLUDED[i:i + 1200]
+        # **判据钉的是「服务端那句话被原样带出来」，不是某个类名。**
+        # 2026-10-23 起 `post()` 抛的是 `ApiError`（Error 的子类，多带一个
+        # 机器能认的 `code`）—— 那句话一个字没少，只是多了一个字段。
+        self.assertIn("data.error", seg,
                       "不再把服务端的 error 带出来了 —— 下面那些断言就全落空了")
+        self.assertIn("throw new ", seg,
+                      "post() 不再抛了 —— 失败就没人接得住")
 
     def test_the_reason_it_must_not_swallow_is_recorded(self):
         self.assertIn("别把失败咽掉", EXCLUDED)

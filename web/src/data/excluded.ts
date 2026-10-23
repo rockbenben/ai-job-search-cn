@@ -100,9 +100,43 @@ export function applyDelta(onDisk: Set<string>, d: Delta): Set<string> {
   return out;
 }
 
+/** 服务端回的错误，带一个**机器能认**的 code。 */
+export class ApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+/**
+ * 写操作的通行凭据过期了（服务重启过）→ **自己去把新凭据取回来**。
+ *
+ * `serve.py` 每次启动注入的 token 变了，页面上那个旧的就废了：于是每一个
+ * 写操作都撞 403。2026-10-23 实测，用户点「我投了」没反应——**错误文案本来
+ * 是有的**，但它被渲染在一块刚被回滚卸载掉的区域里（见 `JobReadout.tsx`），
+ * 于是用户既看不到原因、也不知道下一步该做什么。
+ *
+ * 这里的修法是**不打扰用户**：同源再取一次 `/`，那上面注着当前有效的 token，
+ * 把这一下**原样重发**。跨站页面读不到本源的 `/`（同源策略），所以这没有
+ * 削弱 `serve.py` 那道锁——它挡的从来是「别的源头的页面替你写盘」。
+ */
+async function refreshToken(): Promise<boolean> {
+  try {
+    const html = await fetch("/", { cache: "no-store" }).then((r) => r.text());
+    const m = html.match(/__API_TOKEN__\s*=\s*"([^"]+)"/);
+    if (!m) return false;
+    window.__API_TOKEN__ = m[1];
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function post<T = unknown>(
   path: string,
   body: Record<string, unknown>,
+  retry = true,
 ): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
@@ -112,9 +146,13 @@ async function post<T = unknown>(
   // 服务端把真因放在 error 里；**别把失败咽掉**——咽掉的结果是页面显示已排除、
   // 盘上其实没改，下次刷新它又回来，而用户不知道为什么。
   const data = (await res.json().catch(() => ({}))) as
-    { ok?: boolean; error?: string };
+    { ok?: boolean; error?: string; code?: string };
   if (!res.ok || !data.ok) {
-    throw new Error(data.error || `服务返回 ${res.status}`);
+    // **凭据过期：换新的，再重发一次。** 只重试一次，免得来回打转。
+    if (data.code === "token_expired" && retry) {
+      if (await refreshToken()) return post<T>(path, body, false);
+    }
+    throw new ApiError(data.error || `服务返回 ${res.status}`, data.code);
   }
   return data as T;
 }

@@ -71,7 +71,6 @@ import tracker  # noqa: E402
 #: 29029 在窗口内、无已知服务占用，数字里带着仓库编号 029，好记也好敲。
 #: 真撞上了用 `JOBS_PORT` 覆盖即可。
 PORT = int(os.environ.get("JOBS_PORT", "29029"))
-TOKEN = secrets.token_urlsafe(24)
 
 MIME = {
     ".html": "text/html; charset=utf-8",
@@ -123,6 +122,71 @@ def active_user() -> str:
     return user
 
 
+def token_path(user: str) -> Path:
+    """写操作通行凭据存在哪儿。**放在用户目录里**——`users/` 已 gitignore。"""
+    return ROOT / "users" / user / ".api_token"
+
+
+def _load_or_make_token() -> str:
+    """写操作的通行凭据。**跨服务重启保持不变。**
+
+    ## 为什么要落盘
+
+    原来这个 token 是模块级常量、**每次启动换一个**。于是服务一重启，
+    **已经开着的那个标签页手里的 token 就过期了**：它发出去的每一个写操作
+    都撞上 403「这个页面的通行凭据过期了」。
+
+    实测 2026-10-23：用户点「我投了」没反应 —— 页面上**一个字都没提示**
+    （错误文案是有的，但它被渲染在一块已经被回滚卸载掉的区域里，见
+    `web/src/components/JobReadout.tsx`）。用户不知道发生了什么，只知道
+    「点了没反应」；真正的原因（服务重启过）他无从知道。
+
+    ## 落盘不削弱这道锁
+
+    这道锁挡的是**跨站页面**替你写盘：别的源头的页面读不到本页的 token，
+    所以发不出带对 token 的 POST。token 落盘不改变这一点 —— 它仍然只在
+    本机、只在 `127.0.0.1`、仍然只有从**本页**才能读到。
+
+    变的只有一件事：**它不再随进程生死而变**。这正是要的。
+
+    ## 为什么在**导入时**定下来，而不是每次请求现读
+
+    因为 `TOKEN` 是这个模块公开出去的那一个（测试、别的工具都直接用它）。
+    要是服务用的是「现读文件」而模块里躺着另一个值，同一份代码里就有
+    **两个 token**，谁对不上谁就说不清。所以这里只定一次，文件是它的**来源**，
+    不是另一个来源。
+
+    ## 换用户
+
+    凭据按用户分文件：换用户意味着数据换了，那张旧页面本来就该刷新。
+    """
+    try:
+        user = active_user()
+    except Exception:          # noqa: BLE001 - 没有活动用户时不该在这里炸
+        return secrets.token_urlsafe(24)
+    p = token_path(user)
+    try:
+        t = p.read_text(encoding="utf-8").strip()
+        if t:
+            return t
+    except OSError:
+        pass
+    # 第一次：把这一次的随机 token 存下来，之后的启动都读它。
+    t = secrets.token_urlsafe(24)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        # **原子写**（`Path.write_text` 是先截断再写，中途崩了文件就没了——
+        # `tools/_cli.py` 里那条判据盯的就是这个）。
+        _cli.atomic_write(p, t)
+    except OSError:
+        pass
+    return t
+
+
+#: 写操作的通行凭据。见 `_load_or_make_token`。
+TOKEN = _load_or_make_token()
+
+
 def seen_path(user: str) -> Path:
     return ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
 
@@ -154,8 +218,13 @@ def not_found() -> dict:
     **这句话只许有一份。** 它是给用户看的，而 2026-08-30 之前 `serve.py` 里
     逐字抄了 **6 遍** —— 六个端点各写各的，改一处等于制造分叉。
     每次返回新的 dict、不共用一个常量：调用方往里加字段是常事。
+
+    `code` 让页面**不必靠中文文案判断**：前端要能分辨「这个岗没了」（重取
+    一次快照就好）和「写盘真出错了」（得让人看见）。2026-10-23 之前这里
+    只有一句中文，前端只能把两种情况一起当「失败」。
     """
-    return {"ok": False, "error": "职位列表里找不到这个岗了——刷新一下页面再试"}
+    return {"ok": False, "error": "职位列表里找不到这个岗了——刷新一下页面再试",
+            "code": "unknown_job"}
 
 
 def _locate(job_id: str):
@@ -806,7 +875,8 @@ class Handler(BaseHTTPRequestHandler):
                     json.dumps({"error": f"这份数据是「{owner}」的，而现在的用户是"
                                          f"「{active_user()}」——重新导出没成功。"
                                          f"到终端跑 python tools/export_web_data.py "
-                                         f"看它报什么错，修好再刷新"},
+                                         f"看它报什么错，修好再刷新",
+                                         "code": "not_owner"},
                                ensure_ascii=False).encode("utf-8"),
                     "application/json; charset=utf-8")
             # 「代码比进程新」的提醒要跟着数据走到**页面**上。终端那行警告
@@ -876,7 +946,8 @@ class Handler(BaseHTTPRequestHandler):
         # 先转成 str：compare_digest 收到非字符串会抛 TypeError，
         # 那会变成 500（把内部异常端给用户），而这里该是干脆的 403。
         if not secrets.compare_digest(str(body.get("token") or ""), TOKEN):
-            return self._json(403, {"error": "这个页面的通行凭据过期了——刷新一下再试"})
+            return self._json(403, {"error": "这个页面的通行凭据过期了——刷新一下再试",
+                                     "code": "token_expired"})
 
         job_id = str(body.get("id") or "")
         # 渠道开关不是「针对某个职位」的操作，它没有 id。其余每一单都必须有。
@@ -961,7 +1032,8 @@ class Handler(BaseHTTPRequestHandler):
             # 单独一支，不走下面那个通用兜底：那句话会把类名印给用户
             # （`AGENTS.md`「给用户看的措辞」禁的就是这类未解释的英文码）。
             # 这也不是「出错」——是这台机器上还没有资料，说清下一步就够了。
-            return self._json(409, {"ok": False, "error": str(exc)})
+            return self._json(409, {"ok": False, "error": str(exc),
+                                    "code": "no_active_user"})
         except Exception as exc:              # noqa: BLE001 - 要把真因回给页面
             return self._json(500, {"ok": False, "error": f"服务这边出错了：{type(exc).__name__}: {exc}。"
                         f"再试一次；还是不行就重启 serve.py"})

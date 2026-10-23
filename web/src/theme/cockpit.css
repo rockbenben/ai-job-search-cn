@@ -641,7 +641,17 @@ body .ant-typography .ant-typography-copy {   /* (0,2,1)：既出面板又压得
 }
 .status-undo:hover:not(:disabled) { color: var(--lit); }
 .status-undo:disabled { cursor: default; opacity: 0.5; }
-.status-err { font-size: var(--fs-meta); color: var(--lock); }
+/* 「没记上」这句。**颜色是红的（--lock）**，但字号原来跟脚注一样（--fs-meta），
+   而它现在承担的是「用户点了没反应时唯一能看见的东西」——2026-10-23 实测，
+   这句话被渲染在一块刚被回滚卸载掉的区域里，用户连它都没看见；挪出来之后，
+   字号再按脚注给就又回到了「看不见」。所以提到 --fs-small，并让它独占一行。 */
+.status-err {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--fs-small);
+  color: var(--lock);
+  font-weight: 500;
+}
 /* 邮件与网申自评：默认收起的那一小块。摘要行做成一句问句，不做成按钮——
    它不是一个动作，是「你需要的话在这儿」。 */
 .chan { margin-top: 10px; }

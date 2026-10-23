@@ -259,8 +259,24 @@ class TheWriteTokenIsComparedSafely(unittest.TestCase):
                       "没先转成字符串——传个数字进来就是 500 而不是 403")
 
     def test_the_token_is_actually_random(self):
-        """凭据本身得是随机的，不然比较方式再安全也没意义。"""
+        """凭据本身得是随机的，不然比较方式再安全也没意义。
+
+        2026-10-23 起这个 token **落盘持久化**了（服务重启不该作废已经开着的
+        那个页面——那正是「点『我投了』没反应」的根因）。所以它不再每次启动
+        现生成一个，而是**第一次随机生成、之后一直用同一个**。
+
+        随机性这条判据没有因此失效：第一次的值仍由 `secrets` 生成，
+        仍然不可猜；跨站页面照样读不到它（它只在本页的 DOM 里）。
+        变的是「多久换一次」，不是「从哪儿来」。
+        """
         self.assertGreaterEqual(len(serve.TOKEN), 16, "token 太短")
         src = (ROOT / "tools" / "serve.py").read_text(encoding="utf-8")
-        self.assertRegex(src, r"TOKEN\s*=\s*secrets\.",
+        i = src.index("def _load_or_make_token(")
+        seg = src[i:i + 1500]
+        self.assertRegex(seg, r"secrets\.token_urlsafe\(",
                          "token 不是 secrets 生成的")
+        # **不许写死成常量**：赋值那一行的右边必须是一次调用，不是字面量。
+        m = re.search(r"(?m)^\s*TOKEN\s*=\s*(.+)$", src)
+        self.assertIsNotNone(m, "找不到 TOKEN 的赋值")
+        self.assertNotIn('"', m.group(1),
+                         "token 像是写死在源码里的常量 —— 那就不是凭据了")

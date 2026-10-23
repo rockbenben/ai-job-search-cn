@@ -481,12 +481,24 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [] }: {
                   {reasonSaved && <b>{reason}</b>}
                 </div>
               )}
-              {statusErr && (
-                <span className="status-err" role="alert">
-                  没记上：{statusErr}
-                </span>
-              )}
             </div>
+          )}
+          {/* **没记上**这句话原来写在上面那个 `{marked && …}` 块**里面**。
+              于是失败那一支的 `setMarked(null)`（回滚乐观更新）把整块卸载了，
+              紧接着设置的 `statusErr` **根本没有地方显示**——页面看起来就是
+              「点了没反应」。
+
+              实测 2026-10-23：服务重启过，页面上那个写操作凭据过期了，
+              点「我投了」一律 403；用户看到的零反馈就是这么来的
+              （写操作那层现在会自己换新凭据重试一次，见
+              `data/excluded.ts` 的 `refreshToken`；这一条是**兜底**：
+              真的没写进去时，人必须看得见为什么）。
+
+              所以它挪到 `{marked && …}` **外面**——回滚之后照常显示。 */}
+          {statusErr && (
+            <span className="status-err" role="alert">
+              没记上：{statusErr}
+            </span>
           )}
           <div className="act-row">
             <Button href={job.url} target="_blank" rel="noopener">
