@@ -40,11 +40,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 import _cli  # noqa: E402
+from _live import user_or_skip  # noqa: E402
 
 
 def _seen() -> dict:
-    user = _cli.pick_user("", root=ROOT)
+    # **没有活动用户就 skip，别让它炸。**
+    #
+    # `_cli.pick_user` 在干净 clone（**CI 就是那样**：`users/` 已 gitignore，
+    # 跑出来没有 `.active_user`）上 `SystemExit(1)`。那是它对用户的正确行为，
+    # 但 `SystemExit` 继承 `BaseException` 而不是 `Exception`，`except Exception`
+    # 接不住 —— 于是下面那个 `if not seen: skipTest(...)` 根本没机会跑到，
+    # 这条判据在 CI 上是 **ERROR** 而不是 skip。
+    #
+    # 实测 2026-10-15：CI 的 `Python tool tests` job 就红在这一条
+    # （`FAILED (errors=1, skipped=442)`）。用 `tests/_live.py` 的
+    # `user_or_skip()` —— 它把那个 SystemExit 换成 `SkipTest`。
+    user = user_or_skip()
     p = ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
     if not p.is_file():
         return {}
