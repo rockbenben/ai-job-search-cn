@@ -105,6 +105,182 @@ class TheToolsThatHoldTheStoreUseIt(unittest.TestCase):
         self.assertIn("不要直接重试", wf)
 
 
+class LongWritersCarryTheStamp(unittest.TestCase):
+    """读一次库、中间扫盘/读详情、再写回 —— 这几条都必须带版本戳。
+
+    只覆盖 `writeback` / `prescreen` 是不够的；`jd_store --merge`、`archive`
+    的叠加层、`score.apply` 都会在中间做不少事。下面用「读之后立刻模拟一次
+    面板写入」的方式，证明它们会在写回那一刻让路，而不是静默覆盖。
+    """
+
+    def test_jd_merge_refuses_a_stale_write(self):
+        import datetime as _dt
+        import jd_store
+
+        with self._tmp_repo() as root:
+            import _cli
+            p, key = self._job(root, "https://x/jd", "详情岗")
+            (p.parent / "details").mkdir()
+            (p.parent / "details" / f"{key}.json").write_text(
+                json.dumps({"url": "https://x/jd", "title": "详情岗",
+                            "location": "上海"}, ensure_ascii=False),
+                encoding="utf-8")
+            old_root = jd_store.ROOT
+            jd_store.ROOT = root
+            orig_load = jd_store.load
+
+            def concurrent(user, url, title):
+                data = json.loads(p.read_text(encoding="utf-8"))
+                data["seen"][key]["status"] = "skipped"
+                _cli.atomic_write(p, json.dumps(data, ensure_ascii=False))
+                return orig_load(user, url, title)
+
+            jd_store.load = concurrent
+            try:
+                with self.assertRaises(_cli.StaleWrite):
+                    jd_store.merge_into_seen("u", apply=True)
+                self.assertEqual(
+                    json.loads(p.read_text(encoding="utf-8"))["seen"][key]["status"],
+                    "skipped", "jd_store --merge 把中间用户那一下抹掉了")
+            finally:
+                jd_store.load = orig_load
+                jd_store.ROOT = old_root
+
+    def test_archive_overlay_merges_a_concurrent_write(self):
+        """热库与存档写完以后，叠加层要按「删哪几个键」合并，不是整份盖回去。
+
+        原来的写法拿扫描时那份 `ustate` + 旧戳写回：撞上就整条失败，而热库
+        与存档**已经写完了** —— 用户看到的却是「一个字没动」。
+        """
+        import archive
+        import datetime as _dt
+
+        with self._tmp_repo() as root:
+            import _cli
+            p, key_b = self._job(root, "https://x/b", "归档岗",
+                                 status="expired", date="2020-01-01")
+            data = json.loads(p.read_text(encoding="utf-8"))
+            keep = _cli.stable_id("https://x/a", "留着的岗")
+            data["seen"][keep] = {
+                "url": "https://x/a", "title": "留着的岗", "status": "ranked",
+                "rank_score": 70, "rank_verdict": "值得投"}
+            _cli.atomic_write(p, json.dumps(data, ensure_ascii=False))
+            _cli.set_user_decision(p, key_b, "expired", date="2020-01-01")
+            us = _cli.user_state_path(p)
+            old_root = archive.ROOT
+            archive.ROOT = root
+            orig = archive.collect_material_urls
+
+            def concurrent(user):
+                st = json.loads(us.read_text(encoding="utf-8"))
+                st[keep] = {"decision": "skipped", "date": "2026-10-24"}
+                _cli.atomic_write(us, json.dumps(st, ensure_ascii=False))
+                return set()
+
+            archive.collect_material_urls = concurrent
+            try:
+                r = archive.run("u", True, _dt.date(2026, 10, 24))
+                self.assertFalse(r.get("overlay_stale"), r)
+                st = json.loads(us.read_text(encoding="utf-8"))
+                self.assertIn(keep, st, "归档把并发写入的叠加层决定抹掉了")
+                self.assertNotIn(key_b, st, "已归档的岗还留在叠加层里")
+            finally:
+                archive.collect_material_urls = orig
+                archive.ROOT = old_root
+
+    def test_score_apply_refuses_a_stale_write(self):
+        import score
+
+        with self._tmp_repo() as root:
+            import _cli
+            p, key = self._job(root, "https://x/score", "评分岗")
+            data = json.loads(p.read_text(encoding="utf-8"))
+            dims = {"技能与经验": 60, "薪资与职级": 60,
+                    "强度与公司性质": 60, "发展与风险": 60}
+            data["seen"][key]["rank_breakdown"] = dict(dims, 依据="原依据")
+            _cli.atomic_write(p, json.dumps(data, ensure_ascii=False))
+            rows = [{"key": key, "dims": {**dims, "技能与经验": 61},
+                     "score": 61, "verdict": "值得投",
+                     "old": (dims, 60, "可以考虑"), "doc": None,
+                     "text": None, "entry": data["seen"][key]}]
+            old_root = score.ROOT
+            score.ROOT = root
+            orig = score.scoring.rewrite_pay_said
+
+            def concurrent(basis, pay):
+                data = json.loads(p.read_text(encoding="utf-8"))
+                data["seen"][key]["status"] = "skipped"
+                _cli.atomic_write(p, json.dumps(data, ensure_ascii=False))
+                return orig(basis, pay)
+
+            score.scoring.rewrite_pay_said = concurrent
+            try:
+                with self.assertRaises(_cli.StaleWrite):
+                    score.apply("u", rows, "2026-10-24")
+                self.assertEqual(
+                    json.loads(p.read_text(encoding="utf-8"))["seen"][key]["status"],
+                    "skipped", "score.py --apply 把中间用户那一下抹掉了")
+            finally:
+                score.scoring.rewrite_pay_said = orig
+                score.ROOT = old_root
+
+    @staticmethod
+    def _tmp_repo():
+        import tempfile
+
+        class _T:
+            def __enter__(self):
+                self._t = tempfile.TemporaryDirectory()
+                self.root = Path(self._t.name)
+                (self.root / "users" / "u" / "job_scraper").mkdir(parents=True)
+                return self.root
+
+            def __exit__(self, *a):
+                self._t.cleanup()
+
+        return _T()
+
+    @staticmethod
+    def _job(root, url, title, *, status="ranked", date="2026-01-01"):
+        p = root / "users" / "u" / "job_scraper" / "seen_jobs.json"
+        key = _cli.stable_id(url, title)
+        entry = {"url": url, "title": title, "company": "某公司",
+                 "status": status, "rank_score": 60,
+                 "rank_verdict": "可以考虑"}
+        if status == "expired":
+            entry["expired_date"] = date
+        p.write_text(json.dumps({"seen": {key: entry}}, ensure_ascii=False),
+                     encoding="utf-8")
+        return p, key
+
+
+class ThePortalBudgetIsAlsoAStore(unittest.TestCase):
+    """风控额度也会被两个进程同时读写，写回要能发现别人先改了。"""
+
+    def test_a_stale_budget_write_is_refused(self):
+        import tempfile
+        import portal_budget as pb
+
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "users" / "u" / "job_scraper").mkdir(parents=True)
+            old = pb.ROOT
+            pb.ROOT = root
+            try:
+                pb.save("u", {"猎聘": {"actions": []}})
+                mine, stamp = pb.load_stamped("u")
+                other = {"猎聘": {"actions": [], "blocks": {}}}
+                pb.save("u", other)
+                with self.assertRaises(_cli.StaleWrite):
+                    pb.save("u", mine, expect=stamp)
+                self.assertEqual(
+                    json.loads((root / "users" / "u" / "job_scraper"
+                                / "portal_budget.json").read_text(encoding="utf-8")),
+                    other, "额度文件的并发写被静默覆盖了")
+            finally:
+                pb.ROOT = old
+
+
 class UserDecisionsLiveOutsideTheJobStore(unittest.TestCase):
     """用户自己下的决定不写职位库——这是根治，`StaleWrite` 只是保险。
 

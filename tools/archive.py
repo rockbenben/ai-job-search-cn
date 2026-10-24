@@ -141,6 +141,42 @@ def collect_material_urls(user: str) -> set:
             if a.get("url")}
 
 
+def _forget_overlay_keys(path: Path, keys) -> None:
+    """把已归档的岗从叠加层删掉。**读回最新版本再删，不拿扫描时的快照覆盖。**
+
+    归档扫盘要几秒，这期间用户可能在面板上点了「不投」。原来用扫描时那份
+    `ustate` + 当时的戳写回：撞上就整条 `StaleWrite`，而此时热库与存档
+    **已经写完了** —— `run_cli` 会补一句「你的数据一个字没动」，那是假话。
+
+    现在按「删哪几个键」而不是「整份是什么」来写：每次重读、只 pop 这几个，
+    别人新加的决定原样保留。连撞三次就抛，由 `run` 接住并如实报出。
+    """
+    keys = set(keys)
+    for _ in range(3):
+        if not path.is_file():
+            return
+        try:
+            raw, stamp = _cli.load_json_stamped(path)
+        except (ValueError, OSError, SystemExit):
+            # 叠加层坏了不该让归档失败：用户决定已经折进存档条目里了。
+            return
+        if not isinstance(raw, dict):
+            return
+        hit = keys & set(raw)
+        if not hit:
+            return
+        for k in hit:
+            raw.pop(k, None)
+        try:
+            _cli.atomic_write(path, json.dumps(raw, ensure_ascii=False, indent=1),
+                              expect=stamp)
+            return
+        except _cli.StaleWrite:
+            continue
+    raise _cli.StaleWrite(
+        f"{path.name} 在归档期间被连着改了三次，已归档的那几条用户决定没清掉")
+
+
 def run(user: str, apply: bool, today: _dt.date) -> dict:
     sj, arc = paths(user)
     if not sj.is_file():
@@ -148,9 +184,20 @@ def run(user: str, apply: bool, today: _dt.date) -> dict:
     data, stamp = _cli.load_json_stamped(sj)
     seen = _cli.seen_of(data)
     _cli.stop_on_unreadable_rows(seen, sj)
-    ustate = _cli.load_user_state(sj)
+    us = _cli.user_state_path(sj)
+    if us.is_file():
+        try:
+            raw_us, _us_stamp = _cli.load_json_stamped(us)
+            ustate = ({k: v if isinstance(v, dict) else {}
+                       for k, v in raw_us.items()} if isinstance(raw_us, dict)
+                      else {})
+        except (ValueError, OSError, SystemExit):
+            ustate = {}
+    else:
+        ustate = {}
     chosen = pick(seen, ustate, collect_applied_keys(user, seen),
                   collect_material_urls(user), today)
+    overlay_stale = ""
     if apply and chosen:
         old = json.loads(arc.read_text(encoding="utf-8")) if arc.is_file() else {"seen": {}}
         cold = _cli.seen_of(old)
@@ -170,11 +217,17 @@ def run(user: str, apply: bool, today: _dt.date) -> dict:
         _cli.atomic_write(arc, json.dumps(old, ensure_ascii=False, indent=1))
         _cli.atomic_write(sj, json.dumps(data, ensure_ascii=False, indent=1),
                           expect=stamp)
-        _cli.atomic_write(_cli.user_state_path(sj),
-                          json.dumps(ustate, ensure_ascii=False, indent=1))
+        try:
+            _forget_overlay_keys(us, chosen)
+        except _cli.StaleWrite as exc:
+            # 热库与存档已经落盘了，这里**不能**让整条命令报「没写」。
+            # 那几条叠加层记录对应的岗已经不在热库，留着也不会被再次归档；
+            # 如实说清，下一轮不会再碰它们。
+            overlay_stale = str(exc)
     return {"chosen": chosen, "hot": len(seen),
             "cold": (len(_cli.seen_of(json.loads(arc.read_text(encoding="utf-8"))))
-                     if arc.is_file() else 0)}
+                     if arc.is_file() else 0),
+            "overlay_stale": overlay_stale}
 
 
 def revive(user: str, apply: bool = False) -> dict:
@@ -241,6 +294,12 @@ def main(argv=None) -> int:
         print(f"  {why:<18} {(seen_title(k))}")
     if n > 10:
         print(f"  …… 另有 {n - 10} 个")
+    if r.get("overlay_stale"):
+        # 热库和存档已经写完了，这不是「没写」——只说明叠加层里那几行
+        # 用户决定没清掉。它们对应的岗已不在热库，不会再被归档。
+        print(f"  ⚠ {r['overlay_stale']}。岗位已经归档，不影响存档；"
+              f"叠加层里那几行可以手动删，或在下一轮归档时随热库一起清掉。",
+              file=sys.stderr)
     print("存档在 job_scraper/archive.json，不是删除；要重新判定先 --revive")
     return 0
 

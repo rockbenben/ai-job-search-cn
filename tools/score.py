@@ -230,7 +230,8 @@ def plan(user: str, deep: bool = False) -> tuple[list, dict]:
 
 def apply(user: str, rows: list, today: str) -> None:
     p = ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
-    store = json.loads(p.read_text(encoding="utf-8"))
+    # 这一趟会先改多份 evaluation.md，最后才写库；用版本戳兜住中间那段时间。
+    store, stamp = _cli.load_json_stamped(p)
     seen = _cli.seen_of(store)
     for r in rows:
         v = seen[r["key"]]
@@ -252,7 +253,7 @@ def apply(user: str, rows: list, today: str) -> None:
         if r.get("doc") is not None:
             _cli.atomic_write(r["doc"], r["text"])
     _cli.atomic_write(p, json.dumps(store, ensure_ascii=False, indent=1),
-                      encoding="utf-8")
+                      encoding="utf-8", expect=stamp)
 
 
 def main(argv=None) -> int:
@@ -299,4 +300,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_cli.run_cli(main))

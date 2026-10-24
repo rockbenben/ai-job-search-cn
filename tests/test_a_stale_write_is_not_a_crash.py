@@ -34,7 +34,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import _cli  # noqa: E402
 
-STAMPED = ("prescreen", "writeback", "archive", "audit_pipeline", "rekey", "ingest")
+STAMPED = ("prescreen", "writeback", "archive", "audit_pipeline", "rekey", "ingest",
+           "score", "jd_store", "portal_budget", "fetch_details")
 
 
 class TheUserSeesASentence(unittest.TestCase):
@@ -117,7 +118,9 @@ class EveryStampedToolGoesThroughIt(unittest.TestCase):
         import re
         stamps = set()
         for f in (ROOT / "tools").glob("*.py"):
-            if f.name in ("_cli.py",):
+            # `serve.py` 是常驻服务：它的 StaleWrite 在 `do_POST` 里换成 409，
+            # 不走 `run_cli()`；其余带戳写盘的都是命令入口。
+            if f.name in ("_cli.py", "serve.py"):
                 continue
             if re.search(r"expect=", f.read_text(encoding="utf-8")):
                 stamps.add(f.stem)

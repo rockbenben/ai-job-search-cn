@@ -149,6 +149,15 @@ def _seen(user: str) -> tuple[Path, dict]:
     return p, json.loads(p.read_text(encoding="utf-8"))
 
 
+def _seen_stamped(user: str):
+    """读主库并带上版本戳；`merge_into_seen` 扫完全部详情后才写回。"""
+    p = ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
+    if not p.is_file():
+        raise SystemExit(_cli.no_store(p))
+    data, stamp = _cli.load_json_stamped(p)
+    return p, data, stamp
+
+
 #: 分隔符写法不统一：列表页爱用 `·`，详情页爱用 `-`，还有全角空格。
 #: 比前缀之前先抹平，否则 `上海·徐汇` 和 `上海-徐汇区…` 会被当成两个地方。
 _SEPS = str.maketrans({c: "" for c in "·・-—–/ 　	"})
@@ -209,7 +218,7 @@ def merge_into_seen(user: str, apply: bool) -> dict:
     —— 只报不给动作，看见了也只能干看着。**这一步不动数据**：改不改由人决定，
     和上面「不静默改写」是同一条原则。
     """
-    path, data = _seen(user)
+    path, data, stamp = _seen_stamped(user)
     seen = _cli.seen_of(data)
     filled: dict[str, int] = {}
     conflicts: list[dict] = []
@@ -250,7 +259,8 @@ def merge_into_seen(user: str, apply: bool) -> dict:
                 })
         touched += changed
     if apply and touched:
-        _cli.atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1))
+        _cli.atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1),
+                          expect=stamp)
     return {"entries": touched, "filled": filled, "conflicts": conflicts,
             "refined": refined}
 
@@ -447,4 +457,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(_cli.run_cli(main))

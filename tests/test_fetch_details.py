@@ -18,17 +18,23 @@ URL——**第一个就撞限流**——全部发了出去，一个都没停。1
 **安全机制不能靠每次现写。** 所以逻辑固化进 `tools/fetch_details.py`，这里盯住它。
 """
 
+import datetime as dt
 import json
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
+import _cli  # noqa: E402
 import fetch_details as fd  # noqa: E402
+import portal_budget as pb  # noqa: E402
 
 
 def proc(stdout="", stderr="", code=0) -> subprocess.CompletedProcess:
@@ -114,6 +120,119 @@ class StopsImmediatelyOnRateLimit(unittest.TestCase):
                    fetch=self._fetch({}), sleep=lambda s: None, budget={})
         self.assertEqual(len(self.calls), 0, "试运行不该发任何请求")
         self.assertEqual(r["attempted"], 0)
+
+
+class AnExistingCooldownStopsTheRun(unittest.TestCase):
+    """已经封着的通道，不该由这个工具再发出一次请求。
+
+    `fetch_details` 自己会记账、撞到限流还会 `block()`，但它此前只做了
+    「撞了之后停」，没做「来之前先看闸门」——上一轮留下的 24 小时冷却是
+    可以绕过的。这个工具是主动发请求的那一方，闸门必须在这里生效。
+    """
+
+    def test_a_blocked_channel_sends_nothing(self):
+        budget = {}
+        pb.block(budget, "liepin-search", "上一轮撞了限流",
+                 dt.datetime(2026, 10, 24, 12, 0, 0))
+        calls = []
+        with mock.patch.object(fd, "find_runtime", return_value=[]):
+            r = fd.run("张三", [{"url": "https://x/1", "title": "岗"}],
+                       apply=True,
+                       fetch=lambda runtime, url: calls.append(url) or {},
+                       sleep=lambda s: None, budget=budget)
+        self.assertEqual(calls, [], "通道封着，fetch_details 仍然发了请求")
+        self.assertEqual(r["stopped"], "BLOCKED")
+        self.assertIn("停着", r.get("gate", ""))
+
+
+class AnotherWriterDoesNotGetClobbered(unittest.TestCase):
+    """补一轮 JD 要几分钟到几十分钟，额度文件却可能被总览页改。
+
+    这一趟只在开跑时读一次。中间用户点了「继续抓」（`serve.apply_unblock`
+    读→改→写一次落盘），拿开跑那份快照写回去就把他刚解开的冷却
+    **盖回封着**——两边都不报错，而告警条会重新挂上。
+    """
+
+    def setUp(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        (tmp / "users" / "u" / "job_scraper").mkdir(parents=True)
+        old = pb.ROOT, fd.ROOT
+        pb.ROOT, fd.ROOT = tmp, tmp
+        self.addCleanup(lambda: (setattr(pb, "ROOT", old[0]),
+                                 setattr(fd, "ROOT", old[1])))
+        orig_save = fd.st.save
+        fd.st.save = lambda user, d: None
+        self.addCleanup(lambda: setattr(fd.st, "save", orig_save))
+        patcher = mock.patch.object(fd, "find_runtime", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _run_one(self, fetch):
+        return fd.run("u", [{"url": "https://x/1", "title": "岗"}],
+                      apply=True, fetch=fetch, sleep=lambda s: None)
+
+    def test_a_concurrent_action_is_merged_not_overwritten(self):
+        pb.save("u", {"猎聘": {"actions": []}})
+        orig_note, fired = pb.note, {"yes": False}
+
+        def note_then_other_writer(data, portal, n, now, kind=""):
+            orig_note(data, portal, n, now, kind)
+            if not fired["yes"]:
+                fired["yes"] = True
+                other, _ = pb.load_stamped("u")
+                pb.note(other, "BOSS", 1, now, kind="navigate")
+                pb.save("u", other)
+
+        with mock.patch.object(pb, "note", note_then_other_writer):
+            r = self._run_one(lambda bun, url: {
+                "url": url, "title": "岗", "description": "正文" * 60})
+        self.assertEqual(r["ok"], 1)
+        self.assertIsNone(r["stopped"])
+        saved = pb.load("u")
+        self.assertTrue(saved.get("BOSS", {}).get("actions"),
+                        "另一边记的动作被这一趟的旧快照写没了")
+        self.assertTrue(saved.get("猎聘", {}).get("actions"),
+                        "这一趟自己的动作没记上")
+
+    def test_three_collisions_in_a_row_stop_the_run(self):
+        """连着撞三次说明另一个人在连续写 —— 这一趟该停，不是无限重试。"""
+        pb.save("u", {"猎聘": {"actions": []}})
+        calls = []
+
+        def always_stale(user, data, *, expect=None):
+            raise _cli.StaleWrite("别人一直在写")
+
+        with mock.patch.object(pb, "save", always_stale):
+            r = self._run_one(lambda bun, url: calls.append(url) or {})
+        self.assertEqual(calls, [], "额度写不进去，请求还是发出去了")
+        self.assertEqual(r["stopped"], "BUDGET_STALE")
+
+    def test_a_block_that_appears_mid_write_stops_the_request(self):
+        """读的时候还没有文件，不等于写的时候也没有。
+
+        `None` 在 `atomic_write` 里是「不比对」——第一次记账正好撞上别人
+        刚建了一份带冷却的文件时，整份被他那份盖掉的是**我们**这份空快照，
+        冷却看着还在；反过来我们这份若带着旧记录，盖掉的就是他的。这里用
+        `NO_FILE` 让那次写撞出来，再合并回去看冷却。
+        """
+        orig_note, fired = pb.note, {"yes": False}
+
+        def note_then_block(data, portal, n, now, kind=""):
+            orig_note(data, portal, n, now, kind)
+            if not fired["yes"]:
+                fired["yes"] = True
+                fresh = {}
+                pb.block(fresh, "liepin-search", "另一边撞了限流", now)
+                pb.save("u", fresh)
+
+        calls = []
+        with mock.patch.object(pb, "note", note_then_block):
+            r = self._run_one(lambda bun, url: calls.append(url) or {})
+        self.assertEqual(calls, [], "合并后已经看见冷却，还是把请求发了出去")
+        self.assertEqual(r["stopped"], "BLOCKED")
+        self.assertIn("另一边撞了限流",
+                      pb.load("u")["猎聘"]["blocks"]["cli"]["why"])
 
 
 class ThrottleIsHonoured(unittest.TestCase):

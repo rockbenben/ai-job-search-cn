@@ -41,8 +41,10 @@ CLI 和浏览器用的是同一个账号」——核实 `liepin-search` 的请�
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -773,3 +775,47 @@ class TheSlowdownNumberHasOneHome(unittest.TestCase):
             bad, [],
             f"这几处拿「1/N 速率」说降速，而 N 与 `SLOW_GAP_FACTOR`"
             f"（{pb.SLOW_GAP_FACTOR}）对不上：{bad}")
+
+
+class ABrokenBudgetFileFailsClosed(unittest.TestCase):
+    """读不出来的额度文件不能变成「什么都没封」。"""
+
+    def _with_user_file(self, raw: bytes):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = Path(self._tmp.name)
+        (root / "users" / "u" / "job_scraper").mkdir(parents=True)
+        (root / "users" / "u" / "job_scraper" / "portal_budget.json").write_bytes(raw)
+        old = pb.ROOT
+        pb.ROOT = root
+        self.addCleanup(setattr, pb, "ROOT", old)
+
+    def test_a_bom_prefixed_budget_still_reads_its_cooldown(self):
+        """记事本/PowerShell 存 UTF-8 会带 BOM；BOM 不该被当成坏文件。"""
+        data = {"猎聘": {"blocks": {"cli": {
+            "until": "2099-01-01T00:00:00", "since": "2026-10-24T12:00:00",
+            "why": "测试封控"}}}}
+        self._with_user_file(b"\xef\xbb\xbf" + json.dumps(
+            data, ensure_ascii=False).encode("utf-8"))
+        loaded = pb.load("u")
+        self.assertTrue(
+            pb.block_state(loaded, "liepin-search", NOW, lane="cli")["blocked"],
+            "带 BOM 的额度文件被读成空的 —— 冷却被静默清掉了")
+
+    def test_an_unreadable_file_blocks_every_site(self):
+        """坏 JSON 不是「没封过」，而是「不知道封没封」——按封着算。"""
+        self._with_user_file(b"{not json")
+        loaded = pb.load("u")
+        for site in pb.PORTALS:
+            with self.subTest(site=site):
+                self.assertTrue(
+                    pb.block_state(loaded, site, NOW)["blocked"],
+                    f"{site} 在坏额度文件上被判成了可以抓")
+
+    def test_recording_a_hit_on_a_corrupt_lane_does_not_crash(self):
+        """撞限流后要记账，而一条坏掉的 lane 记录不该把这条路炸掉。"""
+        data = {"猎聘": {"blocks": {"cli": "oops"}}}
+        pb.block(data, "liepin-search", "撞了限流", NOW)
+        self.assertTrue(
+            pb.block_state(data, "liepin-search", NOW, lane="cli")["blocked"],
+            "坏记录被撞了一次之后没有变成有效的封控记录")

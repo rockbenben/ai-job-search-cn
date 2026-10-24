@@ -269,17 +269,77 @@ def path_for(user: str) -> Path:
     return ROOT / "users" / user / "job_scraper" / "portal_budget.json"
 
 
-def load(user: str) -> dict:
+#: 整份额度文件读不出来时给用户的话。和单条 `blocks` 坏掉时的 `UNREADABLE_WHY`
+#: 同一个方向：**读不出来 ≠ 没封过**。
+UNREADABLE_BUDGET_WHY = (
+    "额度文件读不出来（被改坏，或不是这个版本写的）。保守起见按四家都封着算；"
+    "确认平台没问题就在总览页点「继续抓」，或跑 "
+    "python tools/portal_budget.py --clear <渠道名>"
+    "（<渠道名> 换成告警条上那一条），也可以先备份再修文件")
+
+
+def _unreadable_budget() -> dict:
+    """整份额度文件坏了时的替身：**每家、每条通道都按封着算**。
+
+    原来 `load()` 遇到坏 JSON 返回 `{}`，而 `{}` 在这个数据模型里的意思是
+    「一条冷却都没有」——一个手改坏的文件把风控静默清零。这个替身让所有
+    读侧（`check` / 面板 / 合规检查）都走「保守拒绝」，用户能看见、
+    也能用 `--clear` 自己解。
+    """
+    now = dt.datetime.now().isoformat(timespec="seconds")
+    until = "9999-12-31T23:59:59"
+    return {
+        site: {"blocks": {
+            lane: {"until": until, "since": now, "why": UNREADABLE_BUDGET_WHY,
+                   "where": ""}
+            for lane in lanes_of(site)}}
+        for site in PORTALS
+    }
+
+
+#: 额度文件不存在时的版本戳。**不能用 `None`** —— `atomic_write` 把 `None`
+#: 读作「不比对」，于是「读的时候还没有文件、写的时候别人刚建了一份」
+#: 会变成静默覆盖。真实文件的 mtime_ns 不会是 0，这个值撞不上任何存量版本。
+NO_FILE = (0, 0)
+
+
+def load_stamped(user: str) -> tuple[dict, tuple]:
+    """读额度，连同版本戳 —— 与 `save(..., expect=...)` 配对。
+
+    **额度也是会被两个进程同时读改的。** 实测的路径：
+    `fetch_details` 一次补几十份 JD，开跑读一次、每抓一份记一次；
+    而总览页上的「继续抓」（`serve.apply_unblock`）随时可能在中间落一次盘。
+    没有这道保险时，长跑那一侧手里的旧快照会把用户刚解开的冷却
+    **原样盖回封着**，两边都不报错。
+
+    读不出来时仍按「四家都封着」返回（见 `_unreadable_budget`），
+    但带着**真实的戳**：调用方据此仍然可以解封/修复这份文件，
+    同时不会把别人刚修好的版本盖掉。
+
+    先取戳再读内容，顺序与 `_cli.load_json_stamped` 一致 —— 反过来会拿到
+    「旧内容配新戳」，写回时比对通过，正好静默盖掉别人那一笔。
+    """
     p = path_for(user)
     if not p.is_file():
-        return {}
+        return {}, NO_FILE
+    stamp = NO_FILE
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        stamp = _cli._stamp_of(p)
+        data = json.loads(p.read_text(encoding="utf-8-sig"))
     except (ValueError, OSError):
-        return {}                  # 额度文件坏了不该让抓取崩掉，当空的处理
+        # 取戳与读取之间被删了：按「读不出来」处理，别把 FileNotFoundError
+        # 漏给调用方。戳用 NO_FILE，写回时若文件又出现会撞 StaleWrite。
+        return _unreadable_budget(), stamp
+    if not isinstance(data, dict):
+        return _unreadable_budget(), stamp
+    return data, stamp
 
 
-def save(user: str, data: dict) -> None:
+def load(user: str) -> dict:
+    return load_stamped(user)[0]
+
+
+def save(user: str, data: dict, *, expect: tuple | None = None) -> tuple:
     """**不给不存在的用户凭空造目录。**
 
     `users/<名>/` 只能由 `/job-setup` 建。走到这里时它必然已经存在——额度是
@@ -295,6 +355,10 @@ def save(user: str, data: dict) -> None:
 
     留下的痕迹到 2026-08-24 还在：`users/张三/`（只有这一个额度文件）和
     `users/谁/`（连文件都没有）。终端把它们当成可切换的用户报了五天。
+
+    `expect` 传 `load_stamped` 给的戳时，别人先写过就抛 `_cli.StaleWrite`，
+    **不写**。返回写完之后的新戳：连记几笔的调用方（`fetch_details` 每发一个
+    请求记一笔）拿它接着用，不必重读一遍。
     """
     p = path_for(user)
     if not p.parent.parent.is_dir():
@@ -302,7 +366,10 @@ def save(user: str, data: dict) -> None:
             f"没有 users/{user}/ 这个用户 —— 额度不该给一个不存在的人记账。"
             f"（测试里想跳过写盘就传 budget= 进去，别用假名字）")
     p.parent.mkdir(parents=True, exist_ok=True)
-    _cli.atomic_write(p, json.dumps(data, ensure_ascii=False, indent=1))
+    # 用 `atomic_write` 返回的戳（替换前在临时文件上取的），不要替换后再 stat：
+    # 那样会把「替换之后又被别人写了一次」的版本当成自己的基线。
+    return _cli.atomic_write(p, json.dumps(data, ensure_ascii=False, indent=1),
+                             expect=expect)
 
 
 def _row(data: dict, site: str) -> dict:
@@ -885,16 +952,22 @@ def block(data: dict, portal: str, why: str, now: dt.datetime,
     # 探失败时最顺手的动作就是再 `--block` 一次记一笔——而那会把 24 小时从头
     # 再算。**越想确认它恢复没有，就越晚能用**，功能变成惩罚。
     # 靠「记得别这么做」防不住，所以在这里按构造消掉。
-    old = _one_lane(blocks.get(lane) or {}, lane, now)
+    prev = blocks.get(lane)
+    old = _one_lane(prev or {}, lane, now)
+    old_ok = isinstance(prev, dict)
+    # 原来的 `blocks[lane]["until"]` 假设 prev 一定是字典；而 `_one_lane` 刚刚
+    # 明确把「非字典」也判成 blocked（safety 方向正确）。两边一撞，撞限流后
+    # 想记账的那一下反而 TypeError —— 这里只在 prev 真是字典时保留旧时刻。
     blocks[lane] = {
-        "until": (blocks[lane]["until"] if old["blocked"] else
-                  (now + dt.timedelta(hours=BLOCK_COOLDOWN_H)
-                   ).isoformat(timespec="seconds")),
+        "until": (((prev.get("until") if old_ok else None)
+                   if old["blocked"] else None)
+                  or (now + dt.timedelta(hours=BLOCK_COOLDOWN_H)
+                      ).isoformat(timespec="seconds")),
         # 撞上的时刻。**同 `until`，本来就在停着时不重写** —— 否则每撞一次
         # 「已经封了多久」就归零，读起来像刚发生的。
-        "since": (blocks[lane].get("since") if old["blocked"] else
-                  now.isoformat(timespec="seconds"))
-                 or now.isoformat(timespec="seconds"),
+        "since": (((prev.get("since") if old_ok else None)
+                   if old["blocked"] else None)
+                  or now.isoformat(timespec="seconds")),
         "why": why or "撞过风控",
         # **只有浏览器那条配得上一个「去处理」的链接。** CLI 撞的是限流，
         # 没有页面可去、也没有验证可过——给它退到首页，等于让用户点开一个
@@ -1330,4 +1403,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # 走收口：`--block` / `--clear` 这些写盘路径也会撞上 `StaleWrite`
+    # （比如 `fetch_details` 正在连着记动作），撞上时该是一句「再跑一遍」。
+    raise SystemExit(_cli.run_cli(main))

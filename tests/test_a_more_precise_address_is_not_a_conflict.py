@@ -108,13 +108,13 @@ class TheTwoKindsAreCountedApart(unittest.TestCase):
 
     def _run(self, entry: dict, detail: dict) -> dict:
         seen = {"k": dict(entry)}
-        real_load, real_seen = st.load, st._seen
+        real_load, real_seen = st.load, st._seen_stamped
         st.load = lambda u, url, title: detail
-        st._seen = lambda u: (Path("nowhere.json"), {"seen": seen})
+        st._seen_stamped = lambda u: (Path("nowhere.json"), {"seen": seen}, None)
         try:
             return st.merge_into_seen("谁", apply=False)
         finally:
-            st.load, st._seen = real_load, real_seen
+            st.load, st._seen_stamped = real_load, real_seen
 
     def test_a_refinement_lands_in_refined(self):
         r = self._run({"url": "u", "title": "t", "location": "上海"},
@@ -146,13 +146,13 @@ class TheTwoKindsAreCountedApart(unittest.TestCase):
 
     def test_it_still_does_not_overwrite(self):
         seen = {"k": {"url": "u", "title": "t", "salary": "15-20k"}}
-        real_load, real_seen = st.load, st._seen
+        real_load, real_seen = st.load, st._seen_stamped
         st.load = lambda u, url, title: {"salary": "30-40k"}
-        st._seen = lambda u: (Path("nowhere.json"), {"seen": seen})
+        st._seen_stamped = lambda u: (Path("nowhere.json"), {"seen": seen}, None)
         try:
             st.merge_into_seen("谁", apply=False)
         finally:
-            st.load, st._seen = real_load, real_seen
+            st.load, st._seen_stamped = real_load, real_seen
         self.assertEqual(seen["k"]["salary"], "15-20k", "把打过分的值改掉了")
 
 
@@ -160,13 +160,13 @@ class ItSaysWhetherADecisionRodeOnTheOldValue(unittest.TestCase):
     def _judged(self, entry_extra: dict) -> bool:
         seen = {"k": {"url": "u", "title": "t", "salary": "15-20k",
                       **entry_extra}}
-        real_load, real_seen = st.load, st._seen
+        real_load, real_seen = st.load, st._seen_stamped
         st.load = lambda u, url, title: {"salary": "30-40k"}
-        st._seen = lambda u: (Path("nowhere.json"), {"seen": seen})
+        st._seen_stamped = lambda u: (Path("nowhere.json"), {"seen": seen}, None)
         try:
             r = st.merge_into_seen("谁", apply=False)
         finally:
-            st.load, st._seen = real_load, real_seen
+            st.load, st._seen_stamped = real_load, real_seen
         return r["conflicts"][0]["judged"]
 
     def test_a_rank_verdict_counts(self):
@@ -271,13 +271,13 @@ class TheReportSeparatesThemAndNamesAnAction(unittest.TestCase):
 class TheSurroundingContractIsIntact(unittest.TestCase):
     def test_the_no_overwrite_rule_is_still_documented(self):
         i = SRC.index("def merge_into_seen(")
-        seg = flat(SRC[i:SRC.index('    path, data = _seen(user)', i)])
+        seg = flat(SRC[i:SRC.index('    path, data, stamp = _seen_stamped(user)', i)])
         self.assertIn("**只补空缺**：已有值一律保留", seg)
         self.assertRegex(seg, r"会让「分数为什么变了」无从追查")
 
     def test_the_docstring_carries_the_measurement(self):
         i = SRC.index("def merge_into_seen(")
-        seg = flat(SRC[i:SRC.index('    path, data = _seen(user)', i)])
+        seg = flat(SRC[i:SRC.index('    path, data, stamp = _seen_stamped(user)', i)])
         self.assertRegex(seg, r"报的是「\*\*503 处\*\*两边不一致」")
         self.assertRegex(seg, r"\*\*500 处是 location\*\*")
         self.assertIn("2026-08-23", seg)
@@ -285,7 +285,7 @@ class TheSurroundingContractIsIntact(unittest.TestCase):
     def test_the_docstring_says_this_step_changes_nothing(self):
         """给了命令之后最容易滑向「那就顺手改了吧」。"""
         i = SRC.index("def merge_into_seen(")
-        seg = flat(SRC[i:SRC.index('    path, data = _seen(user)', i)])
+        seg = flat(SRC[i:SRC.index('    path, data, stamp = _seen_stamped(user)', i)])
         self.assertRegex(seg, r"\*\*这一步不动数据\*\*")
 
     def test_the_merge_fields_still_include_salary_and_location(self):

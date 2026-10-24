@@ -388,6 +388,46 @@ def missing_urls(user: str, recheck: bool = False) -> list[dict]:
     return out
 
 
+def _wait_for_gate(budget, sleep) -> str:
+    """等到 `portal_budget.check()` 放行为止；返回空串表示可以发请求。
+
+    跨进程的上一次动作也要算进来：`INTERVAL_S` 只管这一趟内部的节奏，
+    而上一轮/另一条命令留下的间隔由闸门判断。返回非空串表示**停**，
+    调用方要把原因带给用户。
+    """
+    why = ""
+    for _ in range(pb.MIN_ACTION_GAP_S + 1):
+        ok, why = pb.check(budget, CLI_PORTAL, _dt.datetime.now())
+        if ok:
+            return ""
+        if "动作太密" not in why:
+            return why
+        sleep(1)
+    return why
+
+
+def _commit_budget(user: str, budget: dict, stamp, apply_note) -> tuple:
+    """把这一笔额度写回去，返回 `(文件里的最新数据, 新戳)`。
+
+    **这一趟是长跑，额度文件却可能被别人动。** 实测路径：补几十份 JD 要几分钟
+    到几十分钟，中间用户完全可能在总览页点「继续抓」——那边读、改、写一次
+    就落盘了。拿开跑时那份快照直接写回去，会把用户刚解开的冷却**盖回封着**，
+    而两边都不报错。
+
+    所以撞上 `StaleWrite` 时不覆盖：把**他那一份**读回来，再把这一笔
+    （一次动作或一次封控）补上去重写。连撞三次就抛出去 —— 那已经不是偶发
+    的一次点击，而是另一个人在连续写，这一趟该停。
+    """
+    for _ in range(3):
+        try:
+            return budget, pb.save(user, budget, expect=stamp)
+        except _cli.StaleWrite:
+            budget, stamp = pb.load_stamped(user)
+            apply_note(budget)
+    raise _cli.StaleWrite(
+        f"{pb.path_for(user).name} 在几秒内被连着改了三次，这一趟先停")
+
+
 def run(user: str, entries: list[dict], apply: bool, fetch=fetch_one,
         sleep=time.sleep, budget=None) -> dict:
     """逐个抓，**撞停手码立刻返回**。
@@ -401,10 +441,22 @@ def run(user: str, entries: list[dict], apply: bool, fetch=fetch_one,
     冷却还在，13 个 URL 一个都没发出去**，四个测试集体变红而代码没动过。
     （同一个坑 `user_state` 踩过一次，那次的解法是把路径从库文件推出来。）
     """
-    runtime = find_runtime() if apply else []
     ok, failed, stopped = 0, [], None
     _persist = budget is None
-    _budget = pb.load(user) if _persist else budget
+    if _persist:
+        _budget, _stamp = pb.load_stamped(user)
+    else:
+        _budget, _stamp = budget, None
+    # **来之前先看闸门。** `fetch_details` 自己会记账、撞到限流也会 `block()`，
+    # 但上一轮留下的冷却在它这里是可以直接绕过的——它是主动发请求的那一方，
+    # 闸门必须在这里生效。冷却不等于「动作太密」：前者要停手，后者可以等。
+    # 这一趟内部的间隔由 `INTERVAL_S` 负责；这里只处理**开跑前**已有的状态。
+    if apply and entries:
+        why = _wait_for_gate(_budget, sleep)
+        if why:
+            return {"ok": 0, "failed": [], "stopped": "BLOCKED",
+                    "attempted": 0, "gate": why}
+    runtime = find_runtime() if apply else []
     # **没有次数上限了**（2026-08-26）。这里原来先问 `remaining_today`、
     # 把这一批砍到今天剩下的额度；那个额度是我们自己拍的，删了。
     # 现在跑到撞上为止 —— 下面循环里 `STOP_CODES` 那一支就是「撞到才算」：
@@ -415,11 +467,32 @@ def run(user: str, entries: list[dict], apply: bool, fetch=fetch_one,
             continue
         if i:
             sleep(INTERVAL_S)
+        bstate = pb.block_state(_budget, CLI_PORTAL, _dt.datetime.now(), lane="cli")
+        if bstate["blocked"]:
+            _ok, why = pb.check(_budget, CLI_PORTAL, _dt.datetime.now())
+            return {"ok": ok, "failed": failed, "stopped": "BLOCKED",
+                    "attempted": i, "gate": why or bstate["why"]}
         # 每发一次记一笔。**记在发之前**——请求已经出去了，哪怕它失败也算数；
         # 只记成功的等于把失败的请求从账上抹掉，而平台是按发出的次数算的。
-        pb.note(_budget, "猎聘", 1, _dt.datetime.now())
+        _now = _dt.datetime.now()
+        pb.note(_budget, "猎聘", 1, _now, kind="fetch")
         if _persist:
-            pb.save(user, _budget)
+            try:
+                _budget, _stamp = _commit_budget(
+                    user, _budget, _stamp,
+                    lambda d: pb.note(d, "猎聘", 1, _now, kind="fetch"))
+            except _cli.StaleWrite as exc:
+                # 这一笔没落盘，就别再发下一个请求 —— 账上不记的动作，
+                # 下一次的间隔判断看不见它。
+                return {"ok": ok, "failed": failed, "stopped": "BUDGET_STALE",
+                        "attempted": i, "gate": str(exc)}
+            # 合并回来的那份可能带着一条刚出现的冷却（另一条命令在同一时刻
+            # 撞了风控）。上面那次检查用的是开跑时/上一轮的状态，不算数了。
+            _st = pb.block_state(_budget, CLI_PORTAL, _dt.datetime.now(), lane="cli")
+            if _st["blocked"]:
+                return {"ok": ok, "failed": failed, "stopped": "BLOCKED",
+                        "attempted": i,
+                        "gate": "另一边刚把这条通道封了 —— " + _st["why"]}
         d = fetch(runtime, e["url"])
         code = d.get("code")
         if code in STOP_CODES:
@@ -442,11 +515,23 @@ def run(user: str, entries: list[dict], apply: bool, fetch=fetch_one,
             # 字段。不写进去的话，那两处就只剩「CLI 撞 RATE_LIMITED」——
             # 读起来像这一趟白跑了，而实际上前面那些 JD 已经落库了。
             # 用户下一步该做什么（补剩下的，还是先去换 IP）取决于这个数。
-            pb.block(_budget, "liepin-search",
-                     f"CLI 撞 {code}；撞停前已抓到 {ok} 份 JD，都存好了",
-                     _dt.datetime.now())
+            _why = f"CLI 撞 {code}；撞停前已抓到 {ok} 份 JD，都存好了"
+            _now = _dt.datetime.now()
+            pb.block(_budget, "liepin-search", _why, _now)
             if _persist:
-                pb.save(user, _budget)
+                try:
+                    _budget, _stamp = _commit_budget(
+                        user, _budget, _stamp,
+                        lambda d: pb.block(d, "liepin-search", _why, _now))
+                except _cli.StaleWrite as exc:
+                    # **这条比动作账更要紧**：不记下来的话，下一条命令会照常
+                    # 走进这条刚撞过风控的通道。所以停，并把该敲的那条命令给出来。
+                    return {"ok": ok, "failed": failed,
+                            "stopped": "BUDGET_STALE", "attempted": i + 1,
+                            "gate": f"{exc}。撞上的 {code} 也没能写进额度文件 —— "
+                                    f"先跑 python tools/portal_budget.py "
+                                    f"--block liepin-search --why \"CLI 撞 {code}\" "
+                                    f"再继续"}
             break                       # 不重试、不继续 —— 账号安全铁律
         if d.get("error"):
             failed.append((e.get("title") or "", code))
@@ -591,6 +676,20 @@ def main(argv=None) -> int:
         print(f"失败 {len(r['failed'])} 个：")
         for t, c in r["failed"][:8]:
             print(f"  {SAY.get(c, c)}：{t[:34]}")
+    if r["stopped"] == "BLOCKED":
+        print("\n⚠ 这条渠道现在停着，这次没有继续发请求。")
+        if r.get("gate"):
+            print("  " + r["gate"])
+        print("  这是账号安全闸门，不是失败；处理完再跑，别加重试。")
+        return 0
+    if r["stopped"] == "BUDGET_STALE":
+        # 这不是撞风控，别说成「账号安全铁律」—— 用户会以为要去换 IP。
+        print("\n⚠ 额度文件在跑的过程中被另一边改过了（多半是总览页上点了按钮）。")
+        print("  这一趟先停：再写下去会把对方刚做的改动盖掉。")
+        if r.get("gate"):
+            print("  " + r["gate"])
+        print(f"  已经抓到的 {r['ok']} 份 JD 都存好了；重跑这条命令就接着抓。")
+        return 0
     if r["stopped"]:
         print(f"\n⚠ 撞到 {r['stopped']}，已立刻停手，没有重试。")
         print(f"  这一趟实际拿到 {r['ok']} 份 JD，都存进详情库了 —— 没有白跑。")
@@ -608,4 +707,6 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # `_commit_budget` 已经把「连撞三次」收成 `StaleWrite` 并当场交代清楚了；
+    # 这里再兜一次，防的是别处漏出来的那一笔 —— 撞车时不该是栈回溯。
+    sys.exit(_cli.run_cli(main))
