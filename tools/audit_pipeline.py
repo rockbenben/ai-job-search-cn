@@ -4534,13 +4534,18 @@ def requeue_no_jd_sellable(user: str, apply: bool = False) -> list:
     # 哪天档位改了这里就是静默失效。
     BANDS = _cli.VERDICTS[:3]
     hit = []
+    # **只退回还能发的。** 已经投出去/标了不投/已下线的岗，退回待评等于把
+    # 一次已经完成的决定重新打开；这类岗在报表里照常可见，但不该被这条命令动。
+    where = _cli.sendable_state(user, seen)
     for k, e in seen.items():
         if not isinstance(e, dict) or e.get("status") != "ranked":
             continue
         src = (e.get("rank_breakdown") or {}).get("来源") or ""
         if "读过 JD" in src or "读了 JD" in src or src.startswith("深评"):
             continue
-        if any(b in (e.get("rank_verdict") or "") for b in BANDS):
+        if not any(b in (e.get("rank_verdict") or "") for b in BANDS):
+            continue
+        if where(e.get("url") or "") == "还能发":
             hit.append((k, e))
     if not hit or not apply:
         return [k for k, _ in hit]
@@ -4608,17 +4613,35 @@ def check_no_jd_but_sellable(seen, details) -> list:
             has_jd += 1
     if not bad:
         return []
+    # **这条要进 `--actionable`。** `/job-auto` 收尾按「有没有问过
+    # `sendable_state`」筛检查；这一条此前没问，于是 41 个全部还能动的岗
+    # 被整条滤掉，收尾只剩别的提醒。问一次同时把「还能发」的岗记进总账。
+    where = _cli.sendable_state(user, seen)
+    live = [e for e in bad if where(e.get("url") or "") == "还能发"]
+    _cli.note_live([e.get("url") for e in live])
     days = collections.Counter(str(e.get("rank_date") or "?")[:10] for e in bad)
     when = "、".join(f"{d}（{n} 个）" for d, n in sorted(days.items()))
     tail = (f"其中 {has_jd} 个的 JD 其实已经在详情库里了，只差重评；"
             f"另外 {len(bad) - has_jd} 个要先抓正文。" if has_jd else "")
+    # **「对不上职位库」既不是「还能发」，也不是「已经出局」。**
+    # 这批来自 seen 本身，通常都能对上；但没有 URL 的条目会落进「对不上」，
+    # 一刀切说「都已经投出去、标了不投或下线了」就是替一个未知状态编答案。
+    unknown = sum(1 for e in bad
+                  if where(e.get("url") or "") == "对不上职位库")
+    if live:
+        now = f"其中 {len(live)} 个还没投、现在能退回待评。"
+    elif unknown:
+        now = (f"其中 {unknown} 个在职位库里对不上，判不了还能不能退回；"
+               f"这 {len(bad)} 个里没有能确认还能退回的。")
+    else:
+        now = _cli.NO_LIVE + f"这 {len(bad)} 个里没有还能退回的。"
     return [("warn", "没读 JD 就给了可投档位",
              f"{len(bad)} 个岗没读过 JD 正文，判词却是「可以考虑」及以上——"
              f"那个分只能来自标题和卡片字段，硬性条件一条没核过，而它们会出现在"
-             f"用户会去翻的那份名单里。产于 {when}。{tail}"
-             f"没有依据的档位不该原地改成另一个档位，正确动作是退回待评、"
-             f"等 JD 抓回来重走一遍：python tools/audit_pipeline.py "
-             f"--requeue-no-jd --apply")]
+             f"用户会去翻的那份名单里。产于 {when}。{tail}{now}"
+             + ("没有依据的档位不该原地改成另一个档位，正确动作是退回待评、"
+                "等 JD 抓回来重走一遍：python tools/audit_pipeline.py "
+                "--requeue-no-jd --apply" if live else ""))]
 
 
 

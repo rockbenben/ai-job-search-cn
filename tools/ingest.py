@@ -234,8 +234,12 @@ def main(argv=None) -> int:
         return 0
 
     idx = _cli.seen_index(user, root=ROOT)
+    # **公司名缺失的条目不进「公司+岗位」集合。** `|岗位名` 不是一家公司；
+    # 拿它去挡别的候选，等于把两个只是同名、却可能毫无关系的岗当成同一个。
+    # 批内新增那一侧也按同一条判据（见下面 `if company:`），两边必须对称。
     seen_pairs = {pair_key(v.get("company"), v.get("title"))
-                  for v in seen.values() if isinstance(v, dict)}
+                  for v in seen.values()
+                  if isinstance(v, dict) and (v.get("company") or "").strip()}
     pairs = tracker_pairs(user)
 
     tally = {"new": 0, "seen": 0, "same_pair": 0, "applied": 0,
@@ -281,6 +285,12 @@ def main(argv=None) -> int:
             collide.append((new_key, title or entry["company"]))
             continue
         added[new_key] = entry
+        # **这一批里新加的也要进「公司+岗位」集合。** 只在开头读一次库存的话，
+        # 同一个岗换个链接在同批出现两次，两条都会当新岗写进去。公司名缺失时
+        # 不加：`|岗位名` 不是「同一家公司」，不能拿它去挡别的候选。
+        company = (entry.get("company") or "").strip()
+        if company:
+            seen_pairs.add(pair_key(company, title))
         if url:
             batch_tokens.add(_cli.job_token(url, title))
 

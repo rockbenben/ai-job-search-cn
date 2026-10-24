@@ -3894,7 +3894,8 @@ def main(argv=None, *, show_next_step=True) -> int:
             "gates": [], "gatesNotJudged": [], "dimensions": [], "gaps": [], "quality": [],
         }
         if gate_fail:
-            job["gateFailReason"] = verdict.replace("硬门 FAIL", "不满足硬性条件")
+            job["gateFailReason"] = plain(
+                verdict.replace("硬门 FAIL", "不满足硬性条件"))
         elif "不满足硬性条件" in (verdict or ""):
             # **深评直接写「不满足硬性条件（学历）」的那批也算。**
             #
@@ -3903,7 +3904,7 @@ def main(argv=None, *, show_next_step=True) -> int:
             # `gate_fail_tally`。后果是面板上相邻两行打架：搁置区成分说
             # 「硬性条件没过 983」，下一行的分档合计只有 960。
             # **同一件事两个数，隔一行。**
-            job["gateFailReason"] = verdict
+            job["gateFailReason"] = plain(verdict)
 
         # `/job-apply --top N` 批量跑到一半缺东西时写下的阻塞（JD 抓不到、联系方式是
         # 占位符、typst 没装……）。批量**不许回头在对话里问**——一次长跑被十几个

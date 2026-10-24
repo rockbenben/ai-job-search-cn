@@ -181,6 +181,28 @@ class TheToolBehaves(unittest.TestCase):
             [v.get("title") for v in seen.values() if isinstance(v, dict)].count("全新的岗"),
             1)
 
+    def test_the_same_pair_in_one_batch_is_added_once(self):
+        """同一批里换了个链接的同公司同岗，也要走第 2 道。
+
+        `seen_pairs` 原来只在入库开始时从库存读一次；这一批新加进去的
+        `pair_key` 没有回填，于是两条只在 URL 上不同的同岗都会当新岗写进库。
+        这正是模块开头裁定「换了链接也跳过」要防的事。
+        """
+        rows = [
+            {"url": "https://www.liepin.com/a/66666666.shtml",
+             "title": "同公司同岗", "company": "同一家"},
+            {"url": "https://www.liepin.com/a/77777777.shtml",
+             "title": "同公司同岗", "company": "同一家"},
+        ]
+        self.inp.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
+        self.assertEqual(self.run_tool("--apply"), 0)
+        seen = self.read()
+        hit = [v for v in seen.values()
+               if isinstance(v, dict) and v.get("company") == "同一家"
+               and v.get("title") == "同公司同岗"]
+        self.assertEqual(len(hit), 1,
+                         f"同一批里的同岗写进了 {len(hit)} 条")
+
     def test_apply_refreshes_the_date_and_nothing_else(self):
         """Step 4：见过的岗**只更新 date**。判词、分数一个都不许动。"""
         self.assertEqual(self.run_tool("--apply"), 0)

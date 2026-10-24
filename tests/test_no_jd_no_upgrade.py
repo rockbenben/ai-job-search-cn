@@ -73,6 +73,66 @@ class TheAuditWatchesIt(unittest.TestCase):
         names = [n for n, _ in AP.CHECKS]
         self.assertIn("JD：没读就给了可投档位", names, "自检里没有这一项")
 
+    def test_it_enters_the_actionable_tier(self):
+        """这条报的是能退回待评的岗，不是只能围观的存量。
+
+        `/job-auto` 收尾跑 `--actionable`；不调 `sendable_state` 的检查会被
+        整条滤掉。实测 2026-10-24：41 个这类岗**全部**还能发，而收尾只报了
+        1 条别的提醒。这里用一份最小临时库验「它真的问过还能不能发」。
+        """
+        import tempfile
+        from pathlib import Path
+        old = (AP.ROOT, AP._cli.ROOT)
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "users" / "u").mkdir(parents=True)
+            (root / ".active_user").write_text("u", encoding="utf-8")
+            AP.ROOT = root
+            AP._cli.ROOT = root
+            e = {"url": "https://x/1", "title": "岗", "status": "ranked",
+                 "rank_verdict": "可以考虑",
+                 "rank_breakdown": {"来源": "粗筛（未抓 JD）"}}
+            old_live = set(AP._cli.LIVE_SEEN)
+            old_calls = AP._cli._SENDABLE_CALLS[0]
+            AP._cli.LIVE_SEEN.clear()
+            try:
+                out = AP.check_no_jd_but_sellable({"k": e}, {})
+                calls_after = AP._cli._SENDABLE_CALLS[0]
+                live_seen = set(AP._cli.LIVE_SEEN)
+            finally:
+                AP.ROOT, AP._cli.ROOT = old
+                AP._cli.LIVE_SEEN.clear()
+                AP._cli.LIVE_SEEN.update(old_live)
+            self.assertTrue(out, "构造的岗没有被报出来")
+            self.assertGreater(calls_after, old_calls,
+                               "检查没有问「还能不能发」——收尾会把它滤掉")
+            self.assertIn(AP._cli.norm_url("https://x/1"), live_seen,
+                          "还能发的岗没有记进收尾那两个集合")
+
+    def test_an_unmatched_url_is_not_called_gone(self):
+        """「对不上职位库」不是「已经出局」——没有链接的岗不许被说成已投/已下线。"""
+        import tempfile
+        from pathlib import Path
+        old = (AP.ROOT, AP._cli.ROOT)
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "users" / "u").mkdir(parents=True)
+            (root / ".active_user").write_text("u", encoding="utf-8")
+            AP.ROOT = root
+            AP._cli.ROOT = root
+            e = {"title": "没有链接的岗", "status": "ranked",
+                 "rank_verdict": "可以考虑",
+                 "rank_breakdown": {"来源": "粗筛（未抓 JD）"}}
+            try:
+                out = AP.check_no_jd_but_sellable({"k": e}, {})
+            finally:
+                AP.ROOT, AP._cli.ROOT = old
+            msg = out[0][2] if out else ""
+            self.assertIn("在职位库里对不上", msg,
+                          "判不了还能不能发的岗被说成了别的状态")
+            self.assertNotIn("都已经投出去", msg,
+                             "把「判不了」说成了「已经出局」")
+
     def test_the_check_function_exists(self):
         self.assertTrue(hasattr(AP, "check_no_jd_but_sellable"))
         self.assertTrue(hasattr(AP, "requeue_no_jd_sellable"), "没有修法，只有报警")
