@@ -63,18 +63,21 @@ ALLOWED = {
     # 一句话会被切成好几段。照整句写会一条都匹配不上，而
     # `test_the_registry_is_not_stale` 只验「键能命中某句」、不验「命中的是
     # 你要那一句」—— 写错时它照样绿，而失败信息会把人指向完全另一句话。
+    #
+    # 2026-10-24：doctor 这一支抽成了 `_restock_lines()`，住址跟着改；
+    # 句子本身仍要和面板逐字相同。
     "越少越不该停下找岗": (
-        {"build_dashboard.py:next_step", "doctor.py:next_step"},
+        {"build_dashboard.py:next_step", "doctor.py:_restock_lines"},
         "同一状态下两个出口必须给同一个答案；相等由 "
         "`tests/test_both_next_steps_agree.py::RestockingOutranksSendingWhenTheListIsThin` 钉住"),
     "可以投的名单快见底": (
-        {"build_dashboard.py:next_step", "doctor.py:next_step"},
+        {"build_dashboard.py:next_step", "doctor.py:_restock_lines"},
         "同上；没有它，「有待评积压就先评库存」那条只在一个出口有防护，"
         "`/job-scrape` → `/job-scrape` 死循环就是从那儿漏的"),
     # 同一句话的**后半段**是另一个片段：`{n_unranked}` 把句子切成了三段，
     # 每一段各自入库，所以登记也得逐段给。少一段，那一段照样红。
     "把库存评完，不够再抓": (
-        {"build_dashboard.py:next_step", "doctor.py:next_step"},
+        {"build_dashboard.py:next_step", "doctor.py:_restock_lines"},
         "同上；同一句的后半段"),
 }
 

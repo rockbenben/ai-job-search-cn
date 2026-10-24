@@ -42,6 +42,42 @@ for _s in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def _valid_user_name(name: str) -> bool:
+    """`_cli.valid_user_name` 的内联副本：本文件不许 import 仓库模块。
+
+    名字错成 `..` 或绝对路径时，`ROOT / "users" / name` 会整个跳出 users/；
+    自检不能把仓库根当成一个用户的工作区。
+    """
+    name = (name or "").strip()
+    if not name or name in (".", "..") or not name.strip("."):
+        return False
+    # Windows 把 `alice.` 归一成 `alice`，把 `...` 归一成 `users/` 本身 ——
+    # 后者会让自检把整个用户目录当成一个人的工作区。
+    if name.endswith("."):
+        return False
+    if name != Path(name).name:
+        return False
+    if any(c in '/\\:*?"<>|' for c in name):
+        return False
+    if any(ord(c) < 32 for c in name):
+        return False
+    reserved = ({"CON", "PRN", "AUX", "NUL"}
+                | {f"COM{i}" for i in range(1, 10)}
+                | {f"LPT{i}" for i in range(1, 10)})
+    if name.split(".")[0].upper() in reserved:
+        return False
+    return True
+
+
+def _user_dir_inside(name: str) -> bool:
+    """名字解析后必须仍是 `users/` 的直接子目录（防 Windows 别名与符号链接）。"""
+    try:
+        root = (ROOT / "users").resolve()
+        return (root / name).resolve().parent == root
+    except OSError:
+        return False
+
+
 def n_processed(seen: dict) -> int:
     """流水线第 2 格「打过分」的计数：**处理完的**，不是**有分数的**。
 
@@ -1308,7 +1344,7 @@ def check_repo(want_user: str = "") -> dict:
     # `test_cli_contract.test_one_implementation_of_user_resolution` 把这一处
     # 连同 `_cli.py` 一起列成仅有的两个住址 —— 它是钉住的，不是漏网的。
     au = ROOT / ".active_user"
-    user = want_user or (au.read_text(encoding="utf-8").strip() if au.is_file() else "")
+    user = (want_user or (au.read_text(encoding="utf-8") if au.is_file() else "")).strip()
     st["user"] = user
     #: **目录不等于用户。** 判据（有没有 `profile/candidate.md`）与
     #: `_cli.all_users` 同一份，本文件不 import 仓库模块所以持副本；
@@ -1324,6 +1360,14 @@ def check_repo(want_user: str = "") -> dict:
     if not user:
         print(f"{NO}还没有活动用户 —— 你是第一次用")
         st.update(profile_ok=False, scraped=0, ranked=0, materials=0, applied=0)
+        return st
+
+    if not _valid_user_name(user) or not _user_dir_inside(user):
+        print(f"{WARN}「{user}」不是一个可用的用户名"
+              "（不能是路径、`..`、绝对路径、尾点或带控制字符）")
+        st.update(user_missing=True, user_invalid=True,
+                  user_missing_via_flag=bool(want_user),
+                  profile_ok=False, scraped=0, ranked=0, materials=0, applied=0)
         return st
 
     udir = ROOT / "users" / user
@@ -1680,6 +1724,33 @@ def check_repo(want_user: str = "") -> dict:
 #: 量数据，抄件连那个都没有。
 
 
+def _restock_lines(st: dict) -> list[str] | None:
+    """名单见底时先说补货；没有材料时也成立。
+
+    `build_dashboard.next_step` 的 `SHORTLIST_FLOOR` 那一支是同一件事。
+    这原本写在 `ready > 0` 里面，于是「一个材料都还没出、可投只剩 1–4 个」
+    这个状态漏掉了补货，自检会叫用户去 `/job-apply`，面板却说 `/job-auto`。
+    用户 2026-10-14 的裁定是**名单见底时补货优先于先发**，前提不是手上
+    有没有材料，而是名单够不够投一轮。
+    """
+    ns = st.get("n_sellable")
+    if not (isinstance(ns, int) and ns < SHORTLIST_FLOOR
+            and st.get("ranked", 0) > 0):
+        return None
+    if st.get("n_unranked", 0):
+        return [f"可以投的名单快见底，而还有 {st['n_unranked']} 个抓到没评的："
+                f"先跑 /job-rank 把库存评完，不够再抓", ""]
+    left = f"只剩 {ns} 个" if ns else "一个都不剩了"
+    lines = [f"可以投的岗位{left}——越少越不该停下找岗。"
+             f"下一步：跑 /job-auto 补货，抓完会自动评分排序，接着出材料"]
+    ready = st.get("ready", 0)
+    if ready:
+        lines += ["",
+                  f"手上那 {ready} 个备好的先放着（投完回来记一笔：/job-outcome <公司>）；"]
+    lines += ["", "补货有前置时间，先跑这一轮，投递才不会停摆。"]
+    return lines
+
+
 def next_step(env: dict, st: dict) -> list[str]:
     """只给一条下一步。顺序即优先级——先能跑起来，再往下走流水线。"""
     if not st.get("in_repo"):
@@ -1700,6 +1771,18 @@ def next_step(env: dict, st: dict) -> list[str]:
 
     if st.get("user_missing"):
         users = st.get("users") or []
+        if st.get("user_invalid"):
+            # 名字本身非法，和「目录不存在」的修法不同：先改名字，
+            # 别让他去建一个叫 `...` 的用户。
+            who = ("--user 指定的" if st.get("user_missing_via_flag")
+                   else "`.active_user` 里的")
+            lines = [f"{who}「{st['user']}」不是一个可用的用户名"
+                     "（不能是路径、`..`、绝对路径、尾点或带控制字符）。下一步：", ""]
+            if users:
+                lines.append(f"    /job-user 看看有哪些用户（现有：{'、'.join(users)}）")
+            else:
+                lines.append("    /job-user --new <名字>   # 新建一个用户（现在一个用户都没有）")
+            return lines
         if st.get("user_missing_via_flag"):
             lines = [f"--user 指定的「{st['user']}」不存在。下一步："]
         else:
@@ -1763,6 +1846,14 @@ def next_step(env: dict, st: dict) -> list[str]:
         if blocked:
             return blocked
         return ["抓到职位了但还没打分。下一步：跑 /job-rank，产出带理由的排序名单。"]
+
+    # **补货先于「先发」，且不要求手上先有材料。** 规则的正本在
+    # `build_dashboard.next_step` 的 `SHORTLIST_FLOOR` 那一支；这里只是
+    # 同一份规则在终端的出口。详见 `_restock_lines`。放在 `materials == 0`
+    # 之前，才能覆盖「一个材料都没有、能投的只剩 1–4 个」。
+    _restock = _restock_lines(st)
+    if _restock:
+        return _restock
 
     if st.get("materials", 0) == 0:
         blocked = gate("apply")
@@ -1852,34 +1943,6 @@ def next_step(env: dict, st: dict) -> list[str]:
     # 不拿 materials − applied 去减（手动投的岗有投递记录却没材料目录，减法会多减）。
     ready = st.get("ready", 0)
     if ready > 0:
-        # ── 名单见底时，补货优先于「先发」。用户 2026-10-14 裁定 ──
-        #
-        # 原话：「还有材料没投的时候也会先说去补货。这是正确的」——
-        # 那是面板 `build_dashboard.next_step` 里 `SHORTLIST_FLOOR` 那一支
-        # 2026-08-13 就有的行为，本文件一直没有，于是两个出口在这个状态下
-        # 给相反的建议（面板「去补货」／自检「先把备好的发出去」）。
-        #
-        # 理由与面板那支相同（见那个常量的 docstring）：补货的前置时间比
-        # 名单见底的速度长，手上只剩 2 个能投的岗时，先去补那一轮回来，
-        # 投递才不会停摆。发完手上那 2 个再回来正是下一次循环的事。
-        #
-        # 它推翻的是 2026-08-29 那条裁定的前半句（「有材料没发 → 先发」）
-        # 在名单见底这个状态下的适用性；名单还够时那一支照旧。
-        # 正本改在 `AGENTS.md` 顶上那条裁定里 —— 规则只活在一次会话里，
-        # 换一轮就整条丢掉，这条规矩已经付过两次代价（见上面那段）。
-        _ns = st.get("n_sellable")
-        if isinstance(_ns, int) and _ns < SHORTLIST_FLOOR:
-            # 先评库存再抓 —— 否则 `/job-scrape` → `/job-scrape` 死循环
-            # （新抓的没评分，`n_sellable` 永远是 0）。
-            if st.get("n_unranked", 0):
-                return [f"可以投的名单快见底，而还有 {st['n_unranked']} 个抓到没评的："
-                        f"先跑 /job-rank 把库存评完，不够再抓", ""]
-            left = f"只剩 {_ns} 个" if _ns else "一个都不剩了"
-            return [f"可以投的岗位{left}——越少越不该停下找岗。"
-                    f"下一步：跑 /job-auto 补货，抓完会自动评分排序，接着出材料",
-                    "",
-                    f"手上那 {ready} 个备好的先放着（投完回来记一笔：/job-outcome <公司>）；",
-                    "补货有前置时间，先跑这一轮，投递才不会停摆。"]
         def _send_and_record() -> list[str]:
             """「发出去 → 记一笔」那套收尾。
 

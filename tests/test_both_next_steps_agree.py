@@ -313,6 +313,22 @@ class TheBatchEntryIsHandedOver(unittest.TestCase):
                             ready=0, n_sellable=8)
         self.assertIn("/job-apply 全部", said, f"自检还在一个一个教：{said}")
 
+    def test_a_thin_shortlist_with_no_materials_still_restocks(self):
+        """手上一个材料都没有、能投的只剩 2 个时，两个出口都该先补货。
+
+        `doctor` 的补货分支原来只在 `ready > 0` 里面；`materials == 0` 那一支
+        只看 `n_sellable == 0`，于是 1–4 个可投岗时会叫用户去 `/job-apply`，
+        而面板同一时刻说的是 `/job-auto`。用户 2026-10-14 的裁定是
+        **名单见底时补货优先于先发** —— 手上没有材料时同样成立。
+        """
+        _text, panel_cmd = self._panel(top="https://x/1", n_sellable=2)
+        self.assertEqual(panel_cmd, "/job-auto")
+        said = self._doctor(scraped=12, ranked=12, materials=0, applied=0,
+                            ready=0, n_sellable=2)
+        self.assertIn("/job-auto", said, f"自检没有先补货：{said}")
+        self.assertNotIn("/job-apply", said,
+                         f"自检在材料为零时叫用户去批量出材料：{said}")
+
     def test_an_unknown_count_does_not_trip_the_restock(self):
         """读不到那个数时**不许当成 0**——那是猜，而猜错的方向是「别发了，去抓」。
 

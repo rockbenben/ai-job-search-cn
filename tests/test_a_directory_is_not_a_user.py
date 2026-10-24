@@ -255,7 +255,8 @@ class ABudgetFileCannotInventAUser(unittest.TestCase):
 
     def test_the_incident_is_recorded(self):
         src = (ROOT / "tools" / "portal_budget.py").read_text(encoding="utf-8")
-        seg = flat(src[src.index("def save(user: str, data: dict)"):][:1800])
+        # 只锚函数名，不锚完整签名 —— 加一个参数（`expect`）不该让这条红。
+        seg = flat(src[src.index("def save("):][:1800])
         self.assertRegex(seg, r"13 个 URL 一个都没发出去")
         self.assertRegex(seg, r"那修的是\*\*那一个调用方\*\*")
 

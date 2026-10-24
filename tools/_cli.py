@@ -186,6 +186,57 @@ def help_apply(what: str = "写盘") -> str:
 DRY_RUN_NOTE = "试运行，没有写盘。确认无误后加 --apply"
 
 
+#: 用户名里不允许出现的字符。它们要么是路径分隔符，要么在 Windows 上会被
+#: 解释成盘符/通配符；`..`、`.` 单独再挡一次。
+_USER_BAD = set('/\\:*?"<>|')
+#: Windows 的设备名。`users/CON` 会被解释成设备，不是目录；带扩展名
+#: （`CON.txt`）也一样。
+_USER_RESERVED = ({"CON", "PRN", "AUX", "NUL"}
+                  | {f"COM{i}" for i in range(1, 10)}
+                  | {f"LPT{i}" for i in range(1, 10)})
+
+
+def valid_user_name(name: str) -> bool:
+    """`name` 能不能当 `users/` 下的一个直接子目录名。
+
+    **只看目录是否存在不够。** `Path(root) / "users" / ".."` 就是仓库根，
+    `Path(root) / "users" / "/tmp"` 会整个跳出 `users/`；两者都满足
+    `is_dir()`。名字错成那样时，后续的职位库、额度、token 都会跟着落到
+    `users/` 之外。这里把「名字」与「路径」分开。
+
+    **Windows 的路径归一化还有一类别名。** `users/...` 会解析成 `users/`
+    本身（`Path.resolve()` 实测），而 `users/alice.` 会解析成
+    `users/alice`；两者都能通过「不是 `..`、不是绝对路径」的旧判据。
+    所以尾点、纯点、Windows 设备名都要单独挡掉。
+    """
+    name = (name or "").strip()
+    if not name or name in (".", "..") or not name.strip("."):
+        return False
+    if name.endswith("."):
+        return False
+    if name != Path(name).name:
+        return False
+    if any(c in _USER_BAD for c in name):
+        return False
+    if any(ord(c) < 32 for c in name):
+        return False
+    if name.split(".")[0].upper() in _USER_RESERVED:
+        return False
+    return True
+
+
+def _user_dir_is_inside(base: Path, name: str) -> bool:
+    """即便名字通过了字符判据，也再验一次它解析后仍是 `users/` 的直接子目录。
+
+    `...` 这类 Windows 别名靠字符表挡；这一道防的是还没想到的归一化规则。
+    """
+    try:
+        root = (base / "users").resolve()
+        return (root / name).resolve().parent == root
+    except OSError:
+        return False
+
+
 def pick_user(explicit: str = "", *, root=None) -> str:
     """定出这一次操作哪个用户。**只做解析，不碰参数**——给已经有自己 argparse
     的工具用（`prescreen` / `followups` / `gap_split` / `fetch_details`）。
@@ -204,6 +255,17 @@ def pick_user(explicit: str = "", *, root=None) -> str:
     base = Path(root) if root is not None else ROOT
     if explicit and explicit.strip():
         user = explicit.strip()
+        if not valid_user_name(user) or not _user_dir_is_inside(base, user):
+            # 名字不能当目录名，和「用户不存在」是两件事：前者要先改参数，
+            # 后者可以去建。都用同一句「没有叫 X 的用户」会让用户去建一个
+            # 名字本身就非法的用户。
+            rows = all_users(base)
+            print(f"「{user}」不能当用户名 —— 不能是路径、`..`、绝对路径、"
+                  "尾点或带控制字符。" +
+                  (user_list_line(base) if rows
+                   else "一个用户都还没有——先跑 /job-setup"),
+                  file=sys.stderr)
+            raise SystemExit(2)
         if not (base / "users" / user).is_dir():
             # 列表走 `all_users`：空壳也列，但要标出来。原来这里只报名字，
             # 用户从里面挑一个空壳切过去，换来的是同一句「资料还没填」。
@@ -250,6 +312,12 @@ def read_active_user(base=None) -> tuple[str, str]:
     if not user:
         return user, ("还没有活动用户 —— 你是第一次用？先跑 /job-setup 建档，"
                       "已经有用户就跑 /job-user 切换")
+    if not valid_user_name(user) or not _user_dir_is_inside(base, user):
+        nxt = ("/job-user 看看有哪些用户" if all_users(base)
+               else "/job-user --new <名字> 新建一个（现在一个用户都没有）")
+        return user, (f".active_user 里的「{user}」不是一个可用的用户名"
+                      "（不能是路径、`..`、绝对路径、尾点或带控制字符）—— "
+                      f"跑 {nxt}")
     if not (base / "users" / user).is_dir():
         # 一个用户都没有时，「看看有哪些用户」是条死路 —— 他敲过去是空列表。
         # `doctor.py` 早就分了这一支（改口 `--new`），这里跟上。判据是
@@ -632,7 +700,7 @@ def _stamp_of(p) -> tuple:
 
 def atomic_write(path, text: str, *, encoding: str = "utf-8",
                  newline: str | None = None,
-                 expect: tuple | None = None) -> None:
+                 expect: tuple | None = None) -> tuple:
     """写文件时**不要先把它截断**——写临时文件再原子替换。
 
     `expect` 传 `load_json_stamped` 给的版本戳时，会在替换前再比一次：
@@ -675,6 +743,11 @@ def atomic_write(path, text: str, *, encoding: str = "utf-8",
     并发的读要么看到旧的完整文件、要么看到新的完整文件，不存在中间态。
 
     临时文件与目标同目录——跨盘 `os.replace` 会退化成拷贝，失去原子性。
+
+    **返回写完之后那个文件的戳。** 戳在 `os.replace` **之前**从临时文件上取，
+    因为替换后再 `stat()` 会拿到「替换之后又被别人写了一次」的戳 —— 调用方
+    拿它当下一笔的 `expect`，就会把别人的改动当成自己的基线。临时文件的
+    mtime/size 会原样跟着 rename 过去。
     """
     from pathlib import Path as _P
     import os as _os
@@ -706,6 +779,9 @@ def atomic_write(path, text: str, *, encoding: str = "utf-8",
             f"{p.name} 在你读它之后被改过了"
             f"（多半是总览页那边点了按钮，或另一条命令在写）")
     tmp.write_text(text, encoding=encoding, newline=newline)
+    # **先取戳，再替换。** 反过来会在别人恰好写了一次时把「他的戳」交回去，
+    # 下一笔带 `expect` 的写就会以他的版本为基线，静默覆盖掉他。
+    new_stamp = _stamp_of(tmp)
     # ── Windows 上 `os.replace` 会撞上「目标正被读」 ──
     #
     # POSIX 的 rename 可以覆盖一个正被打开的文件；**Windows 不行**：
@@ -722,7 +798,7 @@ def atomic_write(path, text: str, *, encoding: str = "utf-8",
     for attempt in range(6):
         try:
             _os.replace(tmp, p)
-            return
+            return new_stamp
         except PermissionError:
             if attempt == 5:
                 raise
@@ -1260,7 +1336,7 @@ def is_anonymous_employer(company: str) -> bool:
     原来它是导出主循环里的行内表达式，测试只能自建一个 lambda 六正五反自测自，
     把这里改回历史上错过的 `^某` 那套测试照绿。
 
-    **脱敏串不是公司身份，是占位符。** 热库实测 2026-10-15：1623 个岗里 736 个
+    **脱敏串不是公司身份，是占位符。** 热库实测 2026-10-24：1626 个岗里 738 个
     脱敏（45%），其中 90.5% 是猎头岗（`/a/` 链接）；光「某知名公司」这一个串就
     出现 78 次 —— 那是 78 家不同的用人方（78 条链接各不相同）。凡是拿公司名当键去匹配、
     分组、去重的地方，都必须先过这道判据（`match_tracker` 就为此漏过一次）。
@@ -1287,7 +1363,10 @@ def is_anonymous_employer(company: str) -> bool:
     的判断压根没生效。
 
     **两次比例都一个点没动**：删掉的 6 个公司名全是具名的，脱敏数仍是 736、仍是 45%。
-    这也说明那五个数各自独立——库缩了不等于脱敏占比会动。）
+    这也说明那五个数各自独立——库缩了不等于脱敏占比会动。
+
+    2026-10-24 这一轮补货新增 3 个岗，其中 2 个是脱敏串：736 → 738，占比仍是 45%。
+    ）
     """
     return bool(re.search(r"某|保密|未公开", company or ""))
 
@@ -2599,13 +2678,11 @@ def sendable_state(user: str, seen: dict):
                   if isinstance(e, dict) and e.get("url")}
     applied = set()
     tr = ROOT / "users" / user / "job_search_tracker.csv"
-    if tr.is_file():
-        import csv as _csv
-        with tr.open(encoding="utf-8") as fh:
-            for r in _csv.DictReader(fh):
-                u = (r.get("source") or "").strip()
-                if u:
-                    applied.add(u)
+    # 台账可能是 Excel 存出来的（BOM/GBK）；读法只留 `read_tracker_rows` 一份。
+    for r in read_tracker_rows(tr):
+        u = (r.get("source") or "").strip()
+        if u:
+            applied.add(u)
     applied = {u for u in applied if u in by_url_raw}
 
     def state(url: str) -> str:
