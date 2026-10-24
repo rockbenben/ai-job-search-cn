@@ -69,6 +69,22 @@ class TheTokenSurvivesARestart(unittest.TestCase):
                       "读不到活动用户就整个导入失败 —— 服务起不来")
 
 
+class TheTokenFollowsThePinnedUser(unittest.TestCase):
+    """`--user bob` 必须用 bob 的 token，不能再沿用活动用户的。
+
+    `TOKEN` 在模块导入时按 `.active_user` 读一次；而 `--user` 要到 `main()`
+    里才生效。两者之间没有重新加载，于是「活动用户 alice、起 bob 的面板」
+    会拿 alice 的 token——按用户分文件的隔离在这一步断了。
+    """
+
+    def test_main_reloads_the_token_after_pinning(self):
+        src = (TOOLS / "serve.py").read_text(encoding="utf-8")
+        pin = src.index("_PINNED_USER = u")
+        after = src[pin:]
+        self.assertIn("TOKEN = _load_or_make_token()", after,
+                      "设置 _PINNED_USER 之后没有重新加载 token")
+
+
 class TheServerSaysWhatWentWrongInAMachineReadableWay(unittest.TestCase):
     """前端要能分辨「刷新就好」和「这个岗没了」，不能去认中文。"""
 

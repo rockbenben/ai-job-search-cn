@@ -110,6 +110,32 @@ class NoActiveUser(Exception):
     """
 
 
+class StoreUnreadable(Exception):
+    """`seen_jobs.json` 的编码/格式读不出来。
+
+    这不是 `NoActiveUser`：用户目录还在，只是那份文件坏了。请求要回一句
+    能照做的提示，而不是让 `SystemExit`/`JSONDecodeError` 穿出处理线程。
+    """
+
+
+def _read_store(path, *, stamped: bool = False):
+    """读主库；BOM 交给 `_cli.read_json`，坏文件统一翻成人话。"""
+    p = Path(path)
+    if not p.is_file():
+        # **「还没抓过」不是「文件坏了」。** 两者都给 409，但修法完全不同：
+        # 前者跑 /job-scrape，后者另存为 UTF-8。原来 FileNotFoundError 被
+        # 当成后者，用户被指去修一份根本不存在的文件。
+        raise StoreUnreadable(
+            f"还没有 {p.name} —— 这个用户还没抓过职位。"
+            "先跑 /job-scrape，再刷新页面")
+    try:
+        return _cli.load_json_stamped(p) if stamped else _cli.read_json(p)
+    except (SystemExit, ValueError, OSError):
+        raise StoreUnreadable(
+            "职位列表读不出来（编码或格式坏了）——先备份，"
+            "把它另存为 UTF-8 JSON，再刷新页面") from None
+
+
 def active_user() -> str:
     if _PINNED_USER:
         return _PINNED_USER
@@ -149,12 +175,13 @@ def _load_or_make_token() -> str:
 
     变的只有一件事：**它不再随进程生死而变**。这正是要的。
 
-    ## 为什么在**导入时**定下来，而不是每次请求现读
+    ## 导入时先定一次，`main()` 钉住用户后再刷新
 
-    因为 `TOKEN` 是这个模块公开出去的那一个（测试、别的工具都直接用它）。
-    要是服务用的是「现读文件」而模块里躺着另一个值，同一份代码里就有
-    **两个 token**，谁对不上谁就说不清。所以这里只定一次，文件是它的**来源**，
-    不是另一个来源。
+    模块级的 `TOKEN` 是这个模块公开出去的那一个（测试、别的工具都直接用它）；
+    导入时必须先有一个值，否则 `Handler` 没法构造。但 `--user` 到 `main()`
+    才解析，所以 `main()` 必须**在钉住用户之后重新调用本函数**——否则
+    「活动用户 alice、起 bob 的面板」会拿 alice 的凭据文件。全程仍只有一个
+    `TOKEN`，文件是它的来源。
 
     ## 换用户
 
@@ -228,7 +255,7 @@ def not_found() -> dict:
 
 
 def _locate(job_id: str):
-    """`(职位库路径, 键, 那条记录, 整份 JSON)`；找不到时记录为 `None`。
+    """`(职位库路径, 键, 那条记录, 整份 JSON, 读时的版本戳)`；找不到时记录为 `None`。
 
     四个改字段的端点（不投 / 已下线 / 对方看过 / 放回）开头是同样的五行：
     读活动用户、拼路径、载 JSON、`find_entry`、找不到就回同一句话。
@@ -243,14 +270,14 @@ def _locate(job_id: str):
     """
     user = active_user()
     path = seen_path(user)
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data, stamp = _read_store(path, stamped=True)
     key, entry = find_entry(_cli.seen_of(data), job_id)
-    return path, key, entry, data
+    return path, key, entry, data, stamp
 
 
 def apply_skip(job_id: str, reason: str) -> dict:
     """标记不投。字段语义与 `/job-rank --skip` 完全一致，不多改一个。"""
-    p, key, entry, data = _locate(job_id)
+    p, key, entry, data, _stamp = _locate(job_id)
     if entry is None:
         return not_found()
     # **写叠加层，不写职位库。** 职位库那边 `/job-rank` 正在整份重写，
@@ -274,7 +301,7 @@ def apply_expire(job_id: str) -> dict:
     **不动 rank_score / rank_verdict**：评估结果不因职位下线而失效——万一是误判
     （比如点开恰好是聚合页而职位其实还在），放回来时分数还得在。
     """
-    p, key, entry, data = _locate(job_id)
+    p, key, entry, data, _stamp = _locate(job_id)
     if entry is None:
         return not_found()
     _cli.set_user_decision(p, key, "expired", date=date.today().isoformat())
@@ -293,7 +320,7 @@ def apply_hr_viewed(job_id: str, viewed) -> dict:
 
     **不动 `decision`、也不动台账**：这不是投递状态，是关于那次投递的一条观察。
     """
-    p, key, entry, data = _locate(job_id)
+    p, key, entry, data, _stamp = _locate(job_id)
     if entry is None:
         return not_found()
     _cli.set_hr_viewed(p, key, viewed)
@@ -326,7 +353,9 @@ def apply_unblock(name: str) -> dict:
                 "error": f"没有叫「{name}」的渠道——刷新一下页面，"
                          f"告警条上那几条才是现在真封着的"}
     user = active_user()
-    data = pb.load(user)
+    # 带戳读：这一小段里另一个进程（`fetch_details` 每抓一份就记一笔额度）
+    # 完全可能先写一次。`expect` 会让那种情况报出来，而不是把他那一笔盖掉。
+    data, _budget_stamp = pb.load_stamped(user)
     # **解哪一条通道归 `portal_budget.clear()` 判**，这里再判一次就是等着两处分叉。
     #
     # 面板传过来的是**渠道名**（`liepin-browser` 这种，不是平台名），走的是
@@ -359,7 +388,7 @@ def apply_unblock(name: str) -> dict:
         return {"ok": False,
                 "error": f"{site} 的{which}现在没有被封，不用解"
                          "——刷新一下页面看最新状态"}
-    pb.save(user, data)
+    pb.save(user, data, expect=_budget_stamp)
     return {"ok": True, "name": site}
 
 
@@ -380,14 +409,17 @@ def _job_and_row(job_id: str):
     另写一套的下场是：页面说这个岗已投、按钮却在另一行上改状态，两边永远对不齐。
     """
     user = active_user()
-    data = json.loads(seen_path(user).read_text(encoding="utf-8"))
+    data = _read_store(seen_path(user))
     _, entry = find_entry(_cli.seen_of(data), job_id)
     if entry is None:
         return None, None, None
     path = ROOT / "users" / user / "job_search_tracker.csv"
     job = {"company": entry.get("company") or "", "title": entry.get("title") or "",
            "url": entry.get("url") or ""}
-    return job, path, bd.match_tracker(job, job["url"], bd.load_tracker(path))
+    # 写路径用严格的 `tracker.load`：GBK 台账降级成空表再写回，会把整份
+    # 中文记录覆盖成一行。读/显示那条仍走 `bd.load_tracker` 的宽容版。
+    _, trows = tracker.load(path)
+    return job, path, bd.match_tracker(job, job["url"], trows)
 
 
 def apply_status(job_id: str, status: str, reason: str | None = None) -> dict:
@@ -397,7 +429,10 @@ def apply_status(job_id: str, status: str, reason: str | None = None) -> dict:
     确实走得到**。少了这层，一个构造的请求能把没投过的岗直接标成 `hired`，
     而台账是 `/job-setup` 校准和 `/job-html-report` 统计的输入。
     """
-    job, path, row = _job_and_row(job_id)
+    try:
+        job, path, row = _job_and_row(job_id)
+    except tracker.Unreadable as exc:
+        return {"ok": False, "error": str(exc), "code": "tracker_unreadable"}
     if job is None:
         return not_found()
     now = (row.get("status") or "").strip() if row else ""
@@ -416,18 +451,27 @@ def apply_status(job_id: str, status: str, reason: str | None = None) -> dict:
     if reason and reason not in tracker.REASON_LABEL:
         return {"ok": False,
                 "error": f"不认识的原因「{reason}」——刷新一下页面再点，原因是服务端给的（tracker.REASONS），页面上的那份可能过期了"}
-    return tracker.set_status(path, row, job, status, date.today().isoformat(),
-                              reason=reason or None)
+    try:
+        return tracker.set_status(path, row, job, status, date.today().isoformat(),
+                                  reason=reason or None)
+    except tracker.Unreadable as exc:
+        return {"ok": False, "error": str(exc), "code": "tracker_unreadable"}
 
 
 def undo_status(job_id: str, prev) -> dict:
     """撤销上一次 `apply_status`。`prev` 由那次的响应给出，页面原样送回来。"""
-    job, path, row = _job_and_row(job_id)
+    try:
+        job, path, row = _job_and_row(job_id)
+    except tracker.Unreadable as exc:
+        return {"ok": False, "error": str(exc), "code": "tracker_unreadable"}
     if job is None:
         return not_found()
     if row is None:
         return {"ok": False, "error": "投递记录里没有这一行，没什么可撤的——刷新一下页面看看最新的"}
-    out = tracker.undo(path, row, prev, date.today().isoformat())
+    try:
+        out = tracker.undo(path, row, prev, date.today().isoformat())
+    except tracker.Unreadable as exc:
+        return {"ok": False, "error": str(exc), "code": "tracker_unreadable"}
     # 谁被撤的要带上：终端那行日志按 `title`/`company` 印，不带就是「撤销：None」。
     return {**out, "company": job.get("company"), "title": job.get("title")}
 
@@ -452,13 +496,17 @@ def apply_restore(job_id: str) -> dict:
 
     撤掉的判词存进 `prev_verdict` 留痕，不是删掉——事后要能查这个岗当初为什么被杀。
     """
-    p, key, entry, data = _locate(job_id)
+    p, key, entry, data, _stamp = _locate(job_id)
     if entry is None:
         return not_found()
     # **用户自己点的那两种，撤销就是把叠加层里那条删掉**，职位库一个字不动。
     # 规则淘汰的那一支不同：它要连判词一起撤，那是**改判断**，只能写职位库。
     st = _cli.load_user_state(p)
-    if key in st and not is_rule_skipped(entry):
+    # 只有「叠加层有决定，且库里没有旧 status」时才能只删叠加层。
+    # 旧库可能在拆分之前就把 status 写成了 skipped/expired；那时提前返回会
+    # **报成功、但有效状态仍然是出局**（2026-10-24 活动用户数据里有 1 条）。
+    legacy = entry.get("status") in ("skipped", "expired")
+    if key in st and not is_rule_skipped(entry) and not legacy:
         _cli.set_user_decision(p, key, None)
         return {"ok": True, "title": entry.get("title"), "key": key}
     # 库里遗留的旧标记（拆分之前写进去的）也要能撤，所以下面那段照旧保留
@@ -479,7 +527,8 @@ def apply_restore(job_id: str) -> dict:
     entry.pop("skip_date", None)
     entry.pop("skip_reason", None)
     entry.pop("expired_date", None)   # 「已下线」也走这条放回路径
-    _cli.atomic_write(p, json.dumps(data, ensure_ascii=False, indent=1))
+    _cli.atomic_write(p, json.dumps(data, ensure_ascii=False, indent=1),
+                      expect=_stamp)
     return {"ok": True, "title": entry.get("title"), "key": key}
 
 
@@ -710,19 +759,28 @@ def sources_mtime(user: str) -> float:
               # 新加一个写入源却忘了把它挂进这张单子，是这一行存在的全部理由。
               seen_path(user).with_name("resume_refresh.json"),
               base / "job_search_tracker.csv", base / "profile" / "candidate.md",
+              # HR 常问答案也由导出器读进面板；它不在 `profile/` 的其余文件里，
+              # 单独列出来。别把它并进某个目录——漏一个源就是「改了不刷新」。
+              base / "profile" / "hr-answers.md",
               # 导出还读这几样，漏了它们就等于说「刷新页面即最新」是假的：
               # 重编了主简历 PDF、`/job-resume` 出了新审阅报告、`/job-scrape`
               # 抓回新的 JD 详情——页面全都不动，直到别的东西碰巧变了才刷。
               base / "resume" / "main.typ", base / "resume" / "main.pdf"):
         if p.is_file():
             newest = max(newest, p.stat().st_mtime)
+    # **目录本身也要算。** 删掉一个文件不会产生「更晚的文件 mtime」，
+    # 但会更新父目录；只看文件时，删掉最新那份材料后 `newest` 反而下降，
+    # `needs_reexport` 继续认为旧快照是新的。`base` 也看一眼，覆盖整个
+    # `documents/` / `job_scraper/` / `reports/` 被删掉这种情况。
+    if base.is_dir():
+        newest = max(newest, base.stat().st_mtime)
     for d in (base / "documents" / "applications",
               base / "job_scraper" / "details",
               base / "reports"):
         if d.is_dir():
+            newest = max(newest, d.stat().st_mtime)
             for p in d.rglob("*"):
-                if p.is_file():
-                    newest = max(newest, p.stat().st_mtime)
+                newest = max(newest, p.stat().st_mtime)
     return newest
 
 
@@ -845,12 +903,22 @@ class Handler(BaseHTTPRequestHandler):
 
         Origin 缺失也放行：`fetch` 同源请求本来就可能不带它，而跨站 POST 一定带。
         真正兜底的是 token。
+
+        **同源 = scheme + host + port。** 只比 hostname 会让另一个本地服务
+        （`127.0.0.1:别的端口`）也算同源；虽然它读不到本页 token，但这道
+        冗余锁不该比说明书窄。
         """
         origin = self.headers.get("Origin")
         if not origin:
             return True
-        host = urlparse(origin).hostname
-        return host in ("127.0.0.1", "localhost")
+        parsed = urlparse(origin)
+        if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost"):
+            return False
+        try:
+            port = parsed.port or 80
+        except ValueError:
+            return False
+        return port == self.server.server_address[1]
 
     # ---------- 路由 ----------
 
@@ -1027,6 +1095,10 @@ class Handler(BaseHTTPRequestHandler):
                                 f"{'开' if result.get('enabled') else '关'}"
                                 if "enabled" in result else ""))
                     sys.stderr.write(f"  {_LOG_VERB.get(path, path)}：{what}" + chr(10))
+            # 台账读不出来不是「这个岗没了」——给 409 和 code，页面才能说
+            # 「投递记录是 GBK，另存为 UTF-8」，而不是让用户去找一个还在的岗。
+            if not result.get("ok") and result.get("code") == "tracker_unreadable":
+                return self._json(409, result)
             return self._json(200 if result.get("ok") else 404, result)
         except NoActiveUser as exc:
             # 单独一支，不走下面那个通用兜底：那句话会把类名印给用户
@@ -1034,6 +1106,13 @@ class Handler(BaseHTTPRequestHandler):
             # 这也不是「出错」——是这台机器上还没有资料，说清下一步就够了。
             return self._json(409, {"ok": False, "error": str(exc),
                                     "code": "no_active_user"})
+        except StoreUnreadable as exc:
+            return self._json(409, {"ok": False, "error": str(exc),
+                                    "code": "store_unreadable"})
+        except _cli.StaleWrite as exc:
+            return self._json(409, {"ok": False,
+                                    "error": f"{exc}——刷新一下页面再试",
+                                    "code": "stale_write"})
         except Exception as exc:              # noqa: BLE001 - 要把真因回给页面
             return self._json(500, {"ok": False, "error": f"服务这边出错了：{type(exc).__name__}: {exc}。"
                         f"再试一次；还是不行就重启 serve.py"})
@@ -1154,7 +1233,7 @@ def report_running(info: dict, port: int, url: str) -> int:
 def main(argv=None) -> int:
     # 从前这里不解析参数：`serve.py --help` 会**直接起服务器卡住**，
     # `--user bob` 被静默吞掉、照样端出活动用户的面板。
-    global _PINNED_USER, PORT
+    global _PINNED_USER, PORT, TOKEN
     args = _cli.no_args(
         argv,
         description=f"本地起一个求职总览页（默认 127.0.0.1:{PORT}，只监听本机）",
@@ -1165,12 +1244,16 @@ def main(argv=None) -> int:
                             help=f"换个端口（默认 {PORT}，也可用环境变量 JOBS_PORT）")))
     if args.user:
         u = args.user.strip()
-        if not (ROOT / "users" / u).is_dir():
+        if not _cli.valid_user_name(u) or not (ROOT / "users" / u).is_dir():
             print(f"没有叫「{u}」的用户。" +
                   (_cli.user_list_line(ROOT) if _cli.all_users(ROOT)
                    else "先跑 /job-setup"), file=sys.stderr)
             return 2
         _PINNED_USER = u
+    # **钉住用户之后再取 token。** 模块级的 `TOKEN` 是给导入方（测试/别的工具）
+    # 的兜底；命令行入口必须按这一次真正服务的用户重读，否则
+    # `--user bob`（活动用户 alice）会拿 alice 的凭据文件。
+    TOKEN = _load_or_make_token()
     PORT = args.port
 
     # **先看这个端口上是不是已经有一个在跑。** 放在这儿（导出之前）是因为

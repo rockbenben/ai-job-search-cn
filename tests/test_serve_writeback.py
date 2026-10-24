@@ -18,6 +18,7 @@ import json
 import sys
 import tempfile
 import threading
+import types
 import pathlib
 import unittest
 import urllib.error
@@ -76,7 +77,7 @@ class _Temp:
         self._t.cleanup()
 
     def entry(self, title: str) -> dict:
-        seen = json.loads(self.sj.read_text(encoding="utf-8"))["seen"]
+        seen = json.loads(self.sj.read_text(encoding="utf-8-sig"))["seen"]
         return next(v for v in seen.values() if v["title"] == title)
 
     def state(self, title: str) -> str:
@@ -86,13 +87,13 @@ class _Temp:
         （`job_scraper/user_state.json`）。测试要断言的是**用户看到的状态**，
         不是它存在哪个文件里——存哪儿是实现，状态才是契约。
         """
-        seen = json.loads(self.sj.read_text(encoding="utf-8"))["seen"]
+        seen = json.loads(self.sj.read_text(encoding="utf-8-sig"))["seen"]
         key = next(k for k, v in seen.items() if v["title"] == title)
         st = srv._cli.load_user_state(self.sj)
         return srv._cli.decided_status(seen[key], st.get(key))
 
     def decision(self, title: str) -> dict:
-        seen = json.loads(self.sj.read_text(encoding="utf-8"))["seen"]
+        seen = json.loads(self.sj.read_text(encoding="utf-8-sig"))["seen"]
         key = next(k for k, v in seen.items() if v["title"] == title)
         return srv._cli.load_user_state(self.sj).get(key, {})
 
@@ -122,6 +123,80 @@ class LocatesTheRightJob(unittest.TestCase):
             r = srv.apply_skip("jdeadbeef00", "")
             self.assertFalse(r["ok"])
             self.assertIn("找不到", r["error"])
+
+
+class SurvivesAnExcelStore(unittest.TestCase):
+    """中文 Windows 上 Excel 存出来的两种文件，不能把写操作变成 500。"""
+
+    def test_a_bom_store_can_be_written(self):
+        """职位库带 BOM 时，定位/写回仍要工作。"""
+        with _Temp() as t:
+            t.sj.write_bytes(b"\xef\xbb\xbf" + t.sj.read_bytes())
+            r = srv.apply_skip(sid("https://jobs.51job.com/all/12345.html", "甲岗"),
+                               "测试")
+            self.assertTrue(r["ok"], r)
+            self.assertEqual(t.state("甲岗"), "skipped")
+
+    def test_a_gbk_tracker_is_reported_not_raised(self):
+        """台账是 GBK 时不能抛 UnicodeDecodeError，也不能静默新建一行。"""
+        with _Temp() as t:
+            (t.tmp / "users" / "张三" / "job_search_tracker.csv").write_bytes(
+                ("date,company,role,status,source,notes\n"
+                 "2026-08-01,某公司,甲岗,applied,https://jobs.51job.com/all/12345.html,\n"
+                 ).encode("gbk"))
+            r = srv.apply_status(
+                sid("https://jobs.51job.com/all/12345.html", "甲岗"), "applied")
+            self.assertFalse(r["ok"], "GBK 台账上接口报成功了")
+            self.assertEqual(r.get("code"), "tracker_unreadable",
+                             "没有 code —— 页面会把编码问题当成「这个岗没了」")
+            self.assertIn("UTF-8", r["error"])
+            self.assertIn("另存为", r["error"], "没说怎么修")
+
+    def test_a_bom_store_can_be_rewritten(self):
+        """BOM 不只影响读：放回会整份重写职位库。"""
+        with _Temp() as t:
+            t.sj.write_bytes(bytes([0xEF, 0xBB, 0xBF]) + t.sj.read_bytes())
+            url = "https://jobs.51job.com/all/12345.html"
+            srv.apply_skip(sid(url, "甲岗"), "")
+            srv.apply_restore(sid(url, "甲岗"))
+            self.assertEqual(t.state("甲岗"), "ranked")
+
+    def test_a_missing_store_says_scrape_not_encoding(self):
+        """没有职位库不是「文件坏了」——把人指去另存 UTF-8 是修一份不存在的文件。"""
+        with _Temp() as t:
+            t.sj.unlink()
+            with self.assertRaises(srv.StoreUnreadable) as cm:
+                srv.apply_status(sid("https://x/9", "丙岗"), "applied")
+            msg = str(cm.exception)
+            self.assertIn("还没抓过职位", msg)
+            self.assertIn("/job-scrape", msg)
+            self.assertNotIn("另存为", msg)
+
+
+class TheWriteOriginIsExact(unittest.TestCase):
+    """同源 = scheme + host + port；只比端口不够。"""
+
+    def _req(self, origin: str, port: int = 29029):
+        class R:
+            pass
+        r = R()
+        r.headers = {"Origin": origin}
+        r.server = types.SimpleNamespace(server_address=("127.0.0.1", port))
+        return r
+
+    def test_an_https_origin_is_not_http(self):
+        self.assertFalse(srv.Handler._same_origin(
+            self._req("https://127.0.0.1:29029")))
+
+    def test_the_real_http_origin_passes(self):
+        self.assertTrue(srv.Handler._same_origin(
+            self._req("http://127.0.0.1:29029")))
+        self.assertTrue(srv.Handler._same_origin(
+            self._req("http://localhost:29029")))
+
+    def test_another_port_is_not_the_same_origin(self):
+        self.assertFalse(srv.Handler._same_origin(
+            self._req("http://127.0.0.1:29030")))
 
 
 class TouchesOnlyTheSkipFields(unittest.TestCase):
@@ -156,6 +231,49 @@ class TouchesOnlyTheSkipFields(unittest.TestCase):
             srv.apply_skip(sid("https://x/9", "丙岗"), "")
             srv.apply_restore(sid("https://x/9", "丙岗"))
             self.assertEqual(t.entry("丙岗")["status"], "new")
+
+    def test_restore_refuses_a_stale_store(self):
+        """放回也要带版本戳；读之后被别处改了，不能整份盖回去。"""
+        with _Temp() as t:
+            url = "https://jobs.51job.com/all/12345.html"
+            job_id = sid(url, "甲岗")
+            orig = srv._cli.set_user_decision
+
+            def concurrent(seen_file, key, decision, **extra):
+                data = json.loads(t.sj.read_text(encoding="utf-8"))
+                data["seen"][f"{url}#甲岗"]["status"] = "expired"
+                t.sj.write_text(json.dumps(data, ensure_ascii=False),
+                                encoding="utf-8")
+                return orig(seen_file, key, decision, **extra)
+
+            srv._cli.set_user_decision = concurrent
+            try:
+                with self.assertRaises(srv._cli.StaleWrite):
+                    srv.apply_restore(job_id)
+            finally:
+                srv._cli.set_user_decision = orig
+
+    def test_restore_clears_a_legacy_status_even_with_an_overlay_decision(self):
+        """旧库里的 status 与叠加层同时标了出局时，放回必须两边都撤。
+
+        原来这一支在「叠加层里有一条决定」时提前返回，只删叠加层；库里那份
+        旧 `status=expired` 原样留着，于是接口报成功、岗还是出局。
+        2026-10-24 活动用户的数据里就有 1 条这样的岗。
+        """
+        with _Temp() as t:
+            url = "https://jobs.51job.com/all/12345.html"
+            job_id = sid(url, "甲岗")
+            data = json.loads(t.sj.read_text(encoding="utf-8"))
+            data["seen"][f"{url}#甲岗"]["status"] = "expired"
+            t.sj.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            srv._cli.set_user_decision(t.sj, f"{url}#甲岗", "expired",
+                                       date="2026-10-01")
+            r = srv.apply_restore(job_id)
+            self.assertTrue(r["ok"], r)
+            self.assertEqual(t.state("甲岗"), "ranked",
+                             "放回说成功，旧 status 却还把它留在出局区")
+            self.assertEqual(t.decision("甲岗"), {},
+                             "叠加层里的决定没撤")
 
 
 class RejectsWritesWithoutTheToken(unittest.TestCase):
@@ -229,6 +347,13 @@ class RejectsWritesWithoutTheToken(unittest.TestCase):
         code, body = self._post({"id": "jdefinitely-not-there", "token": srv.TOKEN},
                                 origin=f"http://127.0.0.1:{self.port}")
         self.assertNotEqual(code, 403, f"同源请求被误拦：{body}")
+
+    def test_another_local_port_is_not_the_same_origin(self):
+        """Origin 是 scheme + host + port；只比 host 会让另一个本地服务混进来。"""
+        code, _ = self._post(
+            {"id": "jdefinitely-not-there", "token": srv.TOKEN},
+            origin=f"http://127.0.0.1:{self.port + 1}")
+        self.assertEqual(code, 403, "不同端口的 Origin 被当成了同源")
 
     def test_no_active_user_answers_instead_of_dropping_the_connection(self):
         """这台机器上还没有资料时，点按钮要收到一句话，不是「网络错误」。
@@ -310,14 +435,17 @@ class NoJobsYetIsNotAFailure(unittest.TestCase):
         # 堵错了名字，`main()` 会一路走到 `serve_forever()` 把测试挂住。
         # `probe_running` 一并堵掉：它会去连本机 29029，那台机器上真有服务在跑时
         # `main()` 在前置检查之前就「已经在跑了」并 0 退出（实测吃过）。
-        real = (srv.DIST, srv.seen_path, srv.active_user, srv._Server,
-                srv.probe_running)
+        real = (srv.DIST, srv.seen_path, srv.active_user, srv.token_path,
+                srv._Server, srv.probe_running)
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             (d / "index.html").write_text("<html></html>", encoding="utf-8")
             srv.DIST = d
             srv.seen_path = lambda user: d / "还没有这个文件.json"
             srv.active_user = lambda: "someone"
+            # `main()` 现在会在钉住用户后重取 token；测试里不能让它写到
+            # 真实 `users/someone/.api_token`（那是测试污染，不是用户）。
+            srv.token_path = lambda user: d / ".api_token"
             srv._Server = _must_not_serve
             srv.probe_running = lambda *a, **k: None
             err = io.StringIO()
@@ -325,8 +453,8 @@ class NoJobsYetIsNotAFailure(unittest.TestCase):
                 with contextlib.redirect_stderr(err):
                     rc = srv.main([])
             finally:
-                (srv.DIST, srv.seen_path, srv.active_user, srv._Server,
-                 srv.probe_running) = real
+                (srv.DIST, srv.seen_path, srv.active_user, srv.token_path,
+                 srv._Server, srv.probe_running) = real
         msg = err.getvalue()
         self.assertEqual(rc, 1, f"没有职位数据却不是非零退出：{msg!r}")
         self.assertIn("/job-scrape", msg, f"没告诉用户下一步该敲什么：{msg!r}")

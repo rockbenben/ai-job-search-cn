@@ -235,18 +235,34 @@ def say(status) -> str:
     return LABEL.get(s) or SAY_EXTRA.get(s) or s if s else "还没投"
 
 
+class Unreadable(ValueError):
+    """台账不是 UTF-8，读不出原来的行。
+
+    读侧（`build_dashboard.load_tracker`）一直把这种文件降级成空表；写侧不能
+    跟着降级——那会把整份中文台账覆盖成只有本次新建的一行。所以写路径在这里
+    停下并说清怎么修。
+    """
+
+
 def load(path: Path) -> tuple[list[str], list[dict]]:
     """`(列名, 行)`。文件不存在时返回标准列序与空表。
 
     用 `utf-8-sig` 是因为 Excel 存出来的 CSV 常带 BOM——`build_dashboard.load_tracker`
-    也是这么读的，两边保持一致。
+    也是这么读的，两边保持一致。**写路径**遇到别的编码要抛 `Unreadable`，
+    不能照空表继续写（详见类说明）。
     """
     if not path.is_file():
         return list(HEADER), []
-    with path.open(encoding="utf-8-sig", newline="") as fh:
-        r = csv.DictReader(fh)
-        rows = list(r)
-        cols = list(r.fieldnames or HEADER)
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as fh:
+            r = csv.DictReader(fh)
+            rows = list(r)
+            cols = list(r.fieldnames or HEADER)
+    except UnicodeDecodeError as exc:
+        raise Unreadable(
+            f"投递记录 {path.name} 不是 UTF-8（{exc.reason}）——"
+            "先在 Excel 或记事本里另存为 UTF-8 CSV，再试一次；这次没有写盘。"
+        ) from None
     return cols, rows
 
 

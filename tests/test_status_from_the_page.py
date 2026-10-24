@@ -188,6 +188,48 @@ class UnblockingASiteActuallyWorks(unittest.TestCase):
             serve.ROOT, serve.active_user = saved
             pb.ROOT = pb_saved
 
+    def test_a_concurrent_write_is_refused(self):
+        """读→写这一小段里另一边记过账，不能拿旧快照整份盖回去。
+
+        `fetch_details` 每抓一份 JD 就往同一个文件里记一次动作。用户在面板上
+        点「继续抓」时，那一趟完全可能正好落一笔——盖掉它意味着这一趟已经
+        发出的请求从账上消失，下一次的间隔判断看不见它们；反过来，他那份
+        旧快照把这里刚解开的冷却写回封着（见 `fetch_details._commit_budget`）。
+        """
+        import datetime as dt
+
+        import _cli
+        import portal_budget as pb
+        import serve
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__("shutil").rmtree, tmp, True)
+        (tmp / "users" / "试用" / "job_scraper").mkdir(parents=True)
+        saved = (serve.ROOT, serve.active_user, pb.ROOT)
+        self.addCleanup(lambda: (setattr(serve, "ROOT", saved[0]),
+                                 setattr(serve, "active_user", saved[1]),
+                                 setattr(pb, "ROOT", saved[2])))
+        serve.ROOT, serve.active_user, pb.ROOT = tmp, lambda: "试用", tmp
+
+        now = dt.datetime.now()
+        data = pb.load("试用")
+        pb.block(data, "猎聘", "测试", now)
+        pb.save("试用", data)
+
+        orig_clear = pb.clear
+
+        def clear_then_other_writes(data, name, now):
+            out = orig_clear(data, name, now)
+            other = pb.load("试用")
+            pb.note(other, "BOSS", 1, now, kind="navigate")
+            pb.save("试用", other)
+            return out
+
+        pb.clear = clear_then_other_writes
+        self.addCleanup(setattr, pb, "clear", orig_clear)
+        with self.assertRaises(_cli.StaleWrite):
+            serve.apply_unblock("猎聘")
+
 
 class TheChainGoesForwardOneStepAtATime(unittest.TestCase):
     """界面上不该摆一个八选一的下拉框——从「已投递」直接跳到「入职了」不是

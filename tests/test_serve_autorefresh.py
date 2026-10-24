@@ -22,6 +22,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -136,6 +137,36 @@ class StaleUpstreamTriggersReexport(unittest.TestCase):
             t.data.unlink()
             self.assertTrue(srv.refresh_if_stale())
             self.assertTrue(t.data.is_file())
+
+    def test_deleting_the_newest_file_inside_an_application_is_picked_up(self):
+        """删文件不会产生「更晚的文件 mtime」，但会更新父目录 mtime。
+
+        `sources_mtime` 原来只遍历文件，于是删掉最新一份材料后，它算出的
+        最大值反而下降，`needs_reexport` 仍认为旧 `data.json` 是新的。
+        """
+        with _Temp() as t:
+            old = time.time() - 100
+            for p in t.tmp.rglob("*"):
+                if p.is_file():
+                    os.utime(p, (old, old))
+            os.utime(t.data, (old + 5, old + 5))
+            t.eval_md.unlink()
+            self.assertTrue(srv.refresh_if_stale(),
+                            "删掉投递目录里的材料后，面板没有重新导出")
+
+    def test_editing_hr_answers_is_picked_up(self):
+        """`profile/hr-answers.md` 是导出器的输入，也必须在刷新判据里。"""
+        with _Temp() as t:
+            hr = t.tmp / "users" / "张三" / "profile" / "hr-answers.md"
+            hr.parent.mkdir(parents=True)
+            old = time.time() - 100
+            for p in t.tmp.rglob("*"):
+                if p.is_file():
+                    os.utime(p, (old, old))
+            os.utime(t.data, (old + 5, old + 5))
+            hr.write_text("## 问题\n答案\n", encoding="utf-8")
+            self.assertTrue(srv.refresh_if_stale(),
+                            "改了 HR 常问答案，面板没有重新导出")
 
 
 class ExportFailureDoesNotTakeThePageDown(unittest.TestCase):
