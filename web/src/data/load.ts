@@ -92,6 +92,19 @@ const demo: Snapshot = {
 };
 
 /**
+ * 这一页**曾经**读到过真实数据吗。
+ *
+ * 「服务没起 → 演示数据」只在**第一次打开**时成立。写盘失败后重取快照
+ * 也会走 `loadSnapshot`；如果那次连不上服务，而这里不记得刚才读到过真数据，
+ * 整页会静默换成虚构的演示数据——用户看到自己的职位与投递记录
+ * 全变成了 5 个不存在的职位，只会以为数据丢了。实测 2026-10-27：
+ * 断网后点「我投了」，页面就是这样换成演示数据的。
+ *
+ * 读到过真数据之后，断连要给错误（`loadError`），不许换成另一份像真的数据。
+ */
+let everLoadedReal = false;
+
+/**
  * 读 `data.json` 的上限。**没有它这一格可以永远转下去。**
  *
  * `fetch` 只有在**拿到响应头**之后才 resolve；正文那一段断了（连接被重置、
@@ -135,15 +148,25 @@ export async function loadSnapshot(): Promise<Snapshot> {
     //
     // 判据：`isRealData` 是导出器自己盖的章。有它就说明这份数据是这个人的，
     // 哪怕一个职位都没有——空状态是他真实的状态，如实显示。
-    if (d.isRealData) return { ...normalize(d), isRealData: true };
+    if (d.isRealData) {
+      everLoadedReal = true;
+      return { ...normalize(d), isRealData: true };
+    }
     if (!Array.isArray(d.jobs) || d.jobs.length === 0) return demo;
+    everLoadedReal = true;
     return { ...normalize(d), isRealData: true };
   } catch {
     // ⚠️ **`AbortError` 是这里唯一会「悬着」的那一种的解药**，不是超时了就算了：
     // 悬着的话这一格永远不结束，而用户能做的只有刷新或干等。
-    return reached
-      ? { ...demo, loadError: `等了 ${LOAD_TIMEOUT_MS / 1000} 秒还没读完数据` }
-      : demo;          // 服务压根没起 → 演示数据（页头会标出来），不是错误
+    if (reached) {
+      return { ...demo, loadError: `等了 ${LOAD_TIMEOUT_MS / 1000} 秒还没读完数据` };
+    }
+    // **服务压根没起** → 演示数据（页头会标出来），不是错误；但这只在
+    // **第一次打开**时成立。刚才还读着真数据、现在连不上，是断连不是首次体验——
+    // 换成演示数据会让人以为自己的记录没了。
+    return everLoadedReal
+      ? { ...demo, loadError: "连不上本机服务（它可能被关掉了）" }
+      : demo;
   } finally {
     clearTimeout(timer);
   }

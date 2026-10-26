@@ -29,7 +29,7 @@ export function blockNeedsYou(p: Portal): boolean {
   const lanes = p.blockedLanes;
   // 老 data.json 没有这个数组时退到塌成一条的那个字段，别把标签整个丢掉。
   // **空数组也要走这一支。** `!lanes` 对 `[]` 是 false，于是
-  // `[].some(...)` 返回 false，浏览器那条封控被标成「接口在限流 · 要你换个网络出口」——
+  // `[].some(...)` 返回 false，浏览器那条封控被标成「免登录接口被限流 · 换个网络再试」——
   // 而它只有用户本人过得了验证，页面同时还摆着一个「我处理好了」按钮，
   // 两句话互相打架。下面那条告警列表的判据写的就是 `lanes && lanes.length`，
   // 注释还说两处「同一套」，实际只有一处对。
@@ -42,9 +42,24 @@ export function blockNeedsYou(p: Portal): boolean {
  * **两条现在都要人动手。** 这里原来对 CLI 说「到点自动恢复」——
  * 2026-08-26 封控不再自动到期，那句话会让人干等一天，而等来的是同一个 IP。
  */
+/** 数据里的封控原因带着内部码（`CLI` / `RATE_LIMITED`），首屏不该原样念给用户。 */
+export function blockWhyText(why: string): string {
+  return (why || "")
+    .replace(/CLI\s*撞\s*RATE_LIMITED/g, "平台限流了")
+    .replace(/RATE_LIMITED/g, "限流")
+    .replace(/\bCLI\b/g, "后台抓取");
+}
+
+export function blockStreakText(streak: string): string {
+  return blockWhyText(streak).replace(/出口/g, "网络");
+}
+
 export function blockLabel(p: Portal): string {
-  if (blockNeedsYou(p)) return "被平台拦住 · 要你去过验证";
-  return "接口在限流 · 要你换个网络出口";
+  // **这是行内 8.5em 状态格里的短标签，不是告警正文。**
+  // 完整句「免登录接口被限流 · 换个网络（如手机热点）再试」放进这一格会
+  // 一字一行竖排（实测 2026-10-27）；完整说明在首屏 chip 和弹窗告警正文里。
+  if (blockNeedsYou(p)) return "要验证";
+  return "要换网络";
 }
 
 /** 告警条里的一行 = 一条被封的通道（不是一家）。`key` 只用来做 React key 与 busy 态。 */
@@ -207,7 +222,10 @@ export function Portals({ portals, onChanged, staleDays }: {
   const blocked: BlockedRow[] = portals.flatMap((p) => {
     const lanes = p.blockedLanes;
     if (lanes && lanes.length) {
-      return lanes.map((b) => ({ key: `${p.name}/${b.lane}`, site: p.name, ...b }));
+      return lanes.map((b) => ({
+        key: `${p.name}/${b.lane}`, site: p.name, ...b,
+        why: blockWhyText(b.why),
+      }));
     }
     if (!p.blocked) return [];
     return [{
@@ -215,7 +233,7 @@ export function Portals({ portals, onChanged, staleDays }: {
       site: p.name,
       lane: p.blockedLane || "browser",
       channel: p.name,          // 老数据没带渠道名，只能报平台名
-      why: p.blockedWhy,
+      why: blockWhyText(p.blockedWhy),
       heldHours: p.blockedHeldHours,
       streak: "",              // 老 data.json 没有这一条
       url: p.blockedUrl,
@@ -285,7 +303,7 @@ export function Portals({ portals, onChanged, staleDays }: {
             {allDown.length > 0 && partly.length > 0 && "；"}
             {partly.length > 0 && (
               <>
-                {partly.join("、")} 有通道被拦住了，另一条还能抓（会自动放慢）
+                {partly.join("、")} 有一种抓取方式被拦住了，另一种还能抓（会自动放慢）
               </>
             )}
           </b>
@@ -296,7 +314,7 @@ export function Portals({ portals, onChanged, staleDays }: {
                     处理吗」—— 是分开的，但光写「猎聘」看不出分在哪儿。 */}
                 <b>
                   {b.site}
-                  {b.lane === "cli" ? " · 免登录接口（CLI）"
+                  {b.lane === "cli" ? " · 免登录接口"
                     : b.lane === "browser" ? " · 浏览器（要登录那条）" : ""}
                 </b>
                 ：{b.why}
@@ -307,12 +325,14 @@ export function Portals({ portals, onChanged, staleDays }: {
                 {/* **撞过不止一次就说出来。** 「停了 16 小时」读起来像个刚发生
                     的小毛病，而「三天撞了 3 次、每次放行后几分钟又中」说的是
                     「这个出口不会好了」—— 两者导出相反的决定。 */}
-                {b.streak && <em className="portal-streak">{b.streak}</em>}
+                {b.streak && (
+                  <em className="portal-streak">{blockStreakText(b.streak)}</em>
+                )}
                 {/* **连带放慢的那条要说出来**，否则用户以为「分开处理」=
                     另一条完全照常，按原速换过去，正好撞上升级成账号风控那条路。 */}
                 {b.alsoSlows && (
                   <em className="portal-also">
-                    {b.alsoSlows}那条不停、但会自动放慢（间隔拉长到 3 倍）：同一家、同一个网络出口，按原速换通道会把限流升级成账号风控
+                    {b.alsoSlows}那边不停、但会自动放慢（间隔拉长到 3 倍）：同一家、同一个网络，按原速换另一种抓取方式会把限流升级成账号风控
                   </em>
                 )}
                 {b.url && (
@@ -335,27 +355,27 @@ export function Portals({ portals, onChanged, staleDays }: {
             <>
               <p>
                 {[...new Set(needsNewIp.map((b) => b.site))].join("、")} 是
-                <b>免登录接口撞了限流</b>——你的账号没被碰，也没有验证要过，其余网站照常抓。
+                <b>免登录接口被平台限流了</b>——你的账号没被碰，也没有验证要过，其余网站照常抓。
               </p>
               {/* **这一段 2026-08-26 整个换过。** 原文是「不用你做什么」+
                   「从撞上那一刻起 24 小时，到点自动恢复，不用你操作」。
                   两句都是错的，而且是最贵的那种错：照它做就是干等一天，
                   一天后换的还是同一个 IP，探一次限一次。 */}
               <p>
-                但<b>它不会自己好</b>：限的是<b>你这个网络出口的 IP</b>，
-                {"不是某个账号。干等没用——换个网络出口（换个网络、开手机热点、重拨宽带都行），"}
+                但<b>它不会自己好</b>：平台按你当前的网络限流，
+                {"不是某个账号。干等没用——换个网络（换个无线网络、开手机热点、重拨宽带都行），"}
                 <b>换完回来点下面那个按钮</b>{"才会继续用它。不点就一直停着，"}
                 <b>哪怕这家的勾选是开着的</b>。
               </p>
               {needsNewIp.map((b) => (
                 <div key={b.key}>
                   <p className="portal-probe">
-                    换好 IP 想先确认 {b.site} 通没通，在对话里跑：
+                    换好网络想先确认 {b.site} 通没通，在对话里跑：
                   </p>
                   <Cmd>{`/job-scrape health ${b.channel}`}</Cmd>
                   <p>
                     它做的事：<b>朝{b.site}发一次搜索请求，看接口通没通</b>。通了就当场解掉、恢复抓取；不通就照实告诉你还在限流。
-                    <b>没换 IP 之前别探</b>——同一个出口探一次限一次，白撞。
+                    <b>没换网络之前别探</b>——同一个网络探一次限一次，白撞。
                   </p>
                 </div>
               ))}
@@ -368,7 +388,7 @@ export function Portals({ portals, onChanged, staleDays }: {
                         disabled={busy === b.key}
                         onClick={() => void unblock(b)}>
                   {b.lane === "cli"
-                    ? `${b.site}${blocked.length > sites.length ? " 免登录接口" : ""}：我换好 IP 了，继续抓`
+                    ? `${b.site}${blocked.length > sites.length ? " 免登录接口" : ""}：我换好网络了，继续抓`
                     : `${b.site}${blocked.length > sites.length ? " 浏览器" : ""}：我处理好了，恢复抓取`}
                 </button>
               ))}
@@ -418,14 +438,18 @@ export function Portals({ portals, onChanged, staleDays }: {
                   ⚠️ 这里原来给 CLI 那条挂 `is-waiting`（淡色，读作「等着就行」），
                   依据是「CLI 那条到点自己好」—— 2026-08-26 裁定封控不再自动到期，
                   那句话就不成立了。**两条现在都要人动手，颜色不该分轻重。** */}
+            </label>
+
+            <span className="portal-how">
+              {/* **状态标签放在说明列，不放在勾选标签里。** 第一个格子只有
+                  8.5em，checkbox + 平台名之后剩不下几像素；把标签塞在那里，
+                  「猎聘」和标签都会被挤成一字一行（实测 2026-10-27）。
+                  说明列有 11em，且标签自己 nowrap，够放四个字。 */}
               {p.blocked && (
                 <em className="portal-halt">
                   {blockLabel(p)}
                 </em>
               )}
-            </label>
-
-            <span className="portal-how">
               {p.how}
               {p.needsLogin && <i>· 要你先登录</i>}
             </span>

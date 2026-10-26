@@ -80,6 +80,52 @@ class ExporterEmitsTheBaseResume(unittest.TestCase):
                          "没有结论段却编出了一句")
 
 
+class TheJobDetailOffersTheBaseResume(unittest.TestCase):
+    """大多数岗只有开场白，没有定制简历 —— 详情里也得能打开投递用的那份简历。
+
+    原来只有 `m.score` 里的定制 PDF；主简历只藏在首屏「你的简历」弹窗里，
+    用户展开岗位后要滚回去找，或者根本不知道要带哪一份。
+    """
+
+    def test_app_passes_the_base_pdf_to_the_shortlist(self):
+        app = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
+        self.assertGreaterEqual(
+            app.count("baseResumePdf={snap.baseResume?.pdf}"), 2,
+            "两处 Shortlist（主表/可以考虑）没有都传主简历 PDF")
+
+    def test_the_shortlist_passes_it_to_the_detail(self):
+        s = (ROOT / "web" / "src" / "components" / "Shortlist.tsx").read_text(
+            encoding="utf-8")
+        self.assertIn("baseResumePdf?: string;", s)
+        self.assertIn("baseResumePdf={baseResumePdf}", s)
+
+    def test_custom_resume_still_wins_and_base_is_the_fallback(self):
+        s = (ROOT / "web" / "src" / "components" / "JobReadout.tsx").read_text(
+            encoding="utf-8")
+        self.assertRegex(
+            s, r"m\?\.resumePdf \?[\s\S]{0,500}打开定制简历 PDF[\s\S]{0,500}"
+               r"baseResumePdf \?[\s\S]{0,300}打开主简历 PDF",
+            "定制简历优先、主简历兜底的顺序不对")
+        self.assertIn("没有定制简历时也要有简历可打开", s,
+                      "没有留下这条兜底的理由")
+
+    def test_stale_base_pdf_is_flagged_at_the_job_action_row(self):
+        """主简历 PDF 过期时，岗位详情不能只给一个“打开”就完事。
+
+        `pdfStale` 原来只在「你的简历」弹窗里说；用户在详情里直接下载
+        就会拿到上一版。把标记透到动作行，在发出去之前提醒。
+        """
+        app = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
+        self.assertGreaterEqual(
+            app.count("baseResumePdfStale={snap.baseResume?.pdfStale}"), 2,
+            "两处 Shortlist 没有都传 PDF 过期标记")
+        jr = (ROOT / "web" / "src" / "components" / "JobReadout.tsx").read_text(
+            encoding="utf-8")
+        self.assertIn("baseResumePdfStale", jr)
+        self.assertIn("主简历 PDF 是旧版", jr,
+                      "详情里没有告诉用户打开的是旧版")
+
+
 class PanelSurfacesItWithGuidance(unittest.TestCase):
 
     SRC = ROOT / "web" / "src" / "components" / "BaseResume.tsx"

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Cmd, CopyButton, CopyIcon } from "./Cmd";
-import { Button } from "antd";
+import { App as AntApp, Button } from "antd";
 // 「这道门算不算还没查到」只有一份实现，别在这里另写（`GateStamp` 是它的家）。
 import { countsAsUnknown, GateGrid } from "./GateStamp";
 import { InterviewLog } from "./InterviewLog";
@@ -73,6 +73,8 @@ export function JobReadoutBody({
   onExpire,
   onChanged,
   reasons,
+  baseResumePdf,
+  baseResumePdfStale,
 }: {
   job: Job;
   onExclude?: () => void;
@@ -83,9 +85,15 @@ export function JobReadoutBody({
   /** 「挂了」可以点的原因。**前端不写死**——它来自 `tracker.REASONS`，
       和状态按钮同一个道理：两份词表迟早分叉。 */
   reasons?: { value: string; label: string }[];
+  /** 主简历 PDF 的地址；这个岗没有定制简历时，详情里给这一份。 */
+  baseResumePdf?: string;
+  /** 主简历 PDF 是否比源文件旧。 */
+  baseResumePdfStale?: boolean;
 }) {
   return <ReadoutBody job={job} onExclude={onExclude} onExpire={onExpire}
-                      onChanged={onChanged} reasons={reasons} />;
+                      onChanged={onChanged} reasons={reasons}
+                      baseResumePdf={baseResumePdf}
+                      baseResumePdfStale={baseResumePdfStale} />;
 }
 
 export function JobReadout({ job }: { job: Job }) {
@@ -166,13 +174,18 @@ export function JobReadout({ job }: { job: Job }) {
 //  与 `build_dashboard._AGAINST` 同值，两边由 `test_the_advice_reaches_the_screen` 钉住。
 const ADVISES_AGAINST = /^[*_ \-—·]*(不投|别投|不建议投|不要投)/;
 
-function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [] }: {
+function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
+                       baseResumePdf, baseResumePdfStale }: {
   job: Job;
   onExclude?: () => void;
   onExpire?: () => void;
   onChanged?: (advance?: boolean, phase?: "now" | "settled") => void;
   /** 「挂了」可以点的原因，来自服务端 `tracker.REASONS`。空数组就不渲染那一排。 */
   reasons?: { value: string; label: string }[];
+  /** 主简历 PDF 的地址；这个岗没有定制简历时，详情里给这一份。 */
+  baseResumePdf?: string;
+  /** 主简历 PDF 是否比源文件旧。 */
+  baseResumePdfStale?: boolean;
 }) {
   // 投递状态记在这一页点，不用回命令行。
   //
@@ -204,6 +217,11 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [] }: {
   const [busy, setBusy] = useState("");
   const [statusErr, setStatusErr] = useState("");
   const steps = hasServer() ? job.nextStatuses ?? [] : [];
+  //: **弹层挂在 App 上，不挂在这一行上。** 「我投了」会让这一行立刻消失、
+  //: 收起位置跳到下一个岗（`App.afterStatus` 的 advance），组件随之卸载——
+  //: 写在组件里的报错和撤销会跟着一起消失。收在这里的两条才能跨过那一步：
+  //: 写失败时还看得见为什么，写成功后还有一次撤销的机会。
+  const { message } = AntApp.useApp();
 
   /**
    * 记一笔状态。**界面立刻变，写盘在后台跑。**
@@ -251,9 +269,40 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [] }: {
       //    的计数、「下一步」那行、投后统计全停在旧值，直到用户手动刷新。
       //    界面的即时反馈由上面的乐观更新负责，不靠这一次重取。
       onChanged?.(true, "settled");
+      // **「我投了」会把这一行带走，撤销不能跟着它一起走。**
+      // 这一行消失、组件卸载之后，面板里那句「已记下 / 撤销」已经没有地方显示；
+      // 用 App 级提示把它接住，误点时还来得及退回来。
+      if (value === "applied") {
+        const key = `status-${job.id}`;
+        message.open({
+          key,
+          type: "success",
+          className: "cockpit-flash",
+          // 写盘本身要几秒（serve 在响应前同步重导快照），提示再从写回来后
+          // 开始计时；8 秒对「点完先看一眼下一个岗」的人不够，误点就找不回来了。
+          duration: 20,
+          content: (
+            <span>
+              已记为「我投了」。
+              <Button type="link" size="small"
+                      onClick={() => { void undoAfterAdvance(r.prev, key); }}>
+                撤销
+              </Button>
+            </span>
+          ),
+        });
+      }
     } catch (e) {
+      const why = (e as Error).message || "没写进去";
       setMarked(null);                       // 回滚：盘上没写成，界面不能假装写了
-      setStatusErr((e as Error).message || "没写进去");
+      setStatusErr(why);
+      // 同一行可能已经因为乐观更新卸载了；这条提示必须挂在页面级。
+      message.error({
+        key: `status-${job.id}`,
+        className: "cockpit-flash cockpit-flash-error",
+        content: `没记上：${why}。界面已经改回去了，再试一次。`,
+        duration: 6,
+      });
       onChanged?.();
     }
   }
@@ -304,6 +353,32 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [] }: {
       setStatusErr((e as Error).message || "撤不掉");
     } finally {
       setBusy("");
+    }
+  }
+
+  /** 自动前进之后仍能撤销的那一下。`prev` 由那次写盘的响应给出。 */
+  async function undoAfterAdvance(prev: string | null, key: string) {
+    // 行已经走了，能立刻变的只有这条提示本身：先换成「正在撤销」，
+    // 别让人点完之后盯着「已记为」以为没点着。
+    message.open({
+      key, type: "loading", className: "cockpit-flash",
+      content: "正在撤销…", duration: 0,
+    });
+    try {
+      await postStatusUndo(job.id, prev);
+      onChanged?.();
+      message.success({
+        key, className: "cockpit-flash", content: "已撤销", duration: 2,
+      });
+    } catch (e) {
+      message.error({
+        key,
+        className: "cockpit-flash cockpit-flash-error",
+        content: `没撤成：${(e as Error).message || "没写进去"}`,
+        duration: 6,
+      });
+      // 撤不掉就按盘上的真值重取一次：这一行刚才可能只是停在旧快照里。
+      onChanged?.();
     }
   }
 
@@ -505,10 +580,23 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [] }: {
               {/* channel 可能是空串（认不出的平台）——「在打开这个职位」是句残话 */}
               {job.channel ? `在${job.channel}打开这个职位 ↗` : "打开这个职位 ↗"}
             </Button>
-            {m?.resumePdf && (
+            {/* **没有定制简历时也要有简历可打开。** 大多数岗只备了开场白，
+                而材料里的「简历」指的就是主简历；它原来只藏在首屏「你的简历」
+                弹窗里，用户展开详情后还得滚回去找。这里把主简历接到投递动作行，
+                定制版仍优先，缺省时才退到主简历。 */}
+            {m?.resumePdf ? (
               <Button href={m.resumePdf} target="_blank" rel="noopener">
                 打开定制简历 PDF
               </Button>
+            ) : baseResumePdf ? (
+              <Button href={baseResumePdf} target="_blank" rel="noopener">
+                打开主简历 PDF
+              </Button>
+            ) : null}
+            {!m?.resumePdf && baseResumePdf && baseResumePdfStale && (
+              <span className="act-note is-warn">
+                主简历 PDF 是旧版——发之前先在「你的简历」里重新编译，现在打开的是上一版。
+              </span>
             )}
             {/* **这份是不是已经过时了** —— 查在他要打开/发出这份 PDF 的
                 那一下，和开场白那条警告同一个道理。导出器从 2026-08-22 起

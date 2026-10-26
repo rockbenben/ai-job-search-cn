@@ -68,7 +68,12 @@ class EveryCollapseHeaderWraps(unittest.TestCase):
 
 
 class TheDeskbarWraps(unittest.TestCase):
-    """那一排按钮上带着一整句结论 —— 窄屏必须换行，且一行一个。"""
+    """那一排按钮上带着一整句结论 —— 窄屏要换行，现在排两列。
+
+    2026-10-27 从「一行一个」改成当屏两列：390px 上七颗按钮占 ~500px，
+    把岗位名单推到 2.2 屏之外。「招聘网站」（有告警）仍占整行，长告警
+    不被挤成碎行；「能敲哪些命令」和「HR 常问的」配对，避免半边空行。
+    """
 
     def _rule(self, sel: str) -> str:
         i = CSS_CODE.index(chr(10) + sel + " {")
@@ -81,9 +86,19 @@ class TheDeskbarWraps(unittest.TestCase):
         """「上次审于 X，之后改过没再审」这种一句话，一行放不下。"""
         self.assertIn("flex-wrap: wrap", self._rule(".deskbtn"))
 
-    def test_a_narrow_screen_gets_one_per_row(self):
-        self.assertRegex(CSS_CODE,
-                         r"@media \(max-width: 560px\) \{[^}]*\.deskbtn")
+    def test_a_narrow_screen_gets_two_columns(self):
+        i = CSS_CODE.index("@media (max-width: 560px)")
+        seg = CSS_CODE[i:i + 700]
+        self.assertRegex(seg, r"flex-basis: calc\(50% - 5px\)",
+                         "窄屏没有排成两列")
+        self.assertIn(".cockpit .deskbtn[data-alarm]", seg,
+                      "告警按钮没有占整行，长文案会被挤碎")
+        self.assertRegex(seg, r'data-desk="portals"',
+                         "招聘网站带长 chip 但没有告警时会被挤在半宽里")
+        self.assertIn(".cockpit .deskbtn[data-desk=\"cmds\"]", seg,
+                      "命令表没有参与两列配对")
+        self.assertIn("flex-basis: 100%", seg)
+        self.assertIn("flex-basis: calc(50% - 5px)", seg)
 
     def test_the_text_is_left_aligned(self):
         """按钮上是一句话，不是一个词 —— 居中读起来会断在奇怪的地方。"""

@@ -200,6 +200,24 @@ body .chan > summary:active {
 /* 「下一步」那一横排的眉标：青色是这一排的签名色（原来用 inline style 挂，
    于是同一条颜色在 JSX 里抄了一份，CSS 这半边看不见它）。 */
 .nextstep .kicker { color: var(--data); flex-shrink: 0; }
+/* 「发完记一笔」是对旁边那条命令的**说明**，不是第二个动作：
+   字重和颜色都退到旁注，命令本身仍是这一排唯一要敲的东西。 */
+.nextstep-cmd { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nextstep-cmdlabel {
+  font-size: var(--fs-meta); color: var(--faint); white-space: nowrap;
+}
+/* 页面级写盘提示：antd 默认是浅色圆角浮层，压在深色面板上像另一套产品。
+   这里只换皮，不换布局——提示仍由 antd 管定位与消失。 */
+.cockpit-flash .ant-message-notice-content {
+  background: var(--panel-raised); color: var(--lit);
+  border: 1px solid var(--edge); border-radius: 0; box-shadow: none;
+}
+.cockpit-flash .ant-message-custom-content { color: var(--lit); }
+.cockpit-flash-error .ant-message-notice-content { border-color: var(--lock); }
+.cockpit-flash .ant-btn-link {
+  color: var(--data); height: auto; padding: 0 0 0 6px;
+}
+.cockpit-flash .ant-btn-link:hover { color: var(--lit); }
 
 /* 「为什么」：它是这一句的脚注，不是一个平级动作 —— 所以做成一条下划线文字，
    不是按钮。旁边那颗才是要他敲的东西，两个长得一样会分掉注意力。 */
@@ -1107,6 +1125,19 @@ body .ant-typography .ant-typography-copy {   /* (0,2,1)：既出面板又压得
   .sec-head .sec-note { margin-left: 0; }
 }
 
+/* 窄屏两列：告警占整行，命令表与 HR 配对，省掉半边空行。
+   媒体查询不提升特异性，选择器多挂 `.cockpit` 才能盖过文件后面的基础规则。 */
+@media (max-width: 560px) {
+  .cockpit .deskbtn {
+    flex-basis: calc(50% - 5px); min-width: 0;
+  }
+  .cockpit .deskbtn[data-alarm],
+  .cockpit .deskbtn[data-desk="portals"] { flex-basis: 100%; }
+  /* 「能敲哪些命令」桌面端占整行，窄屏和「HR 常问的」配对；
+     留它独占会多出一行半空，实测只省 46px。 */
+  .cockpit .deskbtn[data-desk="cmds"] { flex-basis: calc(50% - 5px); }
+}
+
 /* 减少动态效果：**不能用 `animation: none`** —— antd 把 `opacity: 0` 写在动画的
    起始状态里，关掉动画元素就永远停在那一帧（实测 2026-08-24 弹窗根本不出现，
    详见 `App.tsx` 里 `desk-modal` 那段注释）。 */
@@ -1118,15 +1149,6 @@ body .ant-typography .ant-typography-copy {   /* (0,2,1)：既出面板又压得
     animation-iteration-count: 1 !important;
   }
 }
-
-/* 那排按钮：窄屏一行一个，别挤成两列各半行字。
-   **选择器多挂一层 `.cockpit`**：断点集中放在这一段，而 `.deskbtn` 的基础规则
-   在文件更靠后的地方 —— 媒体查询不提升特异性，同形又写在后面的那条会赢，
-   这几行一行都不生效。判据见 `test_media_queries_actually_win`。 */
-@media (max-width: 560px) {
-  .cockpit .deskbtn { flex-basis: 100%; }
-}
-
 
 /* ── 逐岗的下一步：这个岗卡在哪（区别于顶部那条全局建议）── */
 .jobstep {
@@ -1519,7 +1541,8 @@ body .ant-typography .ant-typography-copy {   /* (0,2,1)：既出面板又压得
 body .cmdbook-row .ant-typography code,
 body .rail-cell .ant-typography code,
 body .nextstep .ant-typography code,
-body .readout .ant-typography code {
+body .readout .ant-typography code,
+body .ostats .ant-typography code {
   display: inline-block;
   max-width: 100%;
   overflow-x: auto;
@@ -1906,7 +1929,8 @@ body .readout .ant-typography code::-webkit-scrollbar { display: none; }
 .portal-unblock:disabled { opacity: .5; cursor: default; }
 /* 勾着但被封 = 不抓。这条要挨着勾选框写，否则用户看到勾是开的会以为它在抓 */
 .portal-halt {
-  margin-left: 6px; padding: 0 5px; border-radius: 2px; font-style: normal;
+  margin-right: 6px; padding: 0 5px; border-radius: 2px; font-style: normal;
+  white-space: nowrap;
   font-size: var(--fs-meta); border: 1px solid var(--lock); color: var(--lock);
 }
 /* 这里原来还有一条 `.portal-halt.is-waiting`：给 CLI 限流那种封控退到灰的一档，

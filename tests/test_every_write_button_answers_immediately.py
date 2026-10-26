@@ -97,8 +97,14 @@ _SPIN = re.compile(r"set(Busy|StatusErr|Err|Error|Loading|Saving|Pending)\(")
 _TOUCH = re.compile(r"set[A-Z]\w*\(|onChanged\?\.\(")
 
 #: 豁免要写理由，且要写清楚**用户点下去看到的是什么**。
-#: 空着是件好事：现在十个具名写盘处理函数全是乐观的。
-EXEMPT: dict[str, str] = {}
+EXEMPT: dict[str, str] = {
+    # 这条写盘不是从行里的按钮点出来的，是从**页面级提示**里点的撤销：
+    # 那一行此时可能已经卸载（「我投了」会自动前进），没有可乐观改的行内状态。
+    # 用户看到的是提示本身立刻从「已记为」换成「正在撤销…」，成功换成
+    # 「已撤销」、失败换成「没撤成：…」——变化在写盘之前就已发生，
+    # 只是它不是 `setXxx`，这层探测器看不见。失败时还会重取一次快照对齐。
+    "undoAfterAdvance": "从页面级提示里点的撤销；界面反馈是提示文案，不经过组件状态",
+}
 
 
 def _code(body: str) -> str:

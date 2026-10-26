@@ -153,19 +153,34 @@ class EveryButtonCarriesItsConclusion(unittest.TestCase):
         self.assertIn("挡你最多的是", desks())
 
 
+class TheBlockReasonIsPlain(unittest.TestCase):
+    """封控原因里的 `CLI` / `RATE_LIMITED` 是内部码，不能原样念给用户。"""
+
+    def test_it_translates_the_raw_reason(self):
+        src = (ROOT / "web/src/components/Portals.tsx").read_text(encoding="utf-8")
+        self.assertIn("export function blockWhyText", src)
+        self.assertIn("export function blockStreakText", src,
+                      "限流历史没有做出口→网络的翻译")
+        self.assertIn("平台限流了", src, "封控原因没有翻成人话")
+        self.assertIn("why: blockWhyText", src,
+                      "告警行仍在用未翻译的 why")
+        self.assertIn("有一种抓取方式被拦住了", src,
+                      "告警标题还在用「通道」")
+
+
 class TheThreePortalChipsSurvive(unittest.TestCase):
     """2026-08-21 那次事故的修法 —— 三枚三种意思，不能并成一句。
 
     **意思还是三种，颜色只剩两种了。** 2026-08-26 裁定封控不再自动到期之后，
     「在限流冷却 · 等它自己好」那一枚不成立了：它要用户换网络出口，和「去过
-    验证」一样是待办。文案改成「要你换个网络出口」、色从 `wait` 并进 `alarm`
+    验证」一样是待办。文案改成「被限流了，换个网络再试」、色从 `wait` 并进 `alarm`
     —— 两枚的差别由**文案**承担，不再由颜色承担（`AGENTS.md`「「等」不是
     下一步」：待办面上不该给「等」留位置）。
     """
 
     def test_all_three_are_rendered(self):
         d = desks()
-        for txt in ("被拦住了", "要你换个网络出口", "你关着"):
+        for txt in ("被拦住了", "被限流了，换个网络再试", "你关着"):
             with self.subTest(txt=txt):
                 self.assertIn(txt, d)
 
@@ -177,7 +192,7 @@ class TheThreePortalChipsSurvive(unittest.TestCase):
         照样红（撞上的也是注释）。**判据一律先剥注释再比。**
         """
         d = strip_comments(desks())
-        for txt in ("被拦住了", "要你换个网络出口", "你关着"):
+        for txt in ("被拦住了", "被限流了，换个网络再试", "你关着"):
             with self.subTest(txt=txt):
                 self.assertIn(txt, d, f"「{txt}」只在注释里出现，没真的渲染")
 

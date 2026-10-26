@@ -76,9 +76,14 @@ export function OutcomeStatsPanel({ s }: { s: OutcomeStats }) {
         {s.waitingMedian !== null && (
           <div className="ostats-big">
             <b className="mono-label">{s.waitingMedian}</b>
-            {/* 原来是「还在等的已等天数（中位）」——十个字里「等」出现两次，
-                读一遍才知道它在说什么。这一格的数就是天数，说清是中位即可。 */}
-            <span>已等的中位天数</span>
+            {/* **必须点明是「还在等」那一小撮的中位。** 只写「已等的中位天数」
+                会和下面的「大概率没戏 121」打架：那 121 个都已等过静默线，
+                中位却写 3 天，读者只会怀疑哪个数是真的。这个 3 只算还在等的。 */}
+            <span
+              title="只算「还在等」的那几个岗，不含已经归入「大概率没戏」的"
+            >
+              还在等的中位天数
+            </span>
           </div>
         )}
       </div>

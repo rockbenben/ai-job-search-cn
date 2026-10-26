@@ -645,7 +645,7 @@ export default function App() {
     blockedNeedsYou.length
       ? `${blockedNeedsYou.map((p) => p.name).join("、")} 被拦住了`
       : blockedNeedsIp.length
-        ? `${blockedNeedsIp.map((p) => p.name).join("、")} 要你换个网络出口`
+        ? `${blockedNeedsIp.map((p) => p.name).join("、")} 被平台限流了，换个网络再试`
         : need.length
           ? `还差 ${need.length} 项要装`
           : "";
@@ -706,6 +706,9 @@ export default function App() {
           <p>
             面板要连着本机服务才有数据。先确认它还在跑，跑不起来就重开一次：
           </p>
+          <p>
+            如果你刚才点过按钮，那一笔可能没写进去；服务恢复后刷新这一页再确认。
+          </p>
           <Cmd>python tools/serve.py</Cmd>
         </div>
       </ConfigProvider>
@@ -728,7 +731,7 @@ export default function App() {
      *  **原来还有一个 `wait`（「等它自己好」）。** 2026-08-26 裁定封控不再自动
      *  到期之后，这一屏上**没有任何东西是等的**了 —— 两种封控都要人动手，
      *  只是动的不是同一件事，那个差别由**文案**承担（「被拦住了」/
-     *  「要你换个网络出口」），不再由颜色承担。
+     *  「被限流了，换个网络再试」），不再由颜色承担。
      *
      *  留着一个没人用的「等着就行」色，下一个人会拿它去标别的东西 ——
      *  而 `AGENTS.md`「「等」不是下一步」正是不许在待办面上给「等」留位置。 */
@@ -756,7 +759,7 @@ export default function App() {
         ...(portals.some((p) => p.blocked && !blockNeedsYou(p))
           ? [{ tone: "alarm" as const,
                text: portals.filter((p) => p.blocked && !blockNeedsYou(p))
-                            .map((p) => p.name).join("、") + " 要你换个网络出口" }]
+                            .map((p) => p.name).join("、") + " 被限流了，换个网络再试" }]
           : []),
         // **自己关掉的那家，也要把价钱摆出来。** 上面两枚说的是「平台拦你」，
         // 这一枚说的是「你关了它」—— 不是催他打开（那是他的决定），是让那个
@@ -817,7 +820,17 @@ export default function App() {
               + (snap.baseResume.audit.stale ? "，之后改过没再审" : "")
             : "还没审过")
         : "",
-      chip: snap.baseResume?.pdfStale ? "PDF 是旧的" : undefined,
+      // **审核过期要在首屏看得见。** 下面这句 note 只在 `d.alarm || chips`
+      // 时才渲染（为了把这一排压矮），而简历这一颗通常没有告警——于是
+      // 「上次审于 …，之后改过没再审」被挡在弹窗里。审核结论说的是旧版本，
+      // 用户可能照着它去投；这里用已有的 chip 槽位把警告留回首屏。
+      // 两条都过期时要一起说：PDF 旧只是导出没跟上，审核旧是结论不作数；
+      // 不能因为前者更具体就把更严重的后者藏起来。
+      chip: snap.baseResume?.pdfStale && snap.baseResume?.audit?.stale
+        ? "PDF 是旧的 · 改过没再审"
+        : snap.baseResume?.pdfStale
+          ? "PDF 是旧的"
+          : snap.baseResume?.audit?.stale ? "简历改过没再审" : undefined,
     },
     {
       key: "resume", name: "市场怎么读你的简历", show: !!snap.resumeInsight,
@@ -947,7 +960,7 @@ export default function App() {
                     )}
                   </ul>
                   <p className="userpop-h">再建一个</p>
-                  <Cmd>/job-user --new 名字</Cmd>
+                  <Cmd>/job-user --new &lt;名字&gt;</Cmd>
                   <p className="userpop-note">
                     {"每个人的资料、职位、投递记录都各自独立。" +
                      "命令在命令行里跑，跑完刷新这一页就换过来了。"}
@@ -1098,7 +1111,15 @@ export default function App() {
             </span>
             <span className="nextstep-text">{nsHead}</span>
             {nextStep.command && (
-              <Cmd>{nextStep.command}</Cmd>
+              <span className="nextstep-cmd">
+                {nextStep.command.startsWith("/job-outcome") && (
+                  // 这一句在说「先发这批」，而命令是**发完之后**才敲的。
+                  // 不加这半句，命令看上去就是「怎么发」——新用户照着复制，
+                  // 得到的是「你要记哪一个岗」，与刚读到的动作正好错位。
+                  <span className="nextstep-cmdlabel">发完记一笔</span>
+                )}
+                <Cmd>{nextStep.command}</Cmd>
+              </span>
             )}
             {nsWhy && (
               <button
@@ -1535,6 +1556,8 @@ export default function App() {
             hideColumns={hidden.columns}
             appliedCompanies={appliedCos}
             hiddenCount={hiddenCount}
+            baseResumePdf={snap.baseResume?.pdf}
+            baseResumePdfStale={snap.baseResume?.pdfStale}
           />
 
           {/* 「可以考虑」这一档收起来。和「不投的岗位」同一种形态——**里面的行
@@ -1599,6 +1622,8 @@ export default function App() {
             hideColumns={hidden.columns}
             appliedCompanies={appliedCos}
             hiddenCount={hiddenCount}
+            baseResumePdf={snap.baseResume?.pdf}
+            baseResumePdfStale={snap.baseResume?.pdfStale}
                     />
                   ),
                 },

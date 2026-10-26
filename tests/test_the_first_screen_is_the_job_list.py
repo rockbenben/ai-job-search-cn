@@ -93,9 +93,14 @@ class TheNextStepIsOneLine(unittest.TestCase):
         self.assertIn('<span className="nextstep-text">{nsHead}</span>', APP)
 
     def test_the_command_stays_visible(self):
-        """动作在命令上 —— 收掉理由不能把它一起收走。"""
+        """动作在命令上 —— 收掉理由不能把它一起收走。
+
+        命令前多了一小句「发完记一笔」，说明这条 `/job-outcome` 是发完之后
+        才敲的；窗口跟着包住这一段，但命令本身仍然必须在这块里。
+        """
         i = APP.index('<span className="nextstep-text">{nsHead}</span>')
-        self.assertIn("<Cmd>{nextStep.command}</Cmd>", APP[i:i + 400])
+        seg = APP[i:i + 1200]
+        self.assertIn("<Cmd>{nextStep.command}</Cmd>", seg)
 
     def test_the_rest_is_reachable(self):
         self.assertIn('{nsWhy && nsOpen && <p className="nextstep-why">{nsWhy}</p>}',

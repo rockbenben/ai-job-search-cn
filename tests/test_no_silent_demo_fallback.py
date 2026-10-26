@@ -184,6 +184,30 @@ class ARealUserWithZeroJobsIsNotDemoData(unittest.TestCase):
         self.assertIn('"isRealData": True', src, "导出器不盖 isRealData 了")
 
 
+class ALostServerAfterRealDataIsNotDemo(unittest.TestCase):
+    """读到过真数据之后断连，不许把整页换成演示数据。
+
+    2026-10-27 实测：总览页已经显示真实数据，断网后点「我投了」——写盘失败，
+    随后的重取也连不上，`loadSnapshot` 的 catch 把 `reached=false` 当成
+    「第一次打开、服务没起」，于是返回了演示数据。用户看到自己的职位和投递记录
+    变成了 5 个虚构岗位，而屏幕上只有一句「没记上：Failed to fetch」。
+    """
+
+    def test_the_loader_remembers_it_served_real_data(self):
+        t = LOAD.read_text(encoding="utf-8")
+        self.assertIn("everLoadedReal", t,
+                      "没有记住「刚才读到过真数据」——断连会静默换成演示数据")
+        # 两个真实数据的出口都要盖章；少一个，另一条路照样会换演示。
+        self.assertGreaterEqual(t.count("everLoadedReal = true"), 2,
+                                "有真实数据的出口没盖章")
+        i = t.index("async function loadSnapshot")
+        catch = t[t.index("} catch {", i):]
+        self.assertIn("everLoadedReal", catch,
+                      "catch 里没看这个记忆，断连仍然返回演示数据")
+        self.assertIn("loadError", catch,
+                      "断连没有给错误——页面会看起来一切正常（只是换了个人的数据）")
+
+
 class EmptyStatesPointAtTheNextCommand(unittest.TestCase):
     """空状态是新用户的第一屏，它得说清下一步敲什么，而且命令要能复制。
 

@@ -121,12 +121,16 @@ class AServerThatIsNotRunningIsNotAnError(unittest.TestCase):
         return "\n".join(re.sub(r"//.*$", "", ln) for ln in seg.splitlines())
 
     def test_the_demo_path_survives_a_refused_connection(self):
-        """连接被拒时退回演示数据，且不带 loadError。"""
+        """连接被拒、且这一页**从没读到过真数据**时，退回演示数据且不带 loadError。
+
+        「从来没读过」是新增的前提：已经显示过真实数据的页面断连，不能再换成
+        另一份看起来像真的演示数据（否则用户会以为自己的记录没了）。
+        """
         catch = self._catch_code()
-        self.assertIn("return reached", catch,
-                      "没接上服务与接上了却没数据，被当成同一件事")
+        self.assertIn("everLoadedReal", catch,
+                      "没记住这页读到过真数据，断连仍会换回演示数据")
         self.assertRegex(catch, r"(?m):\s*demo\s*;?\s*$",
-                         "没接上服务时不能带 loadError —— 那不是错误")
+                         "从没读过真数据时不能带 loadError —— 那不是错误")
 
     def test_and_that_path_carries_no_error(self):
         self.assertNotRegex(self._catch_code(), r":\s*demo\s*,\s*loadError",

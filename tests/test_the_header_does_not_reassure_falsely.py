@@ -60,6 +60,27 @@ class TheResumeHeaderSaysTheAuditIsStale(unittest.TestCase):
         """「旧了」是状态，「之后改过没再审」是原因 —— 后者才指得出动作。"""
         self.assertRegex(_resume_header(), r"之后改过|改过没再审")
 
+    def test_the_warning_is_also_a_chip(self):
+        """**note 被首屏高度优化挡掉了，审核过期不能跟着消失。**
+
+        `deskbtn-note` 只在 `alarm || chips` 时渲染，而「你的简历」通常没有告警；
+        当前活动用户的 `audit.stale=true`、`pdfStale=false`，首屏却只显示
+        「你的简历」四个字。用已有 chip 槽位把警告留回首屏；完整日期仍在弹窗。
+        """
+        header = _resume_header()
+        self.assertIn("audit?.stale", header,
+                      "chip 没读审核过期标记")
+        self.assertIn("简历改过没再审", header,
+                      "审核过期没有出现在 chip 上")
+
+    def test_both_stale_are_not_hidden_behind_each_other(self):
+        """PDF 旧 + 审核旧同时为真时，chip 不能只说 PDF。
+
+        PDF 旧是导出没跟上；审核旧是结论不作数。前者更具体，但不能因此
+        把后者藏起来。
+        """
+        self.assertIn("PDF 是旧的 · 改过没再审", _resume_header())
+
     def test_the_body_still_carries_the_full_notice(self):
         """标题那半句是提要，展开后那句（含改动日期）不许被顺手删掉。"""
         self.assertIn("audit.stale", BR)
@@ -127,7 +148,7 @@ class TheChipColoursSayWhoIsResponsible(unittest.TestCase):
     **但颜色从三种减到两种了（2026-08-27）。** 原来第三种是 `wait`
     （「等它自己好」），配给 CLI 限流那种封控 —— 而 2026-08-26 裁定封控不再
     自动到期之后，它要用户换网络出口，和「去过验证」一样是待办。
-    两枚的差别改由**文案**承担（「被拦住了」/「要你换个网络出口」），
+    两枚的差别改由**文案**承担（「被拦住了」/「被限流了，换个网络再试」），
     `wait` 的色、类型成员、CSS 规则一起撤了。
 
     剩下的分界仍然是这个类要守的那一条：**平台拦你（要你处理）**

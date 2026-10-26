@@ -156,6 +156,31 @@ class TheReasonIsActuallyVisible(unittest.TestCase):
         self.assertIn("display: block", m.group(1),
                       "错误还挤在那一行里 —— 用户扫过去看不见")
 
+    def test_it_survives_the_row_leaving(self):
+        """**行走了，报错还得在。** 「我投了」成功时这一行会立刻移出名单并
+        跳到下一条（`App.afterStatus` 的 advance），组件随之卸载；把错误
+        只写在组件状态里，失败那一支正好看不见。页面级提示必须有一条。
+        """
+        code = re.sub(r"//[^\n]*", "", READOUT)
+        self.assertIn("AntApp.useApp()", code,
+                      "提示不是从 App 上下文拿的 —— 组件卸载后就没了")
+        m = re.search(r"async function mark\(.*?\n  \}", code, re.S)
+        self.assertIsNotNone(m, "找不到 mark()")
+        self.assertIn("message.error(", m.group(0),
+                      "写失败只写了组件内状态 —— 这一行走了就没人看见")
+
+    def test_the_undo_can_outlive_the_advance(self):
+        """自动前进之后撤销不能跟着组件一起消失。"""
+        code = re.sub(r"//[^\n]*", "", READOUT)
+        self.assertIn("undoAfterAdvance", code,
+                      "没有跨过自动前进的撤销函数")
+        m = re.search(r"async function mark\(.*?\n  \}", code, re.S)
+        self.assertIsNotNone(m, "找不到 mark()")
+        self.assertIn("message.open(", m.group(0),
+                      "「我投了」写成功后没有页面级撤销入口")
+        self.assertIn("撤销", m.group(0),
+                      "撤销提示里没有可点的「撤销」")
+
 
 if __name__ == "__main__":
     unittest.main()

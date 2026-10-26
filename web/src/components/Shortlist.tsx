@@ -96,6 +96,8 @@ export function Shortlist({
   hideColumns,
   appliedCompanies,
   hiddenCount,
+  baseResumePdf,
+  baseResumePdfStale,
 }: {
   jobs: Job[];
   selectedId: string;
@@ -134,6 +136,10 @@ export function Shortlist({
   appliedCompanies?: Set<string>;
   /** 被「不想看什么」藏掉了几个。空表时要靠它说清是「没有岗」还是「被你滤掉了」。 */
   hiddenCount?: number;
+  /** 主简历 PDF 的地址；岗位没有定制简历时，详情里给这一份。 */
+  baseResumePdf?: string;
+  /** 主简历 PDF 是否比源文件旧——在详情里也要提醒，别让人直接发旧版。 */
+  baseResumePdfStale?: boolean;
 }) {
   // 已投视图的排序在**数据源**上做，不靠列的 defaultSortOrder：
   // 投递日期不是一列（它挤在职位那格的角标里），没有列就挂不上 sorter。
@@ -701,6 +707,8 @@ export function Shortlist({
               onChanged={(advance, phase) =>
                 onChanged?.(advance, job.id, phase)}
               reasons={reasons}
+              baseResumePdf={baseResumePdf}
+              baseResumePdfStale={baseResumePdfStale}
             />
           ),
           // **不要那一列**。整行本来就可点，为一个三角形单开一列等于把「交互提示」

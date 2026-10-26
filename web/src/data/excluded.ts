@@ -138,11 +138,17 @@ async function post<T = unknown>(
   body: Record<string, unknown>,
   retry = true,
 ): Promise<T> {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, token: window.__API_TOKEN__ }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, token: window.__API_TOKEN__ }),
+    });
+  } catch {
+    // 浏览器的异常原文是 `Failed to fetch`，不该原样印给中文用户看。
+    throw new ApiError("连不上本机服务——确认它还在跑", "network");
+  }
   // 服务端把真因放在 error 里；**别把失败咽掉**——咽掉的结果是页面显示已排除、
   // 盘上其实没改，下次刷新它又回来，而用户不知道为什么。
   const data = (await res.json().catch(() => ({}))) as
