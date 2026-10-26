@@ -47,11 +47,17 @@ def _entry(url, title):
             "rank_breakdown": {"技能与经验": 80, "依据": "夹具"}}
 
 
-def _app_dir(base: Path, name: str, url: str, *, with_pdf: bool) -> Path:
+def _app_dir(base: Path, name: str, url: str, *, with_pdf: bool,
+             with_outreach: bool = False) -> Path:
     d = base / name
     d.mkdir(parents=True)
     (d / "posting.md").write_text(
         f"# 职位\n\n原始链接：{url}\n\n岗位职责：略。\n", encoding="utf-8")
+    if with_outreach:
+        # 干净链接 + 一段能解析出来的开场白：这份岗在面板上应当算「材料就绪」
+        (d / "outreach.md").write_text(
+            f"# 示例\n\n职位链接：{url}\n\n## 打招呼开场白\n\n您好。\n",
+            encoding="utf-8")
     if with_pdf:
         # 内容无所谓，导出器只是 `shutil.copy` 它
         (d / "resume.pdf").write_bytes(b"%PDF-1.4\n% fixture\n")
@@ -60,8 +66,14 @@ def _app_dir(base: Path, name: str, url: str, *, with_pdf: bool) -> Path:
 
 class MaterialsAndStatusReachThePanel(unittest.TestCase):
 
-    def _export(self, *, dup: bool, pdf: bool, tracker: bool):
-        """跑一次真导出，返回 (jobs, 服务端打到 stderr 的话, 输出目录)。"""
+    def _export(self, *, dup: bool, pdf: bool, tracker: bool,
+                outreach: bool = False, seen_url: str = URL,
+                app_url: str = URL, app_name: str = "示例科技_AI产品经理"):
+        """跑一次真导出，返回 (jobs, 服务端打到 stderr 的话, 输出目录)。
+
+        `seen_url` 是职位库里的链接（可能带平台埋点参数），`app_url` 是
+        `outreach.md` / `posting.md` 里记的链接。两者可以不同写法。
+        """
         import contextlib
         import io
 
@@ -72,14 +84,15 @@ class MaterialsAndStatusReachThePanel(unittest.TestCase):
         (u / "profile" / "candidate.md").write_text("# 候选人\n真实内容\n",
                                                     encoding="utf-8")
         (u / "job_scraper" / "seen_jobs.json").write_text(
-            json.dumps({"seen": {URL: _entry(URL, "AI 产品经理"),
+            json.dumps({"seen": {seen_url: _entry(seen_url, "AI 产品经理"),
                                  OTHER: _entry(OTHER, "数据产品经理")}},
                        ensure_ascii=False), encoding="utf-8")
         apps = u / "documents" / "applications"
-        _app_dir(apps, "示例科技_AI产品经理", URL, with_pdf=pdf)
+        _app_dir(apps, app_name, app_url, with_pdf=pdf,
+                 with_outreach=outreach)
         if dup:
             # 同一个链接的第二个目录：材料更少，应当被让位并**告警**
-            _app_dir(apps, "示例科技_AI产品经理_旧", URL, with_pdf=False)
+            _app_dir(apps, "示例科技_AI产品经理_旧", app_url, with_pdf=False)
         if tracker:
             (u / "job_search_tracker.csv").write_text(TRACKER, encoding="utf-8")
         (tmp / ".active_user").write_text("张三", encoding="utf-8")
@@ -118,6 +131,43 @@ class MaterialsAndStatusReachThePanel(unittest.TestCase):
         mats = self._job(jobs).get("materials") or {}
         self.assertIsNone(mats.get("resumePdf"),
                           "没有简历却说有 —— 面板上会出现一个死链接")
+
+    def test_a_tracking_query_does_not_hide_the_materials(self):
+        """职位库里带平台埋点参数、材料里记的是干净链接 —— 还是同一个岗。
+
+        51job 的搜索结果给的是
+        `…/171830509.html?s=sou_sou_soulb&t=0_0&req=…`，而 `outreach.md` 记的
+        是去掉查询串的链接。只按 `#` 之前原样比，材料接不回去，面板会把这个
+        岗说成「还没出材料」——用户于是对着已经备好的评估重跑一次。
+        """
+        seen = URL + "?s=sou_sou_soulb&t=0_0&req=fixture"
+        jobs, _, _ = self._export(
+            dup=False, pdf=False, tracker=False,
+            outreach=True, seen_url=seen, app_url=URL)
+        job = self._job(jobs, seen)
+        mats = job.get("materials") or {}
+        self.assertEqual(job.get("url"), seen,
+                         "导出时把职位库里的链接改写掉了")
+        self.assertTrue(
+            mats.get("greeting"),
+            "同一个岗只因查询串不同就丢了材料 —— 面板会显示「还没出材料」")
+
+    def test_a_shared_base_with_a_different_title_does_not_steal_materials(self):
+        """基础 URL 唯一，不代表是同一个岗。
+
+        51job 公司页这类链接可能挂着多个职位。材料目录若只按 URL 兜底，
+        A 岗的 outreach 会被端到 B 岗；目录名里带职位名，必须核一遍。
+        """
+        seen = URL + "?s=sou_sou_soulb&t=0_0&req=fixture"
+        jobs, _, _ = self._export(
+            dup=False, pdf=False, tracker=False,
+            outreach=True, seen_url=seen, app_url=URL,
+            app_name="示例科技_数据产品经理")
+        job = self._job(jobs, seen)
+        mats = job.get("materials") or {}
+        self.assertFalse(
+            mats.get("greeting"),
+            "只凭基础 URL 把另一个职位的话术接上了")
 
     def test_duplicate_dirs_keep_the_richer_one_and_say_so(self):
         """两个目录指向同一个岗时：留材料全的那个，并且**要出声**。

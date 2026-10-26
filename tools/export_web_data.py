@@ -3644,7 +3644,29 @@ def main(argv=None, *, show_next_step=True) -> int:
     # 才对上**：材料侧该基础 URL 只有一个目录、库侧也只有一个岗——任一不唯一都不猜，
     # 宁可显示「没材料」也不把别岗的话术端错人。实测 2026-08-12：63 个目录因此接不上。
     def _base(u: str) -> str:
-        return (u or "").split("#", 1)[0]
+        """接材料用的「同一个岗」判据：**去掉平台埋点与协议差异**。
+
+        只剥 `#` 不够 —— 51job 搜索页给的链接带
+        `?s=sou_sou_soulb&t=0_0&req=…`，而 `outreach.md` 记的是干净链接；
+        两边按原样比，材料就接不回去，页面上那个岗会显示「还没出材料」，
+        即使评估和开场白都在盘上。
+
+        查询串不参与职位身份（理由见 `_cli.norm_url` 的注释），而 `#` 后的
+        职位名仍在库键里。两边都唯一时才走这条兜底（见上面的 `_app_base_ct`
+        与 `_seen_base_ct`），所以不会把同一路径下的两个岗并掉。
+        """
+        return _cli.norm_url(u).split("#", 1)[0]
+
+    def _title_in_dir(entry: dict, app: dict) -> bool:
+        """兜底匹配还要核职位名：同一基础 URL 可能挂着多个岗。
+
+        只按 URL 唯一性匹配，公司页上的 A 岗材料会被端给 B 岗；
+        目录名是 `<公司>_<职位名>`，归一一遍后职位名应当出现在里面。
+        认不出来就不接（宁可显示没材料，也不把别岗的话术端错人）。
+        """
+        title = re.sub(r"[\W_]+", "", (entry.get("title") or "").lower())
+        folder = re.sub(r"[\W_]+", "", (app.get("dir") or "").lower())
+        return bool(title) and title in folder
 
     _app_base_ct = collections.Counter(_base(u) for u in apps)
     # 驻场标记要读 JD 正文（见 `_onsite_ids`）。**在这里算一次**，
@@ -3652,26 +3674,32 @@ def main(argv=None, *, show_next_step=True) -> int:
     # 计数和实际滤掉的数就会对不上。
     _onsite = _onsite_ids(user)
     apps_base = {_base(u): a for u, a in apps.items() if _app_base_ct[_base(u)] == 1}
-    _seen_base_ct = collections.Counter(_base(k) for k in seen)
+    # **计基数必须和查表用同一把钥匙 `e["url"]`。** 职位库的键既可能是
+    # `<url>#<职位名>`，也可能已被换成稳定 id（当前活动用户的键就是
+    # `j…` 形态）——拿键去数，URL 的基数永远是 0，下面那条「两边都唯一才兜底」
+    # 就一次也不会成立。症状是材料明明在盘上，面板仍说「还没出材料」。
+    _seen_base_ct = collections.Counter(
+        _base(e.get("url") or k) for k, e in seen.items()
+        if isinstance(e, dict))
 
     PDF_DIR.mkdir(parents=True, exist_ok=True)
     for old in PDF_DIR.glob("*.pdf"):
         old.unlink()
 
     jobs, n_pdf, n_drift = [], 0, 0
-    # **这里绑的是 `seen` 的键，不是链接。** 键的形态是 `<url>#<职位名>`
-    #（51job 实测同一 URL 下挂着两个不同职位，只用 URL 会静默吃掉一条，
-    # 见 `workflows/reference/cdp-portals.md`）。这一行原来把它命名为 `url` ——
-    # 全仓十来处同样的循环都叫 `k`，只有这一处不是，而它恰好在产出面板那份
-    # `data.json` 的文件里。名字骗人的代价是现成的：同一个作用域里还有
-    # `e["url"]`（真链接），`ustate.get(...)` 要的却是键 ——两者今天恰好都对，
-    # 是因为 1839 条**每一条都有** `url` 字段，那个 `or` 兜底从没触发过。
+    # **`k` 是职位库的键，链接一律从 `e["url"]` 取。** 键既可能是
+    # `<url>#<职位名>`，也可能是稳定 id（当前库就是后者）；`ustate.get(...)`
+    # 要的却是键。这一行原来把它命名为 `url`，让「取链接」和「取键」看起来
+    # 是同一件事 —— 下面 `e.get("url") or k` 那个兜底至今没触发过，不代表
+    # 它写对了。
     for k, e in seen.items():
         # 分数与判词走面板同一个 resolve_score：**有 evaluation.md 就以深评为准**。
         # 两处各写一套必然飘，而这正是「面板 76、深评 62」那个 bug 的形状。
         app = apps.get(e.get("url") or k)
         if app is None and _seen_base_ct[_base(e.get("url") or k)] == 1:
-            app = apps_base.get(_base(e.get("url") or k))
+            candidate = apps_base.get(_base(e.get("url") or k))
+            if candidate is not None and _title_in_dir(e, candidate):
+                app = candidate
         score, verdict, evaluated = resolve_score(e, app)
         verdict = str(verdict or "")
         # **兜底要自嚷，不许静默圆场。** resolve_score 以 evaluation.md 为准，
