@@ -261,11 +261,13 @@ class TheRiskiestSliceSaysWhatAlreadyHappened(unittest.TestCase):
         self.assertIn("随时可能复制开场白发出去", seg,
                       "那次错的原话被顺手删了 —— 下一个人会照原样再写一遍")
 
-    def test_it_splits_sent_from_still_fixable(self):
+    def test_it_splits_historical_from_still_fixable(self):
         seg = self._seg()
         self.assertIn("_n_gone", seg)
-        self.assertIn("已经发出去了", seg)
-        self.assertIn("现在补得上", seg)
+        message = seg[seg.index("_still = ("):seg.index('return [("warn"')]
+        # live_tail 也会排除已下线和不投记录，不能把差集一律称为已投。
+        self.assertIn("已不在待投范围", message)
+        self.assertIn("现在可以补存正文", message)
 
     def test_the_split_is_computed_not_assumed(self):
         """那个数是现算的 —— 我上一版就是「按定义」推出来的，推错了。"""

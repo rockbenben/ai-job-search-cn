@@ -67,9 +67,9 @@ def _block() -> str:
 class ItComputesTheGroup(unittest.TestCase):
     def test_it_reuses_the_hash_already_computed(self):
         """再读一遍 2581 份 JSON 是白花的 —— 上一个循环刚算过。"""
-        i = EX.index("by_body.setdefault(body, []).append(job)")
+        i = EX.index("by_body.setdefault(prefix, []).append(job)")
         seg = EX[max(0, i - 300):i]
-        self.assertIn('body = hashlib.sha1(norm.encode("utf-8")).hexdigest()', seg)
+        self.assertIn('prefix = hashlib.sha1(norm[:300].encode("utf-8")).hexdigest()', seg)
 
     def test_the_company_key_still_carries_the_company(self):
         """**那条裁定不许动。** 去掉公司就会错并两家套同一模板的雇主。"""
@@ -141,7 +141,7 @@ class TheReasonIsRecorded(unittest.TestCase):
         """默不作声地标上，等于没标 —— 跑导出的人要知道有这回事。"""
         i = EX.index("if n_same:")
         seg = flat(EX[i:i + 500])
-        self.assertRegex(seg, r"JD 正文一字不差、公司名不同")
+        self.assertRegex(seg, r"JD 正文开头相同、公司名不同")
         self.assertRegex(seg, r"投之前自己看一眼")
 
 

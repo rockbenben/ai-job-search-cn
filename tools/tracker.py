@@ -333,6 +333,12 @@ def note(day: str, status: str) -> str:
 ROW_GONE = "投递记录里找不到这一行了——刷新一下页面再试"
 
 
+def row_version(row: dict) -> str:
+    import hashlib
+    import json
+    return hashlib.sha256(json.dumps(row, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
 def set_status(path: Path, row, job: dict, status: str, day: str,
                reason: str | None = None) -> dict:
     """把 `status` 写进台账。`row` 是 `match_tracker` 找到的行，没有就传 None。
@@ -375,12 +381,12 @@ def set_status(path: Path, row, job: dict, status: str, day: str,
         if lab and reason != "other":
             hit["notes"] = "; ".join(x for x in [hit["notes"], f"原因：{lab}"] if x)
     save(path, cols, rows)
-    return {"ok": True, "prev": prev, "created": created,
+    return {"ok": True, "prev": prev, "created": created, "version": row_version(hit),
             "company": hit.get("company"), "role": hit.get("role"),
             "then": AFTER.get(status, "")}
 
 
-def undo(path: Path, row, prev, day: str) -> dict:
+def undo(path: Path, row, prev, day: str, *, version: str | None = None) -> dict:
     """撤销一次 `set_status`。
 
     `prev is None` 表示那一行是页面刚建的 —— 撤销就是删掉它。**但只删带来源标记
@@ -390,6 +396,10 @@ def undo(path: Path, row, prev, day: str) -> dict:
     hit = next((r for r in rows if _same(r, row)), None)
     if hit is None:
         return {"ok": False, "error": ROW_GONE}
+    expected = version if version is not None else row_version(row)
+    if row_version(hit) != expected:
+        return {"ok": False, "code": "stale_write",
+                "error": "这条投递记录后来已更新，刷新后再核对"}
     if prev is None:
         if MARK not in (hit.get("notes") or ""):
             return {"ok": False,

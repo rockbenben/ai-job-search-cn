@@ -540,14 +540,14 @@ class TheServerRefusesAStepYouCannotReach(unittest.TestCase):
         自己的说明文字，测试变成永远红。这个仓库在别处已经栽过好几次了。
         """
         src = (ROOT / "tools" / "serve.py").read_text(encoding="utf-8")
-        code = re.sub(r"^\s*#.*$", "", src, flags=re.M)
-        # 取到行尾再回退一个 `)`：`[^)]*` 会被 `body.get("prev")` 自己的括号截断，
-        # 抓到半截 `body.get("prev"`，于是这条永远红。
-        call = re.search(r"undo_status\(job_id,\s*(.*?)\)\s*$", code, re.M)
-        self.assertIsNotNone(call, "找不到 undo_status 的调用")
-        self.assertEqual(call.group(1).strip(), 'body.get("prev")',
-                         "prev 被加工过了 —— null 与空串是两件事，"
-                         "折成空串就把「删掉这行」变成了「把状态清空」")
+        import ast
+        calls = [node for node in ast.walk(ast.parse(src))
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                 and node.func.id == "undo_status"]
+        self.assertEqual(len(calls), 1, "找不到唯一的 undo_status 调用")
+        self.assertEqual(ast.unparse(calls[0].args[1]), "body.get('prev')",
+                         "prev 应当原样传入，保留 null 与空串的区别")
+
 
 
 class TheServerActuallyStarts(unittest.TestCase):

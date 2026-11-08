@@ -27,7 +27,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sys
 from pathlib import Path
 
@@ -41,7 +40,7 @@ from build_dashboard import (NO_REPLY_ALARM,  # noqa: E402
                              _INTERVIEW_STATUSES as INTERVIEW_STATUSES,
                              dedup_apps_by_url,
                              _OFFER_STATUSES as OFFER_STATUSES,
-                             find_applications, is_parked, job_next_step, match_tracker,
+                             find_applications, match_application, is_parked, job_next_step, match_tracker,
                              is_optional, load_tracker, n_parked, n_processed,
                              n_waiting,
                              next_step, parse_commands, profile_ready, resolve_score)
@@ -1494,6 +1493,22 @@ def _stored_details(user: str) -> list:
 OUT_DIR = ROOT / "web" / "public"
 PDF_DIR = OUT_DIR / "pdf"
 
+def publish_pdf(source: Path, destination: Path) -> str:
+    """Publish an immutable PDF without exposing a partly written download."""
+    import tempfile
+    content = source.read_bytes()
+    name = hashlib.sha256(content).hexdigest() + ".pdf"
+    destination.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=destination, delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write(content)
+    try:
+        os.replace(temporary, destination / name)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return name
+
+
 # 判定词 → 四态。顺序有讲究：「FLAG，非 FAIL」必须在 FAIL 之前判掉，
 # 否则一条"需注意但通过"的条件会被误读成不满足，让人白白放弃这个岗。
 GATE_RULES = [
@@ -2503,7 +2518,7 @@ def short_location(loc: str) -> str:
         # 「杨浦区中国大陆上海市杨浦区民府路…」→ 只取到「区」为止
         m = re.match(r"(.{1,6}?[区市县镇])", dist)
         return f"{city}·{m.group(1) if m else dist[:6]}"
-    return t[:12]
+    return t
 
 
 def clean(t: str) -> str:
@@ -2978,7 +2993,7 @@ def gate_why(verdict: str, reason: str) -> str:
     ):
         extra.append(rest)
     tail = "（" + "；".join(extra) + "）" if extra else ""
-    return (reason + tail) if reason else (tail.strip("（）") or "无说明")
+    return (reason + tail) if reason else (tail[1:-1] or "无说明")
 
 
 def _rows_from(lines: list[str], idx: int) -> list[list[str]]:
@@ -3459,7 +3474,7 @@ def parse_ask_before(text: str) -> list[str]:
 #: 引号可有可无。**写手的手会抖，判据不该跟着抖** —— 这一段是给人写的散文，
 #: 不是机器填的表单（同 `parse_gaps` 那句「跑偏的是写手，不是解析器」）。
 _OVERCLAIM = re.compile(
-    r"[（(]\s*(?:别|不能|不要)写成\s*[：:]?\s*[「\"']?(.+?)[」\"']?\s*[)）]\s*$")
+    r"[（(]\s*(?:别|不能|不要)写成\s*[：:]?\s*(.+?)\s*[)）]\s*$")
 
 
 def _overclaim_of(detail: str):
@@ -3485,28 +3500,51 @@ def _overclaim_of(detail: str):
         return None
     # 冒号可有可无，于是 `（别写成：）` 会把冒号本身当成内容捞出来。
     # 剥干净再判空 —— 一个只剩标点的「不能写成」印到屏幕上比不印更糟。
-    over = m.group(1).strip().strip("：:「」\"' ")
+    over = m.group(1).strip().lstrip("：: ")
     if not over:
         return None
     head = detail[:m.start()].strip().rstrip("，,、")
-    # **引号里那句才是「不能写成」的原话。**
-    #
-    # 捕获是懒惰的，可收尾要求一个右括号 —— 于是引号后面还跟着解释时
-    # （`（别写成：「有合规相关项目经验」；你做过的是产品与交付…）`），
-    # 那个 `」` 连同整段解释一起被卷进来。屏幕上就出现一句
-    # `有合规相关项目经验」；你做过的是…` —— 一个开不了口的引号，
-    # 而且把解释划红成了「不能写成」的一部分（它其实是**能**写的实情）。
-    #
-    # 两样都不丢：引号里的归 `overclaim`，引号后的解释还给 `detail`。
-    i = over.find("」")
-    if i >= 0:
-        tail = over[i + 1:].strip().lstrip("；;，,、 ")
-        over = over[:i].strip()
-        if not over:
+    quotes = {"「": "」", '"': '"', "'": "'"}
+    remaining = over
+    quoted = []
+    while remaining and remaining[0] in quotes:
+        opening = remaining[0]
+        closing = quotes[opening]
+        depth = 1
+        end = 1
+        while end < len(remaining):
+            char = remaining[end]
+            if char == closing:
+                depth -= 1
+            elif opening != closing and char == opening:
+                depth += 1
+            if depth == 0:
+                break
+            end += 1
+        if depth:
+            return (head, over)
+        quoted.append(remaining[1:end])
+        remaining = remaining[end + 1:].strip().lstrip("；;，,、 ")
+    if quoted:
+        over = "；".join(quoted)
+        if not over.strip():
             return None
-        if tail:
-            head = (head + " —— " + tail) if head else tail
+        if remaining:
+            head = (head + " —— " + remaining) if head else remaining
     return (head, over)
+
+
+def split_gap_explanation(text: str) -> tuple[str, str]:
+    pairs = {"（": "）", "(": ")", "「": "」", "《": "》", "【": "】"}
+    stack = []
+    for index, char in enumerate(text):
+        if char in pairs:
+            stack.append(pairs[char])
+        elif stack and char == stack[-1]:
+            stack.pop()
+        if not stack and text[index:index + 2] == "——":
+            return text[:index].strip(), text[index + 2:].strip()
+    return text.strip(), ""
 
 
 def parse_gaps(text: str) -> list[dict]:
@@ -3590,11 +3628,13 @@ def parse_gaps(text: str) -> list[dict]:
         km = re.match(r"(核心职责|任职要求|领域空白|加分项)\s*[：:]\s*(.+)", s)
         if km:
             kind, s = km.group(1), km.group(2)
-        claim, _, detail = s.partition("——")
-        row = {"kind": kind, "claim": claim.strip(), "detail": detail.strip()}
-        over = _overclaim_of(row["detail"])
-        if over:
-            row["detail"], row["overclaim"] = over
+        extracted = _overclaim_of(s)
+        if extracted:
+            s, overclaim = extracted
+        claim, detail = split_gap_explanation(s)
+        row = {"kind": kind, "claim": claim, "detail": detail}
+        if extracted:
+            row["overclaim"] = overclaim
         out.append(row)
     return out
 
@@ -3636,57 +3676,20 @@ def main(argv=None, *, show_next_step=True) -> int:
     # 目录解码失败的警告也会打两遍。
     app_root = ud / "documents" / "applications"
     all_apps = find_applications(app_root)
-    apps = dedup_apps_by_url(all_apps)
+    dedup_apps_by_url(all_apps)
     orphans = [a["dir"] for a in all_apps if not a["url"]]
 
-    # 材料里常记不带 `#岗名` 后缀的干净链接，而库 key 可能带 fragment（51job 公司页
-    # 甚至靠 fragment 区分同页多岗）。精确匹配不上时按基础 URL 兜底，但**两边都唯一
-    # 才对上**：材料侧该基础 URL 只有一个目录、库侧也只有一个岗——任一不唯一都不猜，
-    # 宁可显示「没材料」也不把别岗的话术端错人。实测 2026-08-12：63 个目录因此接不上。
-    def _base(u: str) -> str:
-        """接材料用的「同一个岗」判据：**去掉平台埋点与协议差异**。
-
-        只剥 `#` 不够 —— 51job 搜索页给的链接带
-        `?s=sou_sou_soulb&t=0_0&req=…`，而 `outreach.md` 记的是干净链接；
-        两边按原样比，材料就接不回去，页面上那个岗会显示「还没出材料」，
-        即使评估和开场白都在盘上。
-
-        查询串不参与职位身份（理由见 `_cli.norm_url` 的注释），而 `#` 后的
-        职位名仍在库键里。两边都唯一时才走这条兜底（见上面的 `_app_base_ct`
-        与 `_seen_base_ct`），所以不会把同一路径下的两个岗并掉。
-        """
-        return _cli.norm_url(u).split("#", 1)[0]
-
-    def _title_in_dir(entry: dict, app: dict) -> bool:
-        """兜底匹配还要核职位名：同一基础 URL 可能挂着多个岗。
-
-        只按 URL 唯一性匹配，公司页上的 A 岗材料会被端给 B 岗；
-        目录名是 `<公司>_<职位名>`，归一一遍后职位名应当出现在里面。
-        认不出来就不接（宁可显示没材料，也不把别岗的话术端错人）。
-        """
-        title = re.sub(r"[\W_]+", "", (entry.get("title") or "").lower())
-        folder = re.sub(r"[\W_]+", "", (app.get("dir") or "").lower())
-        return bool(title) and title in folder
-
-    _app_base_ct = collections.Counter(_base(u) for u in apps)
+    # 链接归一和同链接的多岗位匹配由 match_application 统一处理。
     # 驻场标记要读 JD 正文（见 `_onsite_ids`）。**在这里算一次**，
     # 逐岗的 `prefTags` 与 `pref_rows` 的计数共用它 —— 两处各算一遍，
     # 计数和实际滤掉的数就会对不上。
     _onsite = _onsite_ids(user)
-    apps_base = {_base(u): a for u, a in apps.items() if _app_base_ct[_base(u)] == 1}
-    # **计基数必须和查表用同一把钥匙 `e["url"]`。** 职位库的键既可能是
-    # `<url>#<职位名>`，也可能已被换成稳定 id（当前活动用户的键就是
-    # `j…` 形态）——拿键去数，URL 的基数永远是 0，下面那条「两边都唯一才兜底」
-    # 就一次也不会成立。症状是材料明明在盘上，面板仍说「还没出材料」。
-    _seen_base_ct = collections.Counter(
-        _base(e.get("url") or k) for k, e in seen.items()
-        if isinstance(e, dict))
-
-    PDF_DIR.mkdir(parents=True, exist_ok=True)
-    for old in PDF_DIR.glob("*.pdf"):
-        old.unlink()
+    pdf_user = hashlib.sha256(user.encode("utf-8")).hexdigest()[:20]
+    pdf_dir = PDF_DIR / pdf_user
+    pdf_dir.mkdir(parents=True, exist_ok=True)
 
     jobs, n_pdf, n_drift = [], 0, 0
+    directory_jobs = {}
     # **`k` 是职位库的键，链接一律从 `e["url"]` 取。** 键既可能是
     # `<url>#<职位名>`，也可能是稳定 id（当前库就是后者）；`ustate.get(...)`
     # 要的却是键。这一行原来把它命名为 `url`，让「取链接」和「取键」看起来
@@ -3695,11 +3698,7 @@ def main(argv=None, *, show_next_step=True) -> int:
     for k, e in seen.items():
         # 分数与判词走面板同一个 resolve_score：**有 evaluation.md 就以深评为准**。
         # 两处各写一套必然飘，而这正是「面板 76、深评 62」那个 bug 的形状。
-        app = apps.get(e.get("url") or k)
-        if app is None and _seen_base_ct[_base(e.get("url") or k)] == 1:
-            candidate = apps_base.get(_base(e.get("url") or k))
-            if candidate is not None and _title_in_dir(e, candidate):
-                app = candidate
+        app = match_application(e, all_apps, seen.values())
         score, verdict, evaluated = resolve_score(e, app)
         verdict = str(verdict or "")
         # **兜底要自嚷，不许静默圆场。** resolve_score 以 evaluation.md 为准，
@@ -4099,9 +4098,8 @@ def main(argv=None, *, show_next_step=True) -> int:
                         mats["resumeStale"] = _dt.date.fromtimestamp(_base_m).isoformat()
                 except OSError:
                     pass
-                name = f"{job['id']}.pdf"
-                shutil.copy(pdf, PDF_DIR / name)
-                mats["resumePdf"] = f"pdf/{name}"
+                name = publish_pdf(pdf, pdf_dir)
+                mats["resumePdf"] = f"pdf/{pdf_user}/{name}"
                 n_pdf += 1
             # **文件名以 `job-apply.md` 为准：`cover-letter.md`（连字符）。**
             #
@@ -4123,13 +4121,15 @@ def main(argv=None, *, show_next_step=True) -> int:
             if mats:
                 job["materials"] = mats
         jobs.append(job)
+        if app is not None:
+            directory_jobs[app["dir"]] = job
 
     jobs.sort(key=lambda j: (j["score"] is None, -(j["score"] or 0)))
 
     # ---- 同岗多投放归组 ------------------------------------------------
     # 同一个岗常被多个猎头重复投放（实测：同一份供应链 JD 五个投放、启蒙教育四个），
     # 不归组的话「值得投 31 个」是虚的——用户会把同一个岗研究两遍。
-    # 键用 **JD 正文前缀的哈希**（归一化后前 300 字）：不同猎头会做不同程度的脱敏
+    # 键用 **完整 JD 正文的哈希**，并核对公司、职位和地点：不同猎头会做不同程度的脱敏
     # （删公司名等），全文哈希会漏；前缀保守——**宁可漏归组，不可错合并**。
     # 没有正文的（浏览器渠道、未抓到 JD）不参与归组。
     details_dir = ROOT / "users" / user / "job_scraper" / "details"
@@ -4143,7 +4143,7 @@ def main(argv=None, *, show_next_step=True) -> int:
             desc = json.loads(p.read_text(encoding="utf-8")).get("description") or ""
         except json.JSONDecodeError:
             continue
-        norm = re.sub(r"\s+", "", desc)[:300]
+        norm = re.sub(r"\s+", "", desc)
         if len(norm) < 80:
             continue          # 太短的正文撞车概率高，不归组
         # **公司必须一起进键。** 只按正文哈希归组，前提是「正文相同 ⇒ 同一个岗被
@@ -4157,9 +4157,12 @@ def main(argv=None, *, show_next_step=True) -> int:
         # 日化公司」和真名）不再归组。那正是本段注释自己定的方向：
         # **宁可漏归组，不可错合并**——漏了只是多研究一遍，错了是一个岗看不见。
         body = hashlib.sha1(norm.encode("utf-8")).hexdigest()
-        by_body.setdefault(body, []).append(job)
+        prefix = hashlib.sha1(norm[:300].encode("utf-8")).hexdigest()
+        by_body.setdefault(prefix, []).append(job)
+        # 仅去掉明确标注渠道来源的后缀，保留职责和业务方向的括注。
+        posting_title = re.sub(r"（猎头版）$", "", job.get("title") or "").strip()
         key = hashlib.sha1(
-            f"{(job.get('company') or '').strip()}\x00{body}".encode("utf-8")
+            f"{(job.get('company') or '').strip()}\x00{posting_title}\x00{job.get('location') or ''}\x00{body}".encode("utf-8")
         ).hexdigest()
         by_prefix.setdefault(key, []).append(job)
     n_dup = 0
@@ -4239,7 +4242,7 @@ def main(argv=None, *, show_next_step=True) -> int:
                            for x in other]
             n_same += 1
     if n_same:
-        print(f"  JD 正文一字不差、公司名不同：{n_same} 个岗标了出来"
+        print(f"  JD 正文开头相同、公司名不同：{n_same} 个岗标了出来"
               f"（不归并 —— 可能是同一个岗两家猎头在代招，也可能是两家公司"
               f"套了同一份模板，投之前自己看一眼）")
 
@@ -4263,7 +4266,6 @@ def main(argv=None, *, show_next_step=True) -> int:
     # 归并等于把他做过的判断抹掉。
     n_manual = 0
     url2job = {_cli.norm_url(j["url"]): j for j in jobs if j.get("url")}
-    dir2url = {a["dir"]: a["url"] for a in all_apps if a.get("url")}
     for a in all_apps:
         d = app_root / a["dir"]
         note = d / "同岗重复挂牌.md"
@@ -4277,9 +4279,10 @@ def main(argv=None, *, show_next_step=True) -> int:
         text = note.read_text(encoding="utf-8", errors="replace")
         primary = None
         for ref in re.findall(r"`([^`/\n]+)/(?:evaluation|posting)\.md`", text):
-            cand = url2job.get(_cli.norm_url(dir2url.get(ref, "")))
+            cand = directory_jobs.get(ref)
             # 不许自指，也不许接到一个自己就是重复挂牌的岗上（那会成环）。
-            if cand is not None and cand is not me and not cand.get("dupOf"):
+            if (cand is not None and cand is not me and not cand.get("dupOf")
+                    and cand.get("materials")):
                 primary = cand
                 break
         if primary is None:
@@ -4851,8 +4854,8 @@ def main(argv=None, *, show_next_step=True) -> int:
         pdf = ud / "resume" / "main.pdf"
         if pdf.is_file():
             # 复制到 web/public 下才打得开：file:// 与 http:// 两种模式都要能取到
-            shutil.copy(pdf, PDF_DIR / "_base_resume.pdf")
-            base["pdf"] = "pdf/_base_resume.pdf"
+            name = publish_pdf(pdf, pdf_dir)
+            base["pdf"] = f"pdf/{pdf_user}/{name}"
             base["pdfLocal"] = "../resume/main.pdf"
             # 留 1 秒容差：`typst compile` 常在改完 .typ 的同一秒内跑完，
             # 而有些文件系统的 mtime 精度就是秒——严格比较会把「刚编译好」

@@ -593,6 +593,7 @@ agy 读**用户主目录**下的配置，本仓库不写那儿。它「预批准
   python tools/stale_materials.py
   python tools/template_usage.py
   python tools/trim_opening.py
+  python tools/validate_evaluations.py
   python tools/writeback.py
   typst
   WebFetch

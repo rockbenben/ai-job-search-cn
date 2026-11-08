@@ -141,7 +141,9 @@ def load_rows(src: str) -> list:
     except ValueError as e:
         raise SystemExit(f"输入不是合法 JSON：{e}")
     if isinstance(rows, dict):                    # 容一个 {"jobs": [...]} 的外壳
-        rows = rows.get("jobs") or rows.get("rows") or []
+        if "jobs" not in rows and "rows" not in rows:
+            raise SystemExit("输入对象需要 jobs 或 rows 数组")
+        rows = rows.get("jobs", rows.get("rows"))
     if not isinstance(rows, list):
         raise SystemExit("输入应该是一个数组，或 {\"jobs\": [...]} 这样的外壳")
     return [r for r in rows if isinstance(r, dict)]
@@ -193,9 +195,9 @@ def classify(row: dict, idx: dict, pairs: set, seen_pairs: set,
     if tok and tok in batch_tokens:
         return "dup_in_batch", None
     pk = pair_key(company, title)
-    if pk in seen_pairs:
+    if not _cli.is_anonymous_employer(company) and pk in seen_pairs:
         return "same_pair", pk
-    if pk in pairs:
+    if not _cli.is_anonymous_employer(company) and pk in pairs:
         return "applied", pk
     return "new", None
 
@@ -229,9 +231,6 @@ def main(argv=None) -> int:
     _cli.stop_on_unreadable_rows(seen, path)
 
     rows = load_rows(args.input)
-    if not rows:
-        print("输入里一条候选都没有")
-        return 0
 
     idx = _cli.seen_index(user, root=ROOT)
     # **公司名缺失的条目不进「公司+岗位」集合。** `|岗位名` 不是一家公司；
@@ -328,7 +327,7 @@ def main(argv=None) -> int:
                       expect=stamp)
     print(f"\n已写进 {path.relative_to(ROOT).as_posix()}：新增 {len(added)} 个、"
           f"刷了 {len(touched)} 个 date")
-    print("下一步：python tools/prescreen.py --annual-floor 42 --edu-floor 本科"
+    print("下一步：python tools/prescreen.py"
           "（判断交给它，这里不做）")
     return 0
 

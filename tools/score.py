@@ -55,7 +55,7 @@ import scoring  # noqa: E402
 #: 两代的差别：分数带不带 `/100`、「综合得分」带不带 `**`、结论是 `##` 还是
 #: `###`、表里有没有那一行「综合」。
 _EV_PAY = re.compile(
-    r"^(\|\s*薪资与职级\s*\|\s*)(\d+)(\s*(?:/\s*100\s*)?\|\s*)(.*?)(\s*\|\s*)$", re.M)
+    r"^(\|\s*薪资与职级\s*\|\s*)(\d+|信息缺失（不计入）|信息缺失|不计入|—|-)(\s*(?:/\s*100\s*)?\|\s*)(.*?)(\s*\|\s*)$", re.M)
 #: 这一行**可有可无**（老格式没有），有就跟着改。
 _EV_TOTAL = re.compile(
     r"^(\|\s*\*{0,2}综合\*{0,2}\s*\|\s*\*{0,2})(\d+)(\s*(?:/\s*100\s*)?\*{0,2}\s*\|)", re.M)
@@ -84,13 +84,15 @@ def patch_evaluation(text, old, new):
         return None
     vm = _EV_VSCORE.match(mv.group(2).strip())
     v_word = vm.group(1) if vm else mv.group(2).strip()
-    if (int(mp.group(2)) != old[0] or int(ms.group(2)) != old[1]
+    old_pay = int(mp.group(2)) if mp.group(2).isdigit() else None
+    if (old_pay != old[0] or int(ms.group(2)) != old[1]
             or v_word != old[2]
             or (vm and int(vm.group(2)) != old[1])
             or (mt and int(mt.group(2)) != old[1])):
         return None
     v_new = f"{new[2]}（{new[1]}）" if vm else new[2]
-    out = _EV_PAY.sub(lambda m: f"{m.group(1)}{new[0]}{m.group(3)}{new[3]}{m.group(5)}",
+    pay_text = new[0] if new[0] is not None else "信息缺失（不计入）"
+    out = _EV_PAY.sub(lambda m: f"{m.group(1)}{pay_text}{m.group(3)}{new[3]}{m.group(5)}",
                       text, count=1)
     if mt:
         out = _EV_TOTAL.sub(lambda m: f"{m.group(1)}{new[1]}{m.group(3)}", out, count=1)
@@ -130,7 +132,7 @@ def plan(user: str, deep: bool = False) -> tuple[list, dict]:
     也不施加 —— 深评读过 JD，它给 65 是有依据的。
     """
     p = ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
-    store = json.loads(p.read_text(encoding="utf-8"))
+    store, plan_stamp = _cli.load_json_stamped(p)
     seen = _cli.seen_of(store)          # 老库形态在这里也要容忍
     floor, expect = _bounds(user)
     if floor is None or expect is None:
@@ -141,9 +143,7 @@ def plan(user: str, deep: bool = False) -> tuple[list, dict]:
     # 中间那段时间面板上是另一个数。存档是事实源，工具不单边篡改。
     import build_dashboard as bd
     _apps = ROOT / "users" / user / "documents" / "applications"
-    docs = {_cli.norm_url(a["url"]): _apps / a["dir"] / "evaluation.md"
-            for a in bd.find_applications(_apps)
-            if a.get("url") and a.get("dir")}
+    applications = bd.find_applications(_apps)
     out, skip = [], {"深评": 0, "粗筛": 0, "有深评文件": 0, "无分数/已出局": 0,
                      "要判断的三维不全": 0, "薪资信息缺失": 0,
                      "评估文件和库对不上": 0, "深评但没找到评估文件": 0}
@@ -158,7 +158,8 @@ def plan(user: str, deep: bool = False) -> tuple[list, dict]:
             # 原来这行把两个名字写反了，终端印的是「跳过：粗筛 371」而那 371 个全是深评
             skip["粗筛" if deep else "深评"] += 1
             continue
-        doc = docs.get(_cli.norm_url(v.get("url") or ""))
+        app = bd.match_application(v, applications, seen.values())
+        doc = _apps / app["dir"] / "evaluation.md" if app else None
         if doc and not deep:
             skip["有深评文件"] += 1
             continue
@@ -175,15 +176,9 @@ def plan(user: str, deep: bool = False) -> tuple[list, dict]:
             skip["要判断的三维不全"] += 1
             continue
         pay = scoring.pay_dim(v, floor, expect)
-        if pay is None and not isinstance(b.get("薪资与职级"), (int, float)):
-            # 面议/未标，而记录里也没有旧值：按 04 这一维标「信息缺失」、
-            # 25% 权重摊回其余三维 —— 那是另一条算式，不在这个工具的职责里。
-            skip["薪资信息缺失"] += 1
-            continue
         dims = dict(judged, **{"薪资与职级": b.get("薪资与职级")})
         new = dict(dims)
-        if pay is not None:
-            new["薪资与职级"] = pay
+        new["薪资与职级"] = pay
         if not deep:
             # 粗筛连 JD 都没读，强度/发展只许取四档；深评读过，65 是有依据的。
             for k in ("强度与公司性质", "发展与风险"):
@@ -196,6 +191,7 @@ def plan(user: str, deep: bool = False) -> tuple[list, dict]:
             continue
         row = {"key": key, "entry": v, "dims": new, "score": score,
                "verdict": pre + verdict, "doc": None, "text": None,
+               "store_stamp": plan_stamp,
                "old": (dict(dims), v["rank_score"], v.get("rank_verdict"))}
         if deep and not (doc and doc.is_file()):
             # **深评没找到评估文件就不写。**
@@ -213,17 +209,20 @@ def plan(user: str, deep: bool = False) -> tuple[list, dict]:
         if doc and doc.is_file():
             # 评估文件在，就必须连它一起改 —— 只改库那一边，`writeback --apply`
             # 会把旧数顶回来（这正是原来整块跳过深评的理由）。
+            doc_stamp = _cli._stamp_of(doc)
             txt = doc.read_text(encoding="utf-8")
             got = patch_evaluation(
                 txt,
                 (dims["薪资与职级"], v["rank_score"],
                  _cli.strip_triage(v.get("rank_verdict"))),
                 (new["薪资与职级"], score, verdict,
-                 scoring.pay_note(v, floor, expect) or ""))
+                 scoring.pay_note(v, floor, expect) or "薪资信息缺失，该项不计入，按其余项目计算总分"))
             if got is None:
                 skip["评估文件和库对不上"] += 1
                 continue
             row["doc"], row["text"] = doc, got
+            row["doc_stamp"] = doc_stamp
+            row["original_text"] = txt
         out.append(row)
     return out, skip
 
@@ -234,26 +233,39 @@ def apply(user: str, rows: list, today: str) -> None:
     store, stamp = _cli.load_json_stamped(p)
     seen = _cli.seen_of(store)
     for r in rows:
-        v = seen[r["key"]]
-        b = v["rank_breakdown"]
-        old_dims, old_score, old_v = r["old"]
-        b.update(r["dims"])
-        why = scoring.rewrite_pay_said(b.get("依据") or "",
-                                       r["dims"]["薪资与职级"])
-        moved = "、".join(f"{k} {old_dims[k]}→{r['dims'][k]}"
-                          for k in scoring.DIM_WEIGHTS if old_dims[k] != r["dims"][k])
-        b["依据"] = why + (
-            f"\n\n⚠️ {today} `score.py` 现算订正：{moved or '维度未变'}；"
-            f"综合分 {old_score} → {r['score']}，"
-            f"结论 {_cli.strip_triage(old_v) or '—'} → "
-            f"{_cli.strip_triage(r['verdict'])}。"
-            f"这三样（薪资维 / 综合分 / 结论）是确定性函数，由工具现算，不手填。")
-        v["rank_score"] = r["score"]
-        v["rank_verdict"] = r["verdict"]
-        if r.get("doc") is not None:
-            _cli.atomic_write(r["doc"], r["text"])
-    _cli.atomic_write(p, json.dumps(store, ensure_ascii=False, indent=1),
-                      encoding="utf-8", expect=stamp)
+        if r.get("store_stamp", stamp) != stamp:
+            raise _cli.StaleWrite("职位数据在计算期间已更新，请重新计算")
+        if r.get("doc") is not None and _cli._stamp_of(r["doc"]) != r.get("doc_stamp"):
+            raise _cli.StaleWrite("评估正文在计算期间已更新，请重新计算")
+    written = []
+    try:
+        for r in rows:
+            v = seen[r["key"]]
+            b = v["rank_breakdown"]
+            old_dims, old_score, old_v = r["old"]
+            b.update(r["dims"])
+            why = scoring.rewrite_pay_said(b.get("依据") or "",
+                                           r["dims"]["薪资与职级"])
+            moved = "、".join(f"{k} {old_dims[k]}→{r['dims'][k]}"
+                              for k in scoring.DIM_WEIGHTS if old_dims[k] != r["dims"][k])
+            b["依据"] = why + (
+                f"\n\n⚠️ {today} `score.py` 现算订正：{moved or '维度未变'}；"
+                f"综合分 {old_score} → {r['score']}，"
+                f"结论 {_cli.strip_triage(old_v) or '—'} → "
+                f"{_cli.strip_triage(r['verdict'])}。"
+                f"这三样（薪资维 / 综合分 / 结论）是确定性函数，由工具现算，不手填。")
+            v["rank_score"] = r["score"]
+            v["rank_verdict"] = r["verdict"]
+            if r.get("doc") is not None:
+                written_stamp = _cli.atomic_write(r["doc"], r["text"], expect=r["doc_stamp"])
+                written.append((r, written_stamp))
+        _cli.atomic_write(p, json.dumps(store, ensure_ascii=False, indent=1),
+                          encoding="utf-8", expect=stamp)
+    except Exception:
+        for row, written_stamp in reversed(written):
+            _cli.atomic_write(row["doc"], row["original_text"], expect=written_stamp)
+        raise
+
 
 
 def main(argv=None) -> int:

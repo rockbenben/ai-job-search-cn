@@ -38,6 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
 import _cli  # noqa: E402
+import jd_store
 #: 剥话术尾部自检元数据的正本在面板那一侧。同一份文本两个读法就是两套标准 ——
 #: 这里此前自己切一遍、漏了剥，把 3 份合规的开场白误报成「超 200 字」。
 from build_dashboard import (_strip_wordcount,  # noqa: E402
@@ -70,6 +71,25 @@ MONTHS_LO, MONTHS_HI = _cli.SALARY_MONTHS_SANE
 SOURCE_FAMILIES = _cli.SOURCE_FAMILIES
 
 
+from contextvars import ContextVar
+_SELECTED_USER = ContextVar("audit_user", default="")
+
+def _scoped_user(fn):
+    from functools import wraps
+
+    @wraps(fn)
+    def wrapped(user, *args, **kwargs):
+        token = _SELECTED_USER.set(user)
+        previous = list(_USER)
+        _USER[:] = [user]
+        try:
+            return fn(user, *args, **kwargs)
+        finally:
+            _USER[:] = previous
+            _SELECTED_USER.reset(token)
+    return wrapped
+
+
 def load(user: str):
     p = ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
     if not p.is_file():
@@ -77,14 +97,15 @@ def load(user: str):
     data, _ = _cli.load_json_stamped(p)
     seen = _cli.seen_of(data)
     _cli.stop_on_unreadable_rows(seen, p)
-    details = {}
+    from jd_store import DetailIndex
+    details = DetailIndex()
     for f in glob.glob(str(ROOT / "users" / user / "job_scraper" / "details" / "*.json")):
         try:
             j = json.loads(Path(f).read_text(encoding="utf-8"))
         except (ValueError, OSError):
             continue
         if j.get("url"):
-            details[j["url"]] = j
+            details.add(j)
     return seen, details
 
 
@@ -332,7 +353,7 @@ def _also_missing_the_section(urls: set) -> int:
 
     判据借 `missing_sections`（正本），不在这儿另写。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return 0
@@ -370,7 +391,7 @@ def check_evaluations_are_dated(seen, details) -> list:
     （那一步同日改了）。实测全库 **1 份**没有这一行，而那 1 份正好缺小节：
     也就是说它此前**永远**补不上。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -424,7 +445,7 @@ def check_basis_still_explains_the_number(seen) -> list:
             bad.append((v.get("url") or "", (v.get("title") or "?")[:22]))
     if not bad:
         return []
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     _live, tail = _cli.live_tail(user, seen, bad, verb="改")
     return [("warn", "依据那段话说的不是现在这个分",
              f"{len(bad)} 个岗的「依据」还写着旧口径或旧数字 —— "
@@ -490,7 +511,7 @@ def check_every_gate_is_judged(seen, details) -> list:
     只能靠这里查。
     """
     import export_web_data as ex
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -672,7 +693,7 @@ def check_evaluation_sections(seen, details) -> list:
     面板不显形：它读的是解析出来的字段，一节没写就当那一项为空，
     和「有这一节但内容为空」长得一样。只能在这里查。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -1062,7 +1083,7 @@ def check_documents_speak_chinese_to_the_user(seen, details) -> list:
     存量 191 份也不该逐份补：该盯的是**新跑的批次别再犯**，判据现在贴在
     04 输出格式的开头，写的人第一眼就看得到。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -1248,7 +1269,7 @@ def check_outreach_header_says_who_youre_talking_to(seen, details) -> list:
     所以 `06` 改成只钉内容不钉行数，这条检查也只查内容：**不查有没有那几行，
     查那几件事说清没有**。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -1418,7 +1439,7 @@ def check_company_claims_have_a_source(seen, details) -> list:
     留下的这一条很窄，但它守的是这个仓库最硬的那条规矩：
     **有主张就要有出处。**
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -1509,7 +1530,7 @@ def check_greeting_questions_are_about_this_job(seen, details) -> list:
     新出的一批里冒出重复问句，说明写手又开始套模板了。同族判据见
     `check_greeting_keeps_the_five_rules` 的「这个数说的是存量」。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -1610,7 +1631,7 @@ def check_greeting_keeps_the_five_rules(seen, details) -> list:
     `check_company_claims_have_a_source`、`check_maybe_tier_has_questions`
     也都是这一级。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -1934,7 +1955,7 @@ def check_maybe_tier_has_questions(seen, details) -> list:
     「这个数说的是存量」；有了 ≥10 份才谈执行率，且**只用那一批当分母**。
     """
     import export_web_data as _ex
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -2055,7 +2076,7 @@ def check_edu_field_cannot_close(seen, details) -> list:
         lv = next((L for L in _EDU_ORD if L in str(e.get("eduLevel") or "")), None)
         if not lv or _EDU_ORD[lv] <= _EDU_ORD[floor]:
             continue
-        body = (details.get(e.get("url")) or {}).get("description") or ""
+        body = jd_store.detail_for(details, e).get("description") or ""
         if len(body) < _cli.JD_MIN_BODY:
             continue
         fires += 1
@@ -2089,7 +2110,7 @@ def check_gate_fail_blocks_the_verdict(seen, details) -> list:
     **不管解析器将来怎么改，fail 与可投档不能同时成立。**
     """
     import export_web_data as ex
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -2149,7 +2170,7 @@ def check_claimed_reads_are_stored(seen, details) -> list:
         return []
     # 复核队列认不认得它们？认得就只是待办（warn），认不得才是漏洞（error）。
     import fetch_details as fd
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     seen_by_recheck = sum(1 for e in bad if fd.judged_without_stored_body(user, e))
     wired = seen_by_recheck >= len(bad) * 0.9
     # **「够得着的」是几个，得说出来。**
@@ -2220,7 +2241,7 @@ def check_posting_snapshots_are_self_contained(seen, details) -> list:
     """
     import re
     import jd_store as st
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -2703,9 +2724,8 @@ def check_panel_text_is_not_cut_off(seen, details) -> list:
     rows = "、".join(f"{k} {c} 处" for k, c in hit.most_common(4))
     eg = sample.get("askBefore") or next(iter(sample.values()))
     return [("warn", "面板上有句子断在半截",
-             f"{n} 处文本的引号或括号配不上对 —— 多半是被截断了（{rows}）。"
-             f"例：…{eg[-46:]}。「投之前先问清」那一栏尤其伤：用户照着它去问，"
-             f"而问题本身停在半句。"
+             f"{n} 处展示文本的引号或括号未配对（{rows}），需要对照原文核实。"
+             f"例：…{eg[-46:]}。这可能来自解析拆分，也可能是原文标点写法。"
              f"判据不看句末标点（中文列表省略问号是正常写法，那样报会有 44% 的噪音），"
              f"只看成对标点。修：对这几个岗重跑 /job-apply <职位链接>")]
 
@@ -3142,7 +3162,7 @@ def check_pay_dim_matches_its_own_number(seen, details) -> list:
              f"{len(bad)} 个岗的薪资维不等于按 04 那张表查出来的数"
              f"（其中 {len(off_table)} 个取的是表上根本没有的值——"
              f"那张表只有 {_PAY_TOP}/{_PAY_IN}/{_PAY_OK}/{_MONTHS_LOW} 四个数）。"
-             f"比的是年包下沿（不是上沿）：到顶 {_PAY_TOP}、落在期望区间 {_PAY_IN}、"
+             f"到顶与期望区间按年包下沿判断，区间上沿达到底线也算过线：到顶 {_PAY_TOP}、落在期望区间 {_PAY_IN}、"
              f"过底线 {floor:g} 万 {_PAY_OK}、低于底线 {_MONTHS_LOW}。"
              f"例：{rows}。这一维占 25% 权重，一档之差 7.5 分，足以翻一整档判词。"
              f"{tail}"
@@ -3350,7 +3370,7 @@ def _unfounded_gate_fails(seen, details) -> list:
         field = _GATE_CARD_FIELD.get(_gate_of_verdict(e.get("rank_verdict")))
         if not field:
             continue
-        body = (details.get(e.get("url")) or {}).get("description") or ""
+        body = jd_store.detail_for(details, e).get("description") or ""
         if len(body) >= _cli.JD_MIN_BODY:
             continue                      # 有正文，判得了，这条检查管不着
         if str(e.get(field) or "").strip():
@@ -3443,7 +3463,7 @@ def check_an_exclusion_fail_must_name_the_rule(seen, details) -> list:
     # 不是规范化过的。用 `norm_url` 去取一个都取不到 —— 而取不到不会报错，
     # 只会印出一个「0 个有 JD 正文」，看起来像一条结论。
     with_jd = [e for e in bare
-               if (details.get(e.get("url")) or {}).get("description")]
+               if jd_store.detail_for(details, e).get("description")]
     eg = "、".join((e.get("title") or "?")[:14] for e in bare[:3])
     # **最近一批还犯不犯。** 这条原来只有全库累计数 —— 而那个数只会随产量涨，
     # 改好了也降不下来（判据见 `batch_note` 上面那段，本文件已有三条在用它）。
@@ -3519,14 +3539,17 @@ def check_gate_is_one_of_the_seven(seen, details) -> list:
     # 分开算的话这一行全是 1，读不出哪一类被当成门用得最多。
     by = collections.Counter(i.split("(")[0].split("+")[0].strip() for i, _e in hit)
     return [("warn", "硬性条件：门名没按七道正规名写",
-             f"{len(hit)} 个岗判了硬门，门名却不是七道里的任何一道"
+             f"{len(hit)} 条检查记录的门名却不是七道里的任何一道"
              f"（{'、'.join(f'{i} {n}' for i, n in by.most_common(6))}）。"
+             f"这里同时检查结论和条件表，可能包含同岗的多条记录、满足和未知判定，"
+             f"不能据此认定这些岗位都被排除。"
              f"这批岗对按门名分流的检查是隐形的。"
              # **判据的正本在 04**（第一步「门名也只许用下表这七个」），
              # 这里只复述结论并指过去。原来反过来：整条规则**只**写在这句
              # 报错文案里，而写评估的人读的是 04 —— 他看不到它，
              # 于是照着自己的理解起名，审计再逐条抓。规则要长在写的人读的地方。
-             f"地点、英语这类若资料里写了，应写成「候选人明确排除（跨城搬迁）」；"
+             f"地点、英语等只有被个人资料明确列为排除时才归入「候选人明确排除」；"
+             f"若资料明确地点不作排除，相关通勤或搬迁信息应保留在评分依据里。"
              f"技术栈、行业经验本来就是要打分的维度，不该当门用"
              f"（判据见 04-job-evaluation.md 第一步「门名也只许用下表这七个」）。"
              f"例：{'、'.join((e.get('title') or '?')[:16] for _i, e in hit[:3])}。"
@@ -3553,7 +3576,7 @@ def check_gate_table_names_are_one_of_the_seven(seen, details) -> list:
     （`test_the_gate_name_is_one_of_the_seven` 立刻红了）。
     所以按数据来源拆开：库里的归库里那条，文件里的归这条。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -3717,6 +3740,7 @@ def check_exclusions_trace_to_the_profile(seen, details) -> list:
 _REQUEUE_SKIPPED: list = []
 
 
+@_scoped_user
 def requeue_unfounded_gate_fails(user: str, apply: bool = False) -> list:
     """把**判据不成立**的硬门 FAIL 放回待评队列。
 
@@ -3771,14 +3795,15 @@ def requeue_unfounded_gate_fails(user: str, apply: bool = False) -> list:
     # 而不是把十分钟前的快照盖回去。
     data, stamp = _cli.load_json_stamped(path)
     seen = _cli.seen_of(data)
-    details = {}
+    from jd_store import DetailIndex
+    details = DetailIndex()
     for f in glob.glob(str(ROOT / "users" / user / "job_scraper" / "details" / "*.json")):
         try:
             j = json.loads(Path(f).read_text(encoding="utf-8"))
         except (ValueError, OSError):
             continue
         if j.get("url"):
-            details[j["url"]] = j
+            details.add(j)
     # 两类都放回：平台明写「经验不限」的，和正文/卡片两处都没依据的。
     # 合成一条命令而不是两条 —— 它们是同一件事的两种形状（**判据不成立**），
     # 修法完全一样，分成两个开关只会让人只跑其中一个。
@@ -3925,7 +3950,7 @@ def check_extra_resumes_are_never_audited(seen, details) -> list:
     这里只负责让它别再隐形。同族的 `check_greeting_keeps_the_five_rules`
     也是这一级：没有机械修法的都不判 error。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     d = ROOT / "users" / user / "resume"
     # 目录不存在不必先判：`glob` 在缺目录上返回空，不抛。
     # （换成 `iterdir()` 就会抛 —— `test_it_survives_a_missing_directory` 盯着这一点。）
@@ -4038,7 +4063,7 @@ def check_tracker_columns_nobody_fills(seen, details) -> list:
     东西**，而补它要人开口，机器补不了。
     """
     import csv as _csv
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     f = ROOT / "users" / user / "job_search_tracker.csv"
     if not f.is_file():
         return []
@@ -4191,7 +4216,7 @@ def check_which_exclusion_costs_the_most(seen, details) -> list:
     325 个岗没写是哪一条，进不了这张表。不声明的话，读的人会把
     「第一条挡了 47 个」当成全貌，而真实数最多能到四倍。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     ents = _exclusion_entries(user)
     if not ents:
         return []
@@ -4254,7 +4279,7 @@ def check_referral_note_is_missing(seen, details) -> list:
     用户的判断 —— 找不找得到人只有他知道，而渠道 5 那一节明写着
     「别把这一节当成默认动作催用户」。同族的「深评缺小节」也是这一级。
     """
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -4517,6 +4542,7 @@ def check_the_lead_advantage_points_at_something(seen, details) -> list:
     return out
 
 
+@_scoped_user
 def requeue_no_jd_sellable(user: str, apply: bool = False) -> list:
     """把「没读 JD 却给了可投档位」的岗放回待评队列。判词留痕，不抹掉。
 
@@ -4594,7 +4620,7 @@ def check_no_jd_but_sellable(seen, details) -> list:
     正确动作是把它们放回队列，等 JD 抓回来重新走一遍评估。
     """
     import jd_store as _st
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     # 档序只有一份正本（`_cli.VERDICTS`），**切片即子集** —— 抄一份出来，
     # 哪天档位改了这里就是静默失效。
     BANDS = _cli.VERDICTS[:3]
@@ -4675,7 +4701,7 @@ def check_material_ready_without_a_stored_jd(seen, details) -> list:
     """
     import jd_store as _st
     import export_web_data as _ex
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -4724,15 +4750,14 @@ def check_material_ready_without_a_stored_jd(seen, details) -> list:
     rows = "、".join(t for _u, t in _show[:3])
     portals = collections.Counter(_portal(u) for u, _t in _show)
     # 这句话直接上终端 —— 不带 markdown（`AGENTS.md`「给用户看的措辞」）。
-    _still = ((f"其中 {_n_gone} 个已经发出去了（依据当时就不在库里，"
-               f"补正文也复原不了当时那个判断）；"
+    _still = ((f"其中 {_n_gone} 个已不在待投范围，当前库里没有可复核的正文；"
                if _n_gone else "")
-              + (f"还有 {len(_live)} 个没投、现在补得上："
-                 if _live else "一个都补不回来了。"))
+              + (f"还有 {len(_live)} 个没投、现在可以补存正文："
+                 if _live else _cli.NO_LIVE + "现存记录仅供追溯，后来取回的正文应标注新的核对日期。"))
     return [("warn", "可投的材料备好了，而它依据的 JD 库里没有",
              f"{len(bad)} 个岗判到了可投档、材料也备好了，"
              f"而支撑这个判定的 JD 正文库里一份都没有 —— "
-             f"没有任何人能再看一眼依据。{_still}"
+             f"当前无法从详情库复核依据。{_still}"
              f"{rows}（{'、'.join(f'{k} {n}' for k, n in portals.most_common())}）。"
              f"不要自动降档 —— 没有 JD 就没有依据，换个数字仍然是猜。"
              # 补法只列**这批真用得上**的那条路：猎聘走 CLI，其余三家只能开页面。
@@ -4787,7 +4812,7 @@ def check_a_negative_claim_needs_the_jd(seen, details) -> list:
     """
     import jd_store as _st
     import build_dashboard as _bd
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     apps = ROOT / "users" / user / "documents" / "applications"
     if not apps.is_dir():
         return []
@@ -4869,7 +4894,7 @@ def check_sellable_without_materials(seen, details) -> list:
         d = json.loads(snap.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     if (d.get("activeUser") or "") != user:
         return []          # 快照是别人的，判不了
     bad = [j for j in (d.get("jobs") or [])
@@ -4945,7 +4970,7 @@ def check_jd_read_but_not_stored(seen, details) -> list:
     而一个永远红的自检会被当噪音略过（`test_the_backlog_does_not_hide_the_trend`）。
     """
     import jd_store as _st
-    user = _cli.pick_user("", root=ROOT)
+    user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
     claim = []
     for e in seen.values():
         if not isinstance(e, dict):
@@ -5488,7 +5513,7 @@ def check_dimension_notes_explain_something(seen, details) -> list:
         d = json.loads(snap.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
-    if (d.get("activeUser") or "") != _cli.pick_user("", root=ROOT):
+    if (d.get("activeUser") or "") != _cli.pick_user(_SELECTED_USER.get(), root=ROOT):
         return []
     n_note = n_ptr = 0
     whole = []
@@ -5662,37 +5687,10 @@ def check_intensity_score_has_a_basis(seen, details) -> list:
 
 
 def check_same_posting_got_different_verdicts(seen, details) -> list:
-    """**同一份 JD** 挂在多处，几处拿到的判定不一样。
+    """核对完整职位正文和发布条件相同时，评估结论是否仍有差异。
 
-    ## 为什么这条要单独存在
-
-    重复挂牌本身有人管：`export_web_data` 按归一化链接归并（`dupOf`），
-    面板上只渲染一条。但归并只看**链接**——同一份 JD 换个雇主脱敏名、
-    换个薪资写法挂到另一个链接上，那是两条不同的记录，归并看不见，
-    于是它们可以拿到两个不同的判词，而没有任何一处会说话。
-
-    实测 2026-09-01（这条检查加进来的当天），一轮里撞出两组：
-
-    - 「软件产品规划经理」同一份 JD 挂了 **4 次**，拿到 **2 种门名**：
-      三次「工作年限」、一次「候选人明确排除」。真正的门是行业背景 ——
-      其中一次挂牌的平台字段还写着「经验不限」，门名却是「工作年限」。
-    - 九方那个「智能硬件产品负责人」挂了 **5 次**，薪资从 60-80k 一路写到
-      110-140k；五条职责逐字相同。
-
-    ## 判据是 JD 正文，不是标题
-
-    **第一版按「标题（+公司）」分组，误报得不能用**：一轮就报出 49 组，
-    其中「AI 产品经理」一个标题下挂着 34 个**互不相干**的岗 —— 通用职位名
-    在这个库里成百上千地重复，它压根不是「同一个岗」的判据。
-    换成 JD 正文的指纹（去掉空白与平台安全提示尾巴后的前 600 字），
-    这才是当初人工认出那两组时用的东西：「两份 JD 逐字相同」。
-
-    没有 JD 正文的岗不参与 —— 没有正文就没有判据，猜一个只会把误报换个来源。
-
-    ## 为什么算「要修」
-
-    两条记录说的是同一个岗，而用户看到的是其中一条。哪一条被渲染取决于
-    归并顺序，不取决于哪条判得对 —— 也就是说**他看到的结论是随机的**。
+    相同模板可以用于不同岗位，薪资、地点、学历和年限的差异会合理影响评分。
+    正文与条件均相同时仍需人工核对评估日期和候选人偏好的变化。
     """
     import collections as _c
     import hashlib as _h
@@ -5704,23 +5702,27 @@ def check_same_posting_got_different_verdicts(seen, details) -> list:
         k = b.find(TAIL)
         if k > 0:
             b = b[:k]
-        b = b[:600]
         return _h.md5(b.encode("utf-8")).hexdigest() if len(b) >= 120 else ""
 
     by_url = {}
     for u, d in (details or {}).items():
         f = _fp(d.get("description") or d.get("body") or "")
         if f:
-            by_url[_cli.norm_url(u)] = f
+            by_url[_cli.stable_id(d.get("url") or u, d.get("title") or "")] = f
 
     groups = _c.defaultdict(list)
     for k, e in seen.items():
         v = str(e.get("rank_verdict") or "")
         if not v or e.get("status") in ("new", "expired"):
             continue
-        f = by_url.get(_cli.norm_url(e.get("url") or ""))
+        f = by_url.get(_cli.stable_id(e.get("url") or "", e.get("title") or ""))
+        if not f:
+            detail = jd_store.detail_for(details, e)
+            f = _fp(detail.get("description") or detail.get("body") or "")
         if f:
-            groups[f].append((e.get("title") or "", v))
+            conditions = tuple(str(e.get(field) or "") for field in
+                               ("salary", "salaryMonths", "location", "eduLevel", "workYears"))
+            groups[(f, conditions)].append((e.get("title") or "", _cli.strip_triage(v)))
 
     bad = []
     for f, rows in groups.items():
@@ -5739,10 +5741,9 @@ def check_same_posting_got_different_verdicts(seen, details) -> list:
     # 也需要人重看。「要修」留给必须当场改掉的。
     return [("warn", "同一份 JD 挂多处，判定不一致",
              f"{len(bad)} 组重复挂牌的判定对不上：{show}{more}。"
-             f"归并只看链接，换个脱敏名换个薪资挂到另一个链接上就绕过了它 —— "
-             f"而面板渲染哪一条取决于归并顺序，不取决于哪条判得对，"
-             f"等于他看到的结论是随机的。"
-             f"挑对的那条，其余对齐：/job-apply <职位链接>")]
+             f"已核对完整正文以及薪资、地点、学历和年限字段，仍有不同结论。"
+             f"还需核对评估日期与候选人偏好的变化，再决定是否统一结论。"
+             f"复核单个职位：/job-apply <职位链接>")]
 
 
 def check_queue_left_on_a_live_channel(seen, details) -> list:
@@ -5780,7 +5781,7 @@ def check_queue_left_on_a_live_channel(seen, details) -> list:
                       if e.get("status") == "new")
     if not left:
         return []
-    user = _cli.read_active_user()[0]
+    user = (_SELECTED_USER.get() or _cli.read_active_user()[0])
     if not user:
         return []
     try:
@@ -5937,6 +5938,7 @@ CHECKS = [
 _USER: list = []
 
 
+@_scoped_user
 def run(user: str, only: str = "", actionable: bool = False) -> list:
     """跑全部检查；`only` 给了就只跑名字里含它的那几条。
 
@@ -6044,7 +6046,7 @@ def _sections_cli(paths) -> int:
             print(f"找不到：{one}")
             return 2
     if not paths:
-        user = _cli.pick_user("", root=ROOT)
+        user = _cli.pick_user(_SELECTED_USER.get(), root=ROOT)
         apps = ROOT / "users" / user / "documents" / "applications"
         want = set(this_batch_days())
         # **一轮会跨过午夜。** 只认「今天」的话，23:55 写完那一批、00:05 跑这道
@@ -6263,15 +6265,19 @@ def main(argv=None) -> int:
     _terms = [t.strip() for t in a.only.split(",") if t.strip()]
     n_run = sum(1 for name, _ in CHECKS
                 if not _terms or any(t in name for t in _terms))
+    selected_checks = n_run
     if a.actionable:
         # **别把「跑了 57 项」印给用户看**——`--actionable` 下真正报出来的
         # 只有那几条，说 57 会让「一条都没有」读成「全都好着呢」。
         n_run = len({r[1] for r in found})
-    if a.only and not n_run:
+    if a.only and not selected_checks:
         print(f"没有名字里含「{a.only}」的检查。全部名字："
               + "、".join(name for name, _ in CHECKS))
         return 2
     if not found:
+        if a.actionable:
+            print("本次未发现仍需补修的待投材料问题。历史记录可运行 python tools/audit_pipeline.py --json 核对。")
+            return 0
         scope = f"{n_run} 项" + (f"（只跑了含「{a.only}」的那几条）" if a.only else "")
         print(f"流水线审计：{scope}检查全过（用户：{user}）")
         return 0
@@ -6316,7 +6322,7 @@ def main(argv=None) -> int:
         print(f"\n  [{'要修' if lvl == 'error' else '留意'}] {kind}")
         print(f"      {detail}")
     print("")
-    print("这些是规则漏洞，不是数据脏——单元测试用构造数据测不出来。")
+    print("以上包含历史记录缺项、待核实信息和规则执行差异，请按各条说明处理。")
     return 1 if err else 0
 
 

@@ -458,7 +458,7 @@ def apply_status(job_id: str, status: str, reason: str | None = None) -> dict:
         return {"ok": False, "error": str(exc), "code": "tracker_unreadable"}
 
 
-def undo_status(job_id: str, prev) -> dict:
+def undo_status(job_id: str, prev, version: str | None = None) -> dict:
     """撤销上一次 `apply_status`。`prev` 由那次的响应给出，页面原样送回来。"""
     try:
         job, path, row = _job_and_row(job_id)
@@ -469,7 +469,7 @@ def undo_status(job_id: str, prev) -> dict:
     if row is None:
         return {"ok": False, "error": "投递记录里没有这一行，没什么可撤的——刷新一下页面看看最新的"}
     try:
-        out = tracker.undo(path, row, prev, date.today().isoformat())
+        out = tracker.undo(path, row, prev, date.today().isoformat(), version=version)
     except tracker.Unreadable as exc:
         return {"ok": False, "error": str(exc), "code": "tracker_unreadable"}
     # 谁被撤的要带上：终端那行日志按 `title`/`company` 印，不带就是「撤销：None」。
@@ -936,7 +936,11 @@ class Handler(BaseHTTPRequestHandler):
             # 而 `refresh_if_stale` 只在 stderr 留一行就返回 False ——
             # 这里照旧把**张三**的岗位、薪资、投递记录发给标着「李四」的页面，
             # 接着每个状态按钮都会用张三的职位 id 往李四的台账里写。
-            owner = _owner_of(f)
+            raw = f.read_bytes() if f.is_file() else b""
+            try:
+                owner = json.loads(raw).get("activeUser", "")
+            except (ValueError, TypeError):
+                owner = ""
             if owner and owner != active_user():
                 return self._send(
                     409,
@@ -954,7 +958,7 @@ class Handler(BaseHTTPRequestHandler):
             if f.is_file():
                 # detectedTool 同理要按**当前起服务的环境**盖写：盘上那份可能是
                 # 别的工具 / 并行会话早先导出的（见 with_detected_tool 的说明）。
-                raw = with_detected_tool(f.read_bytes(), _cli.detect_code_tool())
+                raw = with_detected_tool(raw, _cli.detect_code_tool())
                 if stale:
                     raw = with_stale_flag(raw, stale)
                 return self._send(200, raw, "application/json; charset=utf-8")
@@ -964,9 +968,14 @@ class Handler(BaseHTTPRequestHandler):
             # 那里，而 dist/ 里的是**上次 npm run build 时**拷的快照。从 dist 取的
             # 后果实测两种都发生了：新导出的 PDF 404（dist 里没有）、重编过的 PDF
             # 端出旧字节（dist 里是旧版，且 pdfStale 检测不到服务层这份旧）。
+            import hashlib
+            user_namespace = hashlib.sha256(active_user().encode("utf-8")).hexdigest()[:20]
+            if not path.startswith(f"/pdf/{user_namespace}/"):
+                return self._json(409, {"error": "这份简历链接属于其他用户或旧页面，请刷新总览"})
             pub = (ROOT / "web" / "public").resolve()
             target = (pub / path.lstrip("/")).resolve()
-            if not target.is_relative_to(pub):
+            pdf_root = (pub / "pdf" / user_namespace).resolve()
+            if not target.is_relative_to(pdf_root) or target.suffix.lower() != ".pdf":
                 return self._json(403, {"error": "这个路径不在页面目录里，不给看（安全限制）"})
             return self._serve_file(target)
         # 其余按静态资源处理，限制在 dist 目录内
@@ -1013,6 +1022,9 @@ class Handler(BaseHTTPRequestHandler):
         # 换成 compare_digest 是零成本。
         # 先转成 str：compare_digest 收到非字符串会抛 TypeError，
         # 那会变成 500（把内部异常端给用户），而这里该是干脆的 403。
+        if body.get("user") is not None and body["user"] != active_user():
+            return self._json(409, {"ok": False, "code": "user_changed",
+                "error": "当前页面属于另一位用户，请刷新后操作"})
         if not secrets.compare_digest(str(body.get("token") or ""), TOKEN):
             return self._json(403, {"error": "这个页面的通行凭据过期了——刷新一下再试",
                                      "code": "token_expired"})
@@ -1073,7 +1085,10 @@ class Handler(BaseHTTPRequestHandler):
                     # `prev` 允许是 null——那表示「那一行是页面刚建的」，撤销即删行。
                     # 所以不能写成 `str(body.get("prev") or "")`：那会把 null 变成 ""，
                     # 而 "" 在台账里是一个合法状态，撤销就变成了「把状态清空」。
-                    result = undo_status(job_id, body.get("prev"))
+                    if not body.get("version"):
+                        return self._json(409, {"ok": False, "code": "stale_write",
+                            "error": "这张页面需要刷新后才能撤销"})
+                    result = undo_status(job_id, body.get("prev"), str(body["version"]))
                 else:
                     return self._json(404, {"error": "这个页面比正在跑的服务新——"
                                               "到终端按 Ctrl+C 停掉，"
@@ -1097,7 +1112,7 @@ class Handler(BaseHTTPRequestHandler):
                     sys.stderr.write(f"  {_LOG_VERB.get(path, path)}：{what}" + chr(10))
             # 台账读不出来不是「这个岗没了」——给 409 和 code，页面才能说
             # 「投递记录是 GBK，另存为 UTF-8」，而不是让用户去找一个还在的岗。
-            if not result.get("ok") and result.get("code") == "tracker_unreadable":
+            if not result.get("ok") and result.get("code") in ("tracker_unreadable", "stale_write"):
                 return self._json(409, result)
             return self._json(200 if result.get("ok") else 404, result)
         except NoActiveUser as exc:
@@ -1135,7 +1150,8 @@ class Handler(BaseHTTPRequestHandler):
         # 一个靠 defer 语义兜住的先后关系，构建方式一改就会**静默**失效：
         # 页面读不到 token → `hasServer()` 判否 → 退回静态模式 → 点「不投」只存浏览器，
         # 而界面还照常显示成功。宁可显式。
-        tag = f"<script>window.__API_TOKEN__={json.dumps(TOKEN)};</script>"
+        tag = (f"<script>window.__API_TOKEN__={json.dumps(TOKEN)};"
+               f"window.__API_USER__={json.dumps(active_user())};</script>")
         injected = re.sub(r"(<head[^>]*>)", r"\1" + tag, html, count=1)
         if injected == html:
             # 注不进去就别装作没事——静默降级正是这里最不该有的行为
@@ -1230,7 +1246,7 @@ def report_running(info: dict, port: int, url: str) -> int:
     return 1
 
 
-def main(argv=None) -> int:
+def _main(argv=None) -> int:
     # 从前这里不解析参数：`serve.py --help` 会**直接起服务器卡住**，
     # `--user bob` 被静默吞掉、照样端出活动用户的面板。
     global _PINNED_USER, PORT, TOKEN
@@ -1253,6 +1269,11 @@ def main(argv=None) -> int:
     # **钉住用户之后再取 token。** 模块级的 `TOKEN` 是给导入方（测试/别的工具）
     # 的兜底；命令行入口必须按这一次真正服务的用户重读，否则
     # `--user bob`（活动用户 alice）会拿 alice 的凭据文件。
+    try:
+        _PINNED_USER = active_user()
+    except NoActiveUser as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     TOKEN = _load_or_make_token()
     PORT = args.port
 
@@ -1268,6 +1289,9 @@ def main(argv=None) -> int:
     # 占用时不抛异常，直接绑上。
     _running = probe_running(PORT)
     if _running is not None:
+        if _running.get("ours") and _running.get("user") != active_user():
+            print(f"这个端口的总览属于另一位用户。请运行 python tools/serve.py --port {PORT + 1}", file=sys.stderr)
+            return 1
         _code = report_running(_running, PORT, f"http://127.0.0.1:{PORT}/")
         if _code == 0 and os.environ.get("JOBS_NO_BROWSER") != "1":
             webbrowser.open(f"http://127.0.0.1:{PORT}/")
@@ -1348,6 +1372,15 @@ def main(argv=None) -> int:
     finally:
         srv.server_close()
     return 0
+
+
+def main(argv=None) -> int:
+    global _PINNED_USER, TOKEN, PORT
+    previous = _PINNED_USER, TOKEN, PORT
+    try:
+        return _main(argv)
+    finally:
+        _PINNED_USER, TOKEN, PORT = previous
 
 
 if __name__ == "__main__":

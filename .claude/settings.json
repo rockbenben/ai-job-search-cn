@@ -30,6 +30,7 @@
       "Bash(python tools/stale_materials.py:*)",
       "Bash(python tools/template_usage.py:*)",
       "Bash(python tools/trim_opening.py:*)",
+      "Bash(python tools/validate_evaluations.py:*)",
       "Bash(python tools/writeback.py:*)",
       "Bash(typst:*)",
       "WebFetch",

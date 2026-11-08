@@ -1454,6 +1454,7 @@ def check_repo(want_user: str = "") -> dict:
             # 自检会说「已抓 0 个职位」并把下一步指成 `/job-scrape`——而库里可能
             # 有几千个岗。2026-08-21 实测同一个文件：`_cli.seen_of` 数出 2，这里数出 0。
             seen = _raw.get("seen", _raw) if isinstance(_raw, dict) else {}
+            seen = {k: v for k, v in seen.items() if k not in ("query_log", "archived")}
             # **读不出来的记录在这儿就摘掉，并数一笔。**
             #
             # 值不是字典的（一条 `null`、一个字符串、一个列表）会让下游每一个
@@ -2217,7 +2218,7 @@ def _main_body(args, tool: str) -> int:
     # 措辞上只说他看到的这一种，**不并列另一种形式让他挑**：那等于把
     # 「你的工具是哪一家」这道判断退回给用户。
     print()
-    label = _TOOL_LABELS.get(tool)
+    label = _TOOL_LABELS.get(tool) or "通用环境"
     if command_syntax(tool) == "slash":
         print(f"💡 已识别为 {label}：上面的命令带开头的斜杠（如 /job-auto），"
               "直接粘进对话框即可。")

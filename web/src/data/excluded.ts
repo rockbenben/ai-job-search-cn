@@ -34,6 +34,7 @@ const KEY_V1 = "jobSearchExcluded.v1";
 declare global {
   interface Window {
     __API_TOKEN__?: string;
+    __API_USER__?: string;
   }
 }
 
@@ -125,6 +126,8 @@ async function refreshToken(): Promise<boolean> {
   try {
     const html = await fetch("/", { cache: "no-store" }).then((r) => r.text());
     const m = html.match(/__API_TOKEN__\s*=\s*"([^"]+)"/);
+    const user = html.match(/__API_USER__\s*=\s*("(?:[^"\\]|\\.)*")/);
+    if (!user || JSON.parse(user[1]) !== window.__API_USER__) return false;
     if (!m) return false;
     window.__API_TOKEN__ = m[1];
     return true;
@@ -143,7 +146,7 @@ async function post<T = unknown>(
     res = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...body, token: window.__API_TOKEN__ }),
+      body: JSON.stringify({ ...body, user: window.__API_USER__, token: window.__API_TOKEN__ }),
     });
   } catch {
     // 浏览器的异常原文是 `Failed to fetch`，不该原样印给中文用户看。
@@ -197,7 +200,7 @@ export function postRestore(id: string): Promise<void> {
 export function postStatus(id: string, status: string, reason?: string) {
   // `reason` 只在「挂了」这类结果上有意义，且**永远可选**——不给就是不给，
   // 服务端不会替它编一个（`tools/serve.py` 的 apply_status）。
-  return post<{ prev: string | null; then: string }>(
+  return post<{ prev: string | null; then: string; version: string }>(
     "/api/status", { id, status, ...(reason ? { reason } : {}) });
 }
 
@@ -207,8 +210,8 @@ export function postStatus(id: string, status: string, reason?: string) {
  * `prev` 为 `null` 表示那一行是页面刚建的，撤销即删行——所以这里**不能**把 null
  * 折成空串：空串在台账里是一个合法状态，那会把「删掉这行」变成「把状态清空」。
  */
-export function postStatusUndo(id: string, prev: string | null) {
-  return post<{ deleted: boolean }>("/api/status/undo", { id, prev });
+export function postStatusUndo(id: string, prev: string | null, version?: string) {
+  return post<{ deleted: boolean }>("/api/status/undo", { id, prev, version });
 }
 
 /**

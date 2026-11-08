@@ -1210,7 +1210,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
 
     user = _cli.pick_user(a.user or "", root=ROOT)
-    data = load(user)
+    data, budget_stamp = load_stamped(user)
     now = dt.datetime.now()
 
     # **名字不认识就停下，别当成一条崭新的渠道放行。**
@@ -1263,7 +1263,7 @@ def main(argv=None) -> int:
 
     if a.block:
         site, lane, fresh = block(data, a.block, a.why, now, a.where)
-        save(user, data)
+        budget_stamp = save(user, data, expect=budget_stamp)
         which = " CLI " if lane == "cli" else "浏览器"
         st = block_state(data, site, now, lane)
         mins = st["held_minutes"]
@@ -1326,7 +1326,7 @@ def main(argv=None) -> int:
                 if other else "")
             print(f"{site} 的{name}现在没有被封，不用解{tail}")
             return 0
-        save(user, data)
+        budget_stamp = save(user, data, expect=budget_stamp)
         left = block_state(data, site, now)
         tail = ("（另一条还停着：" + (" CLI " if left["lane"] == "cli" else "浏览器")
                 + "）") if left["blocked"] else ""
@@ -1375,7 +1375,7 @@ def main(argv=None) -> int:
 
     if a.note:
         note(data, a.note, a.n, now, a.kind)
-        save(user, data)
+        budget_stamp = save(user, data, expect=budget_stamp)
         # `after_acting=True`：刚记完的这一条不许拿来跟自己比间隔，
         # 否则每次记账都回「太密」并退出码 1，把执行器劝退（见 `check` 的说明）。
         ok, why = check(data, a.note, now, after_acting=True)

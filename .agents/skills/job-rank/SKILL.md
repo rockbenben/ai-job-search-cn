@@ -4,7 +4,7 @@ description: >
   给抓到还没评的岗批量打分，排出可以投的
   不给参数时：把还没评的全部评完，分批循环直到队列排空
   触发词：给这些岗打分、排个序、哪个岗值得投、评一评、job rank
-allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(python tools/fetch_details.py:*), Bash(python tools/jd_store.py:*), Bash(python tools/archive.py:*), Bash(python tools/writeback.py:*), Bash(python tools/prescreen.py:*), Bash(python tools/score.py:*), Bash(python tools/audit_pipeline.py:*), Bash(python tools/export_web_data.py:*)
+allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(python tools/fetch_details.py:*), Bash(python tools/jd_store.py:*), Bash(python tools/archive.py:*), Bash(python tools/writeback.py:*), Bash(python tools/prescreen.py:*), Bash(python tools/score.py:*), Bash(python tools/audit_pipeline.py:*), Bash(python tools/export_web_data.py:*), Bash(python tools/validate_evaluations.py:*)
 ---
 
 <!-- 由 tools/gen_entries.py 生成：改 workflows/INDEX.md 或 tools/_entries.py，别改这里 -->

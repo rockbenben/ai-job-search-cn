@@ -218,7 +218,7 @@ class NothingIsLostAndItComesBack(unittest.TestCase):
             hot = json.loads(sj.read_text(encoding="utf-8"))
             self.assertIn("a", hot["seen"], "拉回来丢了岗")
             _, arc = ar.paths("u")
-            self.assertFalse(arc.is_file(), "拉回后冷库该清掉，不然下轮归档要合并两份")
+            self.assertEqual(_cli.seen_of(json.loads(arc.read_text(encoding="utf-8"))), {}, "恢复后归档应为空")
             self.assertEqual(hot["archived"]["count"], 0)
 
 

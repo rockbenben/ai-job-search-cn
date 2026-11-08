@@ -204,7 +204,7 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
   //  用户以为撤回了一步，实际撤掉的是整次投递。
   const [marked, setMarked] = useState<
     { prev: string | null; label: string; then: string; value: string;
-      pending?: boolean } | null
+      pending?: boolean; version?: string } | null
   >(null);
   //: 记完「挂了」之后**才**出现的可选补充。
   //
@@ -262,7 +262,7 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
     try {
       const r = await postStatus(job.id, value);
       setMarked((m) => (m && m.value === value
-        ? { ...m, prev: r.prev, then: r.then, pending: false } : m));
+        ? { ...m, prev: r.prev, then: r.then, version: r.version, pending: false } : m));
       // ③ **写完才重取。** `onChanged` 触发的是整份快照重取，原来它排在
       //    `await postStatus` 前面：GET 抢在写盘之前发出，serve 那边看源文件
       //    还没变、直接把旧快照返回，而之后再没有第二次重取——于是「已投递」
@@ -285,7 +285,7 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
             <span>
               已记为「我投了」。
               <Button type="link" size="small"
-                      onClick={() => { void undoAfterAdvance(r.prev, key); }}>
+                      onClick={() => { void undoAfterAdvance(r.prev, key, r.version); }}>
                 撤销
               </Button>
             </span>
@@ -325,7 +325,8 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
     setReason(reasons.find((r) => r.value === value)?.label || value);
     setReasonSaved(true);
     try {
-      await postStatus(job.id, "rejected", value);
+      const result = await postStatus(job.id, "rejected", value);
+      setMarked((current) => current ? { ...current, version: result.version } : current);
       onChanged?.();
     } catch (e) {
       setReason(prevReason);
@@ -346,7 +347,7 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
     const snapshot = marked;
     setMarked(null);
     try {
-      await postStatusUndo(job.id, snapshot.prev);
+      await postStatusUndo(job.id, snapshot.prev, snapshot.version);
       onChanged?.();   // 撤销不挪：行会回到名单里，挪走反而把视线带离他刚撤的那个岗
     } catch (e) {
       setMarked(snapshot);                 // 盘上没撤成，界面不能假装撤了
@@ -357,7 +358,7 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
   }
 
   /** 自动前进之后仍能撤销的那一下。`prev` 由那次写盘的响应给出。 */
-  async function undoAfterAdvance(prev: string | null, key: string) {
+  async function undoAfterAdvance(prev: string | null, key: string, version: string) {
     // 行已经走了，能立刻变的只有这条提示本身：先换成「正在撤销」，
     // 别让人点完之后盯着「已记为」以为没点着。
     message.open({
@@ -365,7 +366,7 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
       content: "正在撤销…", duration: 0,
     });
     try {
-      await postStatusUndo(job.id, prev);
+      await postStatusUndo(job.id, prev, version);
       onChanged?.();
       message.success({
         key, className: "cockpit-flash", content: "已撤销", duration: 2,

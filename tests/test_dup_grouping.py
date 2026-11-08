@@ -78,6 +78,16 @@ def entry(url, title, score, salary="30-40k·14薪"):
 
 
 class SameJdPostingsCollapse(unittest.TestCase):
+    def test_shared_prefix_with_different_tail_stays_visible(self):
+        first = entry("https://x/first", "产品经理", 70)
+        second = entry("https://x/second", "产品经理", 60)
+        ids = [ex.stable_id(e["url"], e["title"]) for e in (first, second)]
+        prefix = DESC * 3
+        jobs = _export({"first": first, "second": second},
+                       {ids[0]: prefix + "负责医疗产品", ids[1]: prefix + "负责金融产品"})
+        self.assertEqual(len(jobs), 2)
+        self.assertFalse(any(j.get("dupOf") for j in jobs))
+
     def test_highest_annual_becomes_primary_even_when_it_scores_lower(self):
         """**年包与分数故意相反**——这是这条测试唯一能拦住回退的形状。
 

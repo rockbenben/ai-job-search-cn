@@ -456,7 +456,7 @@ def parse_today(value, *, flag: str = "--today"):
 #: `decided_status` 从中读出 `"new"`，一条记账凭空变成一个待评岗位。
 #:
 #: 所以是**读取端**该认出它 —— 见 `JobView`。
-NON_JOB_KEYS = frozenset({"query_log"})
+NON_JOB_KEYS = frozenset({"query_log", "archived"})
 
 
 class JobView(dict):
@@ -524,7 +524,8 @@ class JobView(dict):
         return k, v
 
     def clear(self):
-        self._src.clear()
+        for key in list(self):
+            self._src.pop(key, None)
         self._reload()
 
 

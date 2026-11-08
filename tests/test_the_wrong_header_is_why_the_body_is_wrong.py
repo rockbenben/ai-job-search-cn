@@ -261,12 +261,13 @@ class TheCausalClaimIsAlreadyInTheSpec(unittest.TestCase):
         「按窗口切」上。
         """
         self.assertIn("照着「直招」写，就会对着顾问讲「贵司如何如何」", AUDIT)
-        j = AUDIT.index("def check_outreach_header_says_who_youre_talking_to")
-        i = AUDIT.index("照着「直招」写，就会对着顾问讲「贵司如何如何」")
-        # 它在那个函数的 docstring 里 —— 也就是 `def` **之后**、函数体之前。
-        self.assertGreater(i, j, "那句话跑到函数外面去了")
-        self.assertLess(i, AUDIT.index('user = _cli.pick_user("", root=ROOT)', j),
-                        "它掉出 docstring 了")
+        import ast
+        function = next(node for node in ast.walk(ast.parse(AUDIT))
+                        if isinstance(node, ast.FunctionDef)
+                        and node.name == "check_outreach_header_says_who_youre_talking_to")
+        self.assertIn("照着「直招」写，就会对着顾问讲「贵司如何如何」",
+                      ast.get_docstring(function))
+
 
     def test_the_rule_it_leans_on_still_exists(self):
         tpl = (ROOT / "workflows" / "reference"

@@ -313,6 +313,27 @@ def off_supply_note(off) -> str:
             f"要开就在这一页的「招聘网站」那一段点一下")
 
 
+def match_application(entry: dict, applications: list, entries) -> dict | None:
+    url = _cli.norm_url(entry.get("url") or "").split("#", 1)[0]
+    candidates = [a for a in applications
+                  if url and _cli.norm_url(a.get("url") or "").split("#", 1)[0] == url]
+    peers = [e for e in entries
+             if _cli.norm_url(e.get("url") or "").split("#", 1)[0] == url]
+    exact = [a for a in candidates if a.get("url") == entry.get("url")]
+    if len(candidates) > 1 or len(peers) > 1 or not exact:
+        title = re.sub(r"[\W_]+", "", (entry.get("title") or "").lower())
+        titles = {re.sub(r"[\W_]+", "", (e.get("title") or "").lower()) for e in peers}
+        matched = []
+        for app in candidates:
+            folder = re.sub(r"[\W_]+", "", app.get("dir", "").lower())
+            longest = max((t for t in titles if t and t in folder), key=len, default="")
+            if title and title in folder and (not longest or title == longest):
+                matched.append(app)
+        candidates = matched
+    return max(candidates, key=lambda a: (bool(a.get("outreach")), bool(a.get("resume")),
+                                         len(a.get("interview_preps") or [])), default=None)
+
+
 def dedup_apps_by_url(apps) -> dict:
     """`url -> 那个投递目录`。同一链接下有两个目录时，留信息更全的那个。
 
@@ -1821,11 +1842,11 @@ def build_model(seen: dict, apps: list, tracker: list, profile_ok: bool,
     # env_items 显式传入（默认 None = 不渲染环境面板），这样测试不必真跑 subprocess
     # 探测；main() 负责在真实运行时调用 probe_env() 传进来。
     env_items = env_items or []
-    apps_by_url = dedup_apps_by_url(apps)
+    dedup_apps_by_url(apps)
     jobs = []
     for key, entry in seen.items():
         url = entry.get("url") or (key if key.startswith("http") else "")
-        app = apps_by_url.get(url)
+        app = match_application(dict(entry, url=url), apps, seen.values())
         trow = match_tracker(entry, url, tracker)
         stage = derive_stage(entry, app, trow)
         interviewing = bool(

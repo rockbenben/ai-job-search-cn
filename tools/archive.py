@@ -252,7 +252,11 @@ def revive(user: str, apply: bool = False) -> dict:
     data, stamp = _cli.load_json_stamped(sj)
     seen = _cli.seen_of(data)
     _cli.stop_on_unreadable_rows(seen, sj)
-    cold = json.loads(arc.read_text(encoding="utf-8")).get("seen", {})
+    archive_data, archive_stamp = _cli.load_json_stamped(arc)
+    if not isinstance(archive_data, dict):
+        raise ValueError("归档格式不正确，原文件已保留")
+    cold = _cli.seen_of(archive_data)
+    _cli.stop_on_unreadable_rows(cold, arc)
     before = len(seen)
     for k, e in cold.items():
         seen.setdefault(k, e)             # 热库已有同键的以热库为准——它更新
@@ -260,7 +264,11 @@ def revive(user: str, apply: bool = False) -> dict:
         return {"revived": len(seen) - before, "dry": True}
     data["archived"] = {"count": 0, "date": _dt.date.today().isoformat()}
     _cli.atomic_write(sj, json.dumps(data, ensure_ascii=False, indent=1), expect=stamp)
-    arc.unlink()
+    restored = _cli.seen_of(_cli.read_json(sj))
+    if not set(cold).issubset(restored):
+        raise _cli.StaleWrite("恢复后的职位记录不完整，归档仍保留")
+    _cli.atomic_write(arc, json.dumps({"seen": {}}, ensure_ascii=False),
+                      expect=archive_stamp)
     return {"revived": len(cold)}
 
 

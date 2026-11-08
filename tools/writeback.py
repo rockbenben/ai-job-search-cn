@@ -226,8 +226,12 @@ def read_dir(d: Path):
     if not verdict:
         return None, "evaluation.md 里读不出判词（结论段要出现五档中文之一）"
     rows = ex.parse_dimensions(text)
+    missing_pay = bool(re.search(
+        r"^\|\s*薪资与职级\s*\|\s*(?:信息缺失(?:（不计入）)?|不计入|—|-)\s*\|",
+        text, re.M))
     dims = {x["name"]: x["score"] for x in rows
-            if isinstance(x.get("score"), int)}
+            if isinstance(x.get("score"), int)
+            or (x["name"] == "薪资与职级" and missing_pay)}
     notes = {x["name"]: (x.get("note") or "").strip() for x in rows}
     # **走 `gap_split.FORMULA`，不自己写第二份。** 本文件开头那句
     # 「读出分、判词、四维——**不写第二份解析器**，那正是分叉的来路」
@@ -301,8 +305,10 @@ def pick_entry(cands: list, dirname: str):
     """一个 URL 下有多条时，靠目录名里的职位名认。返回 (条目, 说不清的原因)。"""
     if len(cands) == 1:
         return cands[0], ""
-    hit = [c for c in cands if (c.get("title") or "").strip()
-           and (c.get("title") or "").strip() in dirname]
+    # 与总览复用职位名匹配，避免空格、括号和目录名中的斜杠替换造成两边分叉。
+    # 多个职位都能对应时仍拒收；较长职位名命中时不再误取其短前缀。
+    hit = [c for c in cands if bd.match_application(
+        c, [{"url": c.get("url") or "", "dir": dirname}], cands) is not None]
     if len(hit) == 1:
         return hit[0], ""
     titles = "、".join((c.get("title") or "（无职位名）") for c in cands)
@@ -336,7 +342,7 @@ def main(argv=None) -> int:
     # 去认，认不出就拒收并说清楚，把静默写错换成一条能处理的提示。
     by_url: dict[str, list] = {}
     for v in seen.values():
-        by_url.setdefault(v.get("url") or "", []).append(v)
+        by_url.setdefault(_cli.norm_url(v.get("url") or ""), []).append(v)
 
     # **存档里也算「还在」。** 归档不是删除（`archive.py` 自己这么写），而这一格
     # 只查热库 —— 于是 `archive.py --apply` 归档掉的岗，它的材料目录立刻被报成
@@ -374,7 +380,7 @@ def main(argv=None) -> int:
                     unreadable.append((d.name, why))
                 continue
             url, score, verdict, dims, pair, notes = got
-            cands = by_url.get(url) or []
+            cands = by_url.get(_cli.norm_url(url)) or []
             if not cands:
                 if _cli.norm_url(url) in archived_urls:
                     gone.append(d.name)       # 搬去了存档，不是「被删」
@@ -478,6 +484,8 @@ def main(argv=None) -> int:
             b = e.get("rank_breakdown") or {}
             if isinstance(skill, int) and b.get("技能与经验") != skill:
                 changes.append(f"技能拆解 {b.get('技能与经验')} → {skill}")
+            if "薪资与职级" in dims and b.get("薪资与职级") != dims["薪资与职级"]:
+                changes.append("同步薪资评分及信息缺失状态")
             # **那两笔拆解也要比。**
             #
             # 本文件开头写着「与库比对：分、判词、`evaluated`、**四维拆解**，
@@ -517,6 +525,15 @@ def main(argv=None) -> int:
             # 「数没变就别动这一格」在上一条注释里已经写过一次，这里是同一条。
             if not changes:
                 continue
+            if _cli.gate_in_verdict(verdict)[0] == "候选人明确排除":
+                from validate_evaluations import exclusion_errors
+                import jd_store
+                candidate = (ROOT / "users" / user / "profile/candidate.md").read_text(encoding="utf-8")
+                detail = jd_store.load(user, e.get("url") or "", e.get("title") or "") or {}
+                issues = exclusion_errors(dict(e, rank_verdict=verdict), candidate, detail)
+                if issues:
+                    unreadable.append((d.name, "；".join(issues)))
+                    continue
             drift.append((d.name, changes))
             if args.apply:
                 e["rank_score"], e["rank_verdict"] = score, verdict
@@ -525,7 +542,7 @@ def main(argv=None) -> int:
                     e["status"] = "ranked"
                 b = e.setdefault("rank_breakdown", {})
                 for k in _cli.WEIGHTED_DIMS:      # 正本在 _cli，别造第二份
-                    if isinstance(dims.get(k), int):
+                    if isinstance(dims.get(k), int) or (k == "薪资与职级" and k in dims):
                         b[k] = dims[k]
                 if pair:
                     b["四维"] = f"专业能力{pair.group(1)}×0.6+业务域{pair.group(2)}×0.4"

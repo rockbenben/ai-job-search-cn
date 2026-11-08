@@ -121,12 +121,19 @@ def pay_note(entry: dict, floor: float, expect) -> str | None:
         return None
     low, high = pkg["low"], pkg.get("high")
     span = f"{low:g}-{high:g} 万" if high else f"{low:g} 万"
-    months = entry.get("salaryMonths")
+    explicit = re.search(r"(\d{1,2})\s*薪", s)
+    months = int(explicit.group(1)) if explicit else entry.get("salaryMonths")
+    if pkg.get("assumed12"):
+        months = None
     # 薪资串本身常常已经带着薪数（`35-40k·15薪`），再拼一次就成了
     # 「35-40k·15薪×15薪」—— 2026-08-29 第一版实测就是这样。
     disp = re.sub(r"[·・]\s*\d+\s*薪\s*$", "", s).strip()
-    how = (f"{disp}×{months}薪 = 年包 {span}" if months
-           else f"{disp}「没写几薪」，按 12 薪保守计年包 {span}")
+    if months:
+        how = f"{disp}×{months}薪 = 年包 {span}"
+    elif pkg.get("assumed12"):
+        how = f"{disp}「薪数未确认」，按 12 薪保守计年包 {span}"
+    else:
+        how = f"{s}，折算年包 {span}"
     if low >= expect[1]:
         return f"{how}。下沿 {low:g} 万到了期望上沿 {expect[1]:g} 万之上"
     if low >= expect[0]:
@@ -205,7 +212,9 @@ def composite(dims: dict, adjust=None) -> int:
     """
     extra = sum(v for v in adjust.values()
                 if isinstance(v, (int, float))) if isinstance(adjust, dict) else 0
-    return round(sum(dims[k] * w for k, w in DIM_WEIGHTS.items()) + extra)
+    active = {k: w for k, w in DIM_WEIGHTS.items()
+              if not (k == "薪资与职级" and dims.get(k) is None)}
+    return round(sum(dims[k] * w for k, w in active.items()) / sum(active.values()) + extra)
 
 
 def snap_coarse(v: int) -> int:

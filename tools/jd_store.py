@@ -113,6 +113,25 @@ def key_for(url: str, title: str) -> str:
     return ex.stable_id(url or "", title or "")
 
 
+class DetailIndex(dict):
+    """按岗位保存全部正文，只有唯一候选时才允许按链接回退。"""
+
+    def add(self, detail):
+        self[key_for(detail.get("url") or "", detail.get("title") or "")] = detail
+
+    def get(self, key, default=None):
+        if key in self:
+            return super().get(key, default)
+        matches = [d for d in self.values()
+                   if _cli.norm_url(d.get("url") or "") == _cli.norm_url(key or "")]
+        return matches[0] if len(matches) == 1 else default
+
+
+def detail_for(details, entry):
+    key = key_for(entry.get("url") or "", entry.get("title") or "")
+    return details.get(key) or details.get(entry.get("url")) or {}
+
+
 def load(user: str, url: str, title: str) -> dict | None:
     """取一份详情。没有就返回 None —— 调用方据此决定要不要抓。"""
     p = store_dir(user) / f"{key_for(url, title)}.json"

@@ -216,7 +216,8 @@ MANIFEST: dict[str, dict] = {
         "triggers": ("给这些岗打分", "排个序", "哪个岗值得投", "评一评", "job rank"),
         # 「**写回之后跑 `python tools/export_web_data.py` 刷新面板数据**——分数落了
         # 库而面板还是旧的」（job-rank.md 写回之后那一步）。同样是写在正文里的收尾步骤。
-        "extra_tools": ("Bash(python tools/export_web_data.py:*)",),
+        "extra_tools": ("Bash(python tools/export_web_data.py:*)",
+                        "Bash(python tools/validate_evaluations.py:*)"),
     },
     "job-auto": {
         "triggers": ("自动跑一轮", "一条龙跑完", "全都跑了", "job auto"),

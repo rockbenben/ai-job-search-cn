@@ -716,6 +716,22 @@ python tools/archive.py --revive --apply   # 整个拉回热库（不加 --apply
 
 ## Step 4：写回状态
 
+### 本批排除依据在写回前校验
+
+新评估若因「候选人明确排除」判为不满足，在 `rank_breakdown` 中保存结构化字段：
+
+```json
+"排除依据": {"个人条件": "candidate.md 中的具体排除条件原文", "职位原文": "本岗已保存正文或标题中的原文"}
+```
+
+将本批待写记录存为 `job_scraper/evaluation-batch.json`（按活动用户解析），包含岗位 ID 和完整条目。
+在更新职位库前运行 `python tools/validate_evaluations.py --input users/<活动用户>/job_scraper/evaluation-batch.json --keys <本批岗位ID...>`。
+校验失败则修正引文或改为待核实，重跑通过后再按下方版本戳规则合入库。
+个人条件与职位依据分别保存，结论、评分和显示说明从本批同一份记录生成。
+写后复核可运行 `python tools/validate_evaluations.py --keys <本批岗位ID...>`。
+
+
+
 **就地**更新 `job_scraper/seen_jobs.json` —— 下面这些字段是**加在**抓取侧 schema 之上的：
 
 - 评过分的岗：把 `"status"` 置为 `"ranked"`，并加上 `"rank_score": <总分>`、
