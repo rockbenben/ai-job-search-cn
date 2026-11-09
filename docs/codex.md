@@ -6,9 +6,23 @@ Claude Code。依据：[OpenAI 官方技能文档](https://learn.chatgpt.com/doc
 
 ## 命令与执行
 
-在 Codex **对话框**输入 `job-auto` 就能抓岗、评分、备材料；这些是给 AI 的请求，
+在 Codex **对话框**输入 `$job-auto` 就能抓岗、评分、备材料；这些是给 AI 的请求，
 不是 PowerShell 或 Bash 命令。也可以直接说「帮我抓一轮新岗位并准备材料」。
-文档里的 `/job-*` 是标准写法，Codex 渲染时去掉开头斜杠，避免 CLI 当成内置命令。
+文档正本保留 `/job-*`，总览与自检在 Codex 下复制为 `$job-*` 技能引用，参数原样保留。
+
+| 环境 | 调用方式 |
+|---|---|
+| 桌面版 | `$job-setup`；也可输入 `/` 从菜单选择已启用技能 |
+| CLI / IDE | `$job-setup`；也可输入 `/skills` 选择技能 |
+
+CLI 能用斜杠菜单，但不能据此保证任意 `/job-setup` 都会自动注册成内置命令。
+旧版 `/prompts:名称` 自定义命令已弃用，不作为本项目默认入口，不额外安装全局副本。
+裸写 `job-setup` 是自然语言请求，不是显式技能引用。`$` 只作为 Codex 各端的默认，
+不是所有 coding 工具的通用语法。未识别宿主时，项目给完整自然语言请求
+（如「请读取并执行 workflows/job-auto.md」），前提是助手能读取本地项目。
+依据（2026-11-09）：[桌面斜杠菜单](https://learn.chatgpt.com/docs/app/slash-commands)、
+[技能调用](https://learn.chatgpt.com/docs/build-skills)、
+[旧自定义命令](https://learn.chatgpt.com/docs/custom-prompts)。
 
 - 自检与总览数据会用非空 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` 识别 Codex。
   这两个标记于 2026-11-09 在本项目的 Codex 桌面会话中实测；缺标记的旧环境仍可用

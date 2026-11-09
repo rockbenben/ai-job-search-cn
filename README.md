@@ -20,11 +20,12 @@
 |---|---|
 | **WorkBuddy** | 打开仓库文件夹，在对话框输入 `/job-setup`；浏览器渠道使用自带的 `agent-browser` |
 | **Claude Code** | 在仓库目录启动，输入 `/job-setup`；浏览器渠道可使用 Claude 浏览器扩展 |
-| **Codex（桌面版 / CLI / IDE）** | 打开仓库，在对话框输入 `job-setup`；命令去掉开头的斜杠，见 [Codex 接入说明](docs/codex.md) |
+| **Codex（桌面版 / CLI / IDE）** | 打开仓库，在对话框输入 `$job-setup`；桌面版也可从 `/` 菜单选技能，CLI 可用 `/skills`，见 [Codex 接入说明](docs/codex.md) |
 | Antigravity CLI、Qoder、Qwen Code、MiMo、MCode | 在仓库目录启动，输入 `/job-setup` |
-| Cursor 等其它助手 | 打开仓库后，先让助手读取 [AGENTS.md](AGENTS.md)，再输入 `/job-setup`；能力差异见 [工具接入说明](docs/tool-entries.md) |
+| **Cursor** | 打开仓库，在 Agent 对话框输入 `/job-setup`；项目技能从 `.agents/skills/` 加载 |
+| 其它未识别助手 | 打开仓库后，先让助手读取 [AGENTS.md](AGENTS.md)，再说「请读取并执行 workflows/job-setup.md」；能力差异见 [工具接入说明](docs/tool-entries.md) |
 
-下文示例保留 `/`，**Codex 用户去掉开头的斜杠即可**。也可以直接说「自动跑一轮」「投这个岗 <职位链接>」，由助手执行对应工作流。
+下文示例保留 `/`，**Codex 用户使用 `$job-…` 引用技能**。也可以直接说「自动跑一轮」「投这个岗 <职位链接>」，由助手执行对应工作流。
 
 | 渠道 | 支持方式 | 你需要做什么 |
 |---|---|---|
@@ -56,7 +57,7 @@ cd ai-job-search-cn
 
 ### 2. 填资料，拿到第一批岗位和话术
 
-下面的命令输入 **AI 工具的对话框**，不是系统终端。Codex 用户按上表去掉斜杠。
+下面的命令输入 **AI 工具的对话框**，不是系统终端。Codex 用户按上表使用 `$job-…` 技能引用。
 
 | 日常命令 | 会得到什么 |
 |---|---|

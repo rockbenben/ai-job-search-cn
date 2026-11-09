@@ -24,8 +24,8 @@
 
 ## 逐家的接入面
 
-**四列都是量出来的，不是从文档推的。** 每格后面的日期是取证日；厂商约定会变，
-改判据前按文末「复核入口」再量一次。
+各列按已列出的实测或官方文档记录；两种依据注明来源，不互相冒充。厂商约定会变，
+改判据前按文末「复核入口」重新核对。
 
 | 工具 | 读 `AGENTS.md` | 扫 `.agents/skills/` | 吃斜杠 | 探测信号 |
 |---|---|---|---|---|
@@ -35,7 +35,8 @@
 | Qwen Code | ✅ | ✅（0.24.7 起；0.14.0 不扫） | ✅ | `QWEN_CODE=1` |
 | MiMo Code | ✅ | ✅（默认开） | ✅ | `MIMOCODE=1` |
 | MCode | **未验** | ✅ | ✅ | `MAVIS_SESSION_TRANSFER_CLIENT=1`（2026-10-13 逐个量出来的） |
-| Codex（桌面 / CLI / IDE） | ✅ | ✅ | CLI ❌ **拦**；统一给无斜杠请求 | `CODEX_THREAD_ID` / `CODEX_SESSION_ID`（2026-11-09 桌面真会话实测） |
+| Cursor | ✅（官方规则文档） | ✅（官方技能文档） | ✅（2026-11-09 用户确认 + 官方核对） | 暂无已验证自动信号；可用 `JOBS_CODE_TOOL=cursor` |
+| Codex（桌面 / CLI / IDE） | ✅ | ✅ | 桌面 `/` 菜单；CLI / IDE `/skills`；各端默认 `$job-…` | `CODEX_THREAD_ID` / `CODEX_SESSION_ID` |
 | OpenCode | ✅（首命中即停） | ✅ | **未实测** | `OPENCODE=1`（没接） |
 | Deep Code (DeepSeek) | ✅ | ✅ | **未实测**（`/` 开菜单，技能进不进那个菜单没量到） | 没装，量不到 |
 | Crush | ✅（多份全叠加） | ✅ | ❌（`/` 是它自己的快捷键） | `CRUSH=1`（没接） |
@@ -102,25 +103,11 @@
    拿它当禁令会让人守着规则、放着工具接不进来。
    ⚠️ 「大多是」而不是「全是」：表里已有一格是「未验」（MCode 读不读 `AGENTS.md`），
    **这一列空着就是还没量，别拿「别家都 ✅」填**。
-2. **后六家落 `generic` 就是对的，不是漏了。**
-   **`generic` 那一档给的是哪种形式，2026-10-13 从免斜杠翻成了带斜杠。**
-   原来的判据是「没实测 → 给裸形式」，理由是「裸形式各家都敲得动（触发词接得住），
-   留一个敲不动的斜杠才是每条引导都作废」。前半句在 harness 里不成立：**裸形式不是
-   命令，只是聊天框里的一段文字**，触发词接得住的是模型、不是宿主。
+2. **未识别工具使用完整自然语言请求。** `generic` 现在为 `bare`，显示为
+   「请读取并执行 workflows/job-auto.md」，参数原样附后。既不猜 `/` 注册，也不假定
+   `$` 是所有工具的通用入口。裸写技能名不是明确的工作流调用；只有能读取项目文件的
+   助手才能执行这个请求。不能读文件时需要提供工作流正文，不能假装技能已加载。
 
-   而两种错法的**可见性不同**：带错斜杠，工具报错或列出命令；缺斜杠，用户根本不知道
-   有这条命令（`AGENTS.md`「每一处引导都要写出该敲的命令」那一节）。这张表里量过的是 **7 家吃斜杠、
-   4 家不吃、2 家未实测**（活表 13 行，Gemini 那一行已划掉；2026-11-09 加 WorkBuddy）——
-   认不出来的那一批更可能落在吃斜杠的一边。
-   真拦的 Codex 已经自己一格（`JOBS_CODE_TOOL=codex`），不再靠 generic 兜底。
-
-   代价说清楚：**Crush / Goose / Amp 三家实测不吃斜杠，但探测不到、也没有格子**，
-   它们现在会拿到敲不动的斜杠。要救得手工指定，而它们又**没有可用的信号**
-   （Crush 有 `CRUSH=1`，但接了只会让自检多印一个工具名、命令形式一个字都不变——
-   探测的唯一下游是 `COMMAND_SYNTAX` 那张表，判据是「吃不吃斜杠」不是「认不认得出」；
-   Goose 与 Amp 连信号都没有）。这一格只能由用户按这张表自己填，是「规则在」与
-   「兜得住」之间真实存在的缺口，不假装它闭合了。
-   OpenCode 与 Deep Code 本来就未实测，仍按多数派走。
 3. **Gemini CLI 那一行在表里划掉了（2026-09-30）** —— 留着是为了留个位置，不是它还在被支持。分清「停的是哪一层」再动手：
    npm 包**还在发版**（0.61.0，2026-09-24），关的是**个人版登录通道** ——
    登录返回 `reasonCode: "UNSUPPORTED_CLIENT"` / `tierId: "free-tier"`，
@@ -237,6 +224,14 @@ AI 工具无关。
 > 出现 `.claude/` 路径或自称「本技能」、`CLAUDE.md` 复述 `AGENTS.md` 已有的流程——
 > `tools/lint_skills.py` 都会报。
 
+### 当前 Codex 调用方式（2026-11-09 复核）
+
+Codex 支持斜杠菜单，项目技能默认使用 `$job-…` 显式引用，各端通用。桌面 `/` 菜单
+可选择已启用技能，CLI / IDE 可用 `/skills`。旧版 CLI 拒绝未知 `/job-*` 的记录仅说明
+那个入口未注册，不能推广为 Codex 不支持斜杠。下文免斜杠的旧记录仅为历史；
+当前 `COMMAND_SYNTAX["codex"]` 为 `dollar`，总览提供自动、斜杠、技能引用和自然语言四档。
+当前依据与操作见 [Codex 说明](codex.md)。
+
 ### 浏览器能力按工具自动适配（2026-11-09）
 
 Codex 接入补充见 [docs/codex.md](codex.md)。现在先从真实会话标记识别宿主，
@@ -275,52 +270,31 @@ Chromium**，BOSS / 智联要在它里面各登录一次，之后同一 daemon �
 （见它 SKILL.md 里讲 daemon 与会话保留的那一节）。差异写进 `SETUP.md` 3.1 与
 `workflows/reference/cdp-portals.md`，自检那句也照实说。
 
-## 命令形式：正本带斜杠，只有渲染层改
+## 命令形式：正本带斜杠，显示时按宿主适配
 
-规则在 `AGENTS.md`「每一处引导都要写出该敲的命令」；这一节记的是它落到代码里的样子。
+`AGENTS.md` 与 `workflows/` 的命令正本仍是 `/job-*`。显示层统一读取
+`tools/doctor.py::COMMAND_SYNTAX`：已支持的其它宿主采用 `slash`，未识别宿主采用 `bare` 完整自然语言请求，
+Codex 采用 `dollar`，复制为 `$job-*`，参数原样保留。裸写名称属于自然语言请求。
 
-- **文档正本一律带斜杠**（`AGENTS.md`、`workflows/`、`workflows/INDEX.md`）——斜杠是
-  命令的标准形式，去掉它是「某一家客户端的毛病」，不该污染正本。
-- 改写只发生在**给用户看的最后一层**：`tools/doctor.py::adapt_commands()`，以及它包
-  stdout 的那个 `_CommandStream`（包的是整条输出流，逐处 print 改必漏）。
-- 给不给斜杠由一张表说了算：`doctor.COMMAND_SYNTAX`。**2026-09-29 / 09-30 逐家实测**，
-  结论跟这张表原来的第一版相反：拦斜杠的不是「其余各家」，是 Codex 一家。
+Codex CLI 支持 `/skills` 菜单；桌面版的 `/` 菜单会列出已启用技能。默认复制使用各端
+支持的 `$job-*`，避免从终端环境猜桌面还是 CLI。旧 CLI 对未知 `/job-*` 的报错只能
+说明那个命令未注册，不能作为整个 Codex 产品不支持斜杠的依据。官方链接见
+[Codex 接入说明](codex.md)。已弃用的 `/prompts:名称` 不作为默认安装方案。
 
-  | 工具 | 形式 | 实测出处 |
-  |---|---|---|
-  | `workbuddy` | `slash` | `product.json` 里写着在项目级技能目录建一个 `SKILL.md` 后敲 `/commit` 就能跑；bundle 的 `user-invocable` 让技能默认进 `/` 菜单（2026-11-09 取证，见接入面表下那段脚注） |
-  | `claude` | `slash` | 技能进它的斜杠表（二进制里的 `skillToolCommands`） |
-  | `qoder` | `slash` | 它自己的口径：技能可按 `/<名>` 请求（2026-09-29 在真会话里看到的） |
-  | `antigravity` | `slash` | 用户 2026-09-28 当场在 `/` 面板测过 `/job-scrape` 能匹配 |
-  | `qwen` | `slash` | 0.24.7 把每个技能注册成 `/<技能名>`（2026-09-30 核；本机先前那版 0.14.0 不注册，结论按新版翻） |
-  | `mimo` | `slash` | `MiMo：command/index.ts` 把技能以 `source: "skill"` 塞进命令表，`MiMo：skill/index.ts` 的注释写着「用户手敲斜杠照样能用」（2026-09-30 读源码） |
-  | `mavis` | `slash` | 用户 2026-10-13 当场确认；信号 `MAVIS_SESSION_TRANSFER_CLIENT` 是逐个量出来的（见上面接入面表那一行） |
-  | `codex`（真实会话标记自动识别，手工指定保留） | `no-slash` | `codex.exe` 0.159.0 里印着 `Unrecognized command '/-'. Type "/" for a list of supported commands.`（`tui\src\bottom_pane\chat_composer\inline_input.rs`）；技能是以 `<skills_instructions>` 注入给模型的，不注册成斜杠项 |
-  | `generic` | `slash` | 兜「认不出来的那一批」。**2026-10-13 从 `no-slash` 翻过来的**，理由与代价见上面第 2 条 |
-  | ~~`gemini`~~ | — | **2026-09-30 整格删掉**：那家已停（见上面那张接入面表的第 3 条）。它原来在这一档是**实测过的** —— bundle 里的 `SkillCommandLoader.ts` 确实把技能注册成 `/<技能名>`；删格的理由不是量错，是那家工具装不上了 |
+总览页默认自动适配，并提供斜杠、技能引用、自然语言三个手动选项；手动选择可切回
+自动。新版本单独保存设置，旧免斜杠设置不再覆盖自动适配结果。
+`doctor.adapt_commands()` 与前端格式化器都只处理独立的工作流引用，保留文件路径、
+网址、已有技能引用及 `/skills` 等客户端命令；前后端的宿主表由测试逐项核对。
 
-**默认值是 `"slash"`（2026-10-13 从 `"no-slash"` 翻过来的）**：它兜的是**认不出来的那一批**，
-而那批更可能落在吃斜杠的一边。免斜杠现在**只有 `codex` 一格**，它自己占着，
-不再靠默认值兜。取值口径在 `doctor.command_syntax()` 一处，`adapt_commands()`、
-包不包 stdout、印不印那一行工具名三处都从它读，不再各写一遍 `tool == "claude"`。
+### Cursor 的能力与身份识别（2026-11-09）
 
-> ⚠️ **`codex` 那一格在 2026-10-13 之前是不存在的**——那时免斜杠靠默认值兜，
-> 而 `codex` 探测不到（`CODEX` 那个变量根本不存在）、自动落 `generic`。
-> 把它单独立格之后，「手工指定」第一次成了**有效**操作：
-> 当时 `JOBS_CODE_TOOL=codex` 与面板开关是两条退路。2026-11-09 补上真实会话
-> 标记的自动识别；`CODEX` 仍然不是有效信号。
+Cursor 已确认支持 `/技能名`，会发现项目 `.agents/skills/`，无需再生成一套 Cursor
+技能副本。官方依据：[技能目录与斜杠调用](https://cursor.com/docs/skills)、
+[AGENTS.md 支持](https://cursor.com/docs/rules)。
 
-> 这张表的第一版把除 Claude 以外的各家全写成 `no-slash`，理由就是「斜杠会被客户端
-> 当成内置指令拦掉」。那句话是从 Codex 一家的行为推广出去的，其余几家当时**没有
-> 逐家实测过**——白扣了它们的斜杠形式，而 `SETUP.md` 与本文件都照着它写。**「一家实测过」
-> 与「其余家都一样」不是一个命题**，这条记在这儿。
-
-> 同一次还编过一条**报错原文**。`README.md` 那版写过「许多终端命令行客户端（如 agy）
-> 会拦，会提示 `Unknown command: /job-auto`」：agy 那半是错的（用户 2026-09-28 在它的
-> `/` 面板里当场测过 `/job-scrape` 能匹配），而那串提示文案**在本仓库任何一次实测里
-> 都没有出现过**——它是为了让「会拦」这个说法显得有出处才长出来的。判据：
-> **没跑过的报错原文一律不许引**；要引就引量到那一家的那一条，带上文件名与版本号
-> ——上面表里 Codex 那格就是那个形状。
+当前没有经过会话实测的自动识别信号，不能将 `TERM_PROGRAM=vscode` 解释为 Cursor。
+显式指定 `JOBS_CODE_TOOL=cursor` 时，自检、总览命令显示按 slash 适配；总览也可手动
+选「斜杠模式」。无法确认身份时仍给完整自然语言请求，不能据此说 Cursor 不支持斜杠。
 
 ### 探测信号逐个的出处
 
@@ -339,8 +313,9 @@ Chromium**，BOSS / 智联要在它里面各登录一次，之后同一 daemon �
 | Qwen Code | `QWEN_CODE=1` | 它的 ShellExecutionService 给自己起的每个子 shell 注入（`cli.js` 里两处 `cpSpawn` 的 `env:` 块，2026-09-30 核） |
 | MiMo Code | `MIMOCODE=1` | 主进程里 `process.env.MIMOCODE = "1"`（`MiMo：packages/opencode/src/index.ts`，紧邻 `AGENT=1`），子进程继承。它是 opencode 的分支，但**不设** `OPENCODE`，所以这个变量能唯一认出它 |
 | Codex | 非空 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` | 2026-11-09 在本项目 Codex 桌面会话的子 shell 中实测；只记录变量名和是否非空，不记录会话 ID。显式覆盖优先，其后 WorkBuddy 的产品标记，再判 Codex；不拿版本号或安装路径判断，也不据此判断浏览器连接 |
-| Cursor、Goose、Amp | 没有可识别标记 | 集成终端里 `TERM_PROGRAM` 是 `vscode` 不是 `cursor`；落 `generic` 那一档 |
-| Crush / OpenCode | 有信号（`CRUSH=1` / `OPENCODE=1`）却**没接** | 接了只改自检里那行工具名，命令形式一个字都不变。判据是「吃不吃斜杠」，不是「认不认得出」。⚠️ 2026-10-13 起这层顾虑变了：Crush 实测**不吃**斜杠、OpenCode 未实测，两者落 `generic` 会拿到敲不动的斜杠——**所以「接上」现在能改变命令形式了**（各加一格 `no-slash`）。留着的唯一理由是没量过它们的桌面端与 CLI 是否同一形态，别为凑一家去猜 |
+| Cursor | 暂无已验证的自动识别信号；支持 `JOBS_CODE_TOOL=cursor` | 2026-11-09 用户确认 + 官方文档核对 `/skill-name` 与 `.agents/skills/` 支持；明确识别为 Cursor 时采用 slash。不能用普通 VS Code 终端信号猜测 |
+| Goose、Amp | 没有可识别标记 | 未识别时采用 generic 的完整自然语言请求 |
+| Crush / OpenCode | 已有信号但未接入具体宿主档 | 当前使用 generic 的完整自然语言请求；不根据安装路径或未经验证的变量猜测命令语法 |
 | ~~Gemini CLI~~ | ~~`GEMINI_CLI=1`~~ | **2026-09-30 删。** 它是**真信号**（那家确实给子 shell 注入过），与下面那批凭空写的假变量不是一回事；删的理由是那家已停，认一个装不上的工具没有意义 |
 
 ⚠️ **只许用实测过的信号。** 上一版写的 `CLAUDE_CODE`、`CLAUDE`、`CURSOR_VERSION`、
@@ -351,18 +326,18 @@ Chromium**，BOSS / 智联要在它里面各登录一次，之后同一 daemon �
 
 Qoder 那一行有个**测不出来的部分**：从会话内部只能看到「这两个变量在当前这个
 Qoder 会话里存在」，看不到它们是不是桌面端也注入。这不妨碍用它——本函数的返回值
-只流向一个下游（上面那张表），而 Qoder 那一格是量出来的（它的 harness 自己写着技能
+用于上面的命令形式表，而 Qoder 那一格是量出来的（它的 harness 自己写着技能
 可按 `/<名>` 请求），所以「命中 Qoder 但那其实是别的界面」最坏是自检里那行工具名
 不准；真敲不动的时候还有触发词，把要办的事说出来照样接得住。国际版那个
 `QODER_CLI=1`（计划文档 §6 记着）在这个真会话里**复现不出来**，只有 `-cn` 那份，
 所以没用它——将来测到了再加，不为凑一家去猜；认不出来就落 `generic`，
-那是**带斜杠**那一档（2026-10-13 改，见上面第 2 条）。手工纠正：
-`JOBS_CODE_TOOL=workbuddy|claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`
+那是**完整自然语言请求**那一档（2026-10-13 改，见上面的命令形式说明）。手工纠正：
+`JOBS_CODE_TOOL=workbuddy|claude|cursor|antigravity|mimo|mavis|qoder|qwen|generic|codex`
 （覆盖优先于自动探测，任意名字原样透传；自检末尾印的那串可选值是从表里派生的，
 不是手抄的字面量）。
 
 面板那头是同一张表的**跨语言抄件**：`web/src/context/CodeToolContext.tsx` 里的
-`KNOWN_TOOLS` 与 `SLASH_TOOLS` 两份名单。原来它自己写了一遍 `tool !== "claude"`，
+`KNOWN_TOOLS`、`SLASH_TOOLS` 与 `DOLLAR_TOOLS` 三份名单。原来它自己写了一遍 `tool !== "claude"`，
 于是 2026-09-29 把几家翻成吃斜杠之后**一行都不用改就全绿**，而面板继续给
 Qoder / agy 免斜杠 —— 抄件与正本分叉不会自己喊，所以现在由
 `ThePanelCarriesTheSameTable` 逐格对拍（名单不等，或又出现按单家公司硬编码的判断
@@ -370,10 +345,10 @@ Qoder / agy 免斜杠 —— 抄件与正本分叉不会自己喊，所以现在
 叫什么名字。`codex` 2026-10-13 起自己一格，2026-11-09 起自动识别；若把它归一成
 `generic`，命令形式也会错，所以那不是「只差个名字」。
 
-换工具丢的东西**只剩斜杠那一层字形，而且只剩一家丢**：七家工具（Claude Code、
-Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code、WorkBuddy）都吃 `/job-apply` 这种敲法
-（Claude 还带补全）；**认不出来的那一批现在也吃**（2026-10-13 改）；只有 Codex 要把它
-换成 `job-apply`，或直接把要办的事说出来——**同一批壳、同一行触发词**。分档的正本
+命令显示按宿主适配：八家工具（Claude Code、
+Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code、WorkBuddy、Cursor）都吃 `/job-apply` 这种敲法
+（Cursor 于 2026-11-09 经用户确认与官方文档核对，其他沿用已有实测）；未识别宿主显示完整自然语言请求；Codex 默认把它
+换成 `$job-apply`，或直接把要办的事说出来——**同一批壳、同一行触发词**。分档的正本
 在上面那张表（`doctor.COMMAND_SYNTAX`），落地的地方是 `doctor.adapt_commands()`。
 
 > 这句话的**句式带守卫**：`tests/test_docs_accuracy.py::TheToolCountIsTheEnumeration`

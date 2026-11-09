@@ -60,14 +60,13 @@
 > 这个理由不只归它一家——命令形式表（`tools/doctor.py` 的 `COMMAND_SYNTAX`）里
 > `workbuddy` / `claude` / `antigravity` / `mimo` / `mavis` / `qoder` / `qwen`
 > 几格都是 `slash`，`/job-auto` 那种敲法在这些家里就是它的原生形态。
-> **要去掉斜杠的只有 Codex CLI**：它把开头的 `/` 留给自己的内置指令
-> （实测出处见 `docs/tool-entries.md`），2026-10-13 起它自己一格 `no-slash`。
+> **Codex 各端默认使用 `$job-…` 引用技能**；桌面版可从 `/` 菜单选择，CLI / IDE 可用
+> `/skills`。不能把旧版 CLI 对未知斜杠项的报错解释成 Codex 不支持 `/`。
 > Codex 现在用 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` 自动识别（2026-11-09 实测），
-> Cursor 这类没有可识别标记的工具仍落 `generic`；而 `generic` 那一档
-> 2026-10-13 从「去斜杠」翻成了**带斜杠**（逐家量过 13 家，**7 家吃斜杠**；认不出来的
-> 更可能落在吃斜杠的一边——理由与代价见 `docs/tool-entries.md` 表下第 2 条）。
-> 所以本文的示例在 Cursor 一类助手里也照敲 `/job-auto`。认错了手工指定：
-> `JOBS_CODE_TOOL=workbuddy|claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`。
+> 未识别的工具使用完整自然语言请求，例如「请读取并执行 workflows/job-auto.md」。
+> 这要求助手能读取项目文件；不会猜测它支持 `/` 或 `$`。
+> 未识别时直接复制自检或总览给出的完整请求。认错了手工指定：
+> `JOBS_CODE_TOOL=workbuddy|claude|cursor|antigravity|mimo|mavis|qoder|qwen|generic|codex`。
 
 **只想先看看效果**：只装 ①，跑 `/job-setup` → `/job-scrape`（抓完自动打分排序），就能拿到真实的排序名单。
 猎聘搜索 CLI 直接跑在 Node 上（零 runtime 依赖、无编译步骤），不需要额外运行时。
@@ -75,7 +74,7 @@
 ### Codex（桌面版 / CLI / IDE）
 
 用 Codex 打开仓库即可读取 `AGENTS.md` 与 `.agents/skills/`，不需要安装 Claude Code。
-在 Codex 对话框输入 `job-auto` 开始抓岗、评分和备材料。浏览器按当前会话提供的能力
+在 Codex 对话框输入 `$job-auto` 开始抓岗、评分和备材料。浏览器按当前会话提供的能力
 自动选择，登录态以实际页面为准；工具映射与使用说明见 [Codex 接入](docs/codex.md)。
 
 ### Claude Code
