@@ -26,12 +26,8 @@ Step 1.7 时会撞上一句「跑 `python tools/prescreen.py`」。
 
 ## 判据
 
-凡是 `workflows/<名>.md` 里出现 `python tools/…` 的命令，命令名都要出现在
-README 与 SETUP 的「Python」那一行里。**只认那一行自己**：行本身整行都算，
-表下注解里只有**自己提到 Python 的句子**才算。曾经是整个注解区域都算、名字
-出现在哪儿都算，于是一句与 Python 毫不相干的话（「Claude Code 是唯一开箱就有
-`/job-setup` 的」）替 `/job-setup` 交了差，而那一行其实从没提过它——2026-09
-删掉那句旧话（`1203f41`）才让这个空转暴露出来。
+README 在 Python 用途摘要旁链接到 SETUP 的完整清单。测试逐项比较工作流里的
+Python 调用者与清单中的命令，避免说明文案或表头改写时误报。
 """
 
 import re
@@ -52,56 +48,16 @@ def commands_needing_python() -> set:
     return out
 
 
-def python_row(doc: Path) -> str:
-    """依赖表里提到 Python 3.10+ 的那一行，**外加表下注解里自己提到 Python 的句子**。
-
-    ## 为什么不能只看那一格
-
-    这条守卫要的是「用户在依赖表这一眼里就知道跳过 Python 会少哪几条命令」，
-    而不是「那些字必须挤在同一个单元格里」。README 那一格一度长到 **293 字符**
-    ——12 条命令塞进一个格子，渲染出来把标签列挤到折行，谁也不会读完。
-    拆成「格子里给摘要 + 表下面一行 `<sub>` 列全」之后信息一个没少、离得也没远，
-    只是不在同一行了。
-
-    ## 但注解整片都算，等于没守卫
-
-    取值范围曾经是「那一行 + 表格结束到下一个空行为止的连续注解行」，命令名
-    出现在区域内任何地方都算数。结果 SETUP 那边靠一句和 Python 毫不相干的话
-    （「Claude Code 是唯一开箱就有 `/job-setup` 的」）替 `/job-setup` 交了差，
-    而那一行其实从没提过它——那句话被删掉（`1203f41`）之后这条检查才头一回
-    真的报红。README 同理：`<sub>` 第一句「主线那一行的命令：…`/job-setup`…」
-    提得到它，但那说的是 Node 主线，不是 Python。
-
-    所以现在：行本身整行都算（那一行通篇讲的就是 Python）；注解按「。」切句，
-    只有句子自己提到 Python 才算这一行的账。表若日后改写，宁可红也不要空转：
-    真漏的名字必须报出来，合法的改法（注解句里保住「Python」字样，或名字回到
-    行本身）红一次就修好了。按行切句，跨行的句子两边都不算——同样是朝红的方向。
-    """
-    lines = doc.read_text(encoding="utf-8").splitlines()
-    hit = next((i for i, l in enumerate(lines)
-                if l.lstrip().startswith("|") and "Python 3.10" in l), None)
-    if hit is None:
-        return ""
-    out = [lines[hit]]
-    # 走到表尾
-    j = hit + 1
-    while j < len(lines) and lines[j].lstrip().startswith("|"):
-        j += 1
-    # 表和注解之间**允许一个空行**：markdown 里表格后面本来就要空一行，不放过它
-    # 的话这个函数永远停在表尾，等于没加宽——实测第一版就是这样，README 那边
-    # 十条命令一条都没认出来。
-    if j < len(lines) and not lines[j].strip():
-        j += 1
-    while j < len(lines) and lines[j].strip():
-        # 注解按句过滤：只有句子自己提到 Python，句里的命令名才算这一行的账。
-        out.extend(s for s in lines[j].split("。") if "ython" in s)
-        j += 1
-    return "\n".join(out)
+def python_uses(doc: Path) -> str:
+    """完整用途清单集中在安装指南的 Python 小节。"""
+    text = doc.read_text(encoding="utf-8")
+    start = text.index("### Python 用途")
+    return text[start:].split("\n### ", 1)[0]
 
 
 class ThePythonRowNamesEveryCommandThatUsesIt(unittest.TestCase):
 
-    DOCS = ("README.md", "SETUP.md")
+    DOCS = ("SETUP.md",)
 
     def test_the_scan_finds_callers(self):
         """控制用例：真扫到了调 Python 的工作流。"""
@@ -110,25 +66,20 @@ class ThePythonRowNamesEveryCommandThatUsesIt(unittest.TestCase):
             len(cmds), 4,
             f"只扫到 {sorted(cmds)} 在调 python tools/——判据大概失效了")
 
-    def test_each_doc_has_a_python_row(self):
-        """控制用例：两份文档都有那一行，否则下面那条比对的是空串。"""
-        for name in self.DOCS:
-            with self.subTest(doc=name):
-                self.assertTrue(
-                    python_row(ROOT / name),
-                    f"{name} 的依赖表里找不到 Python 3.10+ 那一行了")
+    def test_readme_links_to_the_complete_python_uses(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("(SETUP.md#python-用途)", readme)
+        self.assertIn("Python 3.10+", python_uses(ROOT / "SETUP.md"))
 
     def test_every_caller_is_named_in_the_row(self):
-        """名字只认「Python 那一行自己」——表下注解里与 Python 无关的句子不算
-        （见 `python_row` 的出处：一句旧话替 `/job-setup` 空转过）。"""
+        """逐项核对工作流调用者，完整清单漏掉命令就失败。"""
         cmds = commands_needing_python()
         bad = []
         for name in self.DOCS:
-            row = python_row(ROOT / name)
-            if not row:
-                continue
+            row = python_uses(ROOT / name)
+            documented = set(re.findall(r"/job-[a-z-]+", row))
             for c in sorted(cmds):
-                if f"/{c}" not in row:
+                if f"/{c}" not in documented:
                     bad.append(f"{name}: 没提 `/{c}`")
         self.assertEqual(
             bad, [],

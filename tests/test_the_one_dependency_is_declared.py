@@ -77,9 +77,10 @@ class TheDocsSaySo(unittest.TestCase):
                       "要敲的命令上方没有那条安装命令 —— 知道要装不等于知道敲什么")
 
     def test_readme_no_longer_covers_the_exception(self):
-        i = README.index("四个检查脚本")
-        near = README[i:i + 200]
-        self.assertIn("pyyaml", near,
+        paragraphs = [p for p in README.split("\n\n") if "lint_skills.py" in p]
+        self.assertTrue(paragraphs, "README 缺少 lint_skills.py 的依赖说明")
+        near = "\n".join(paragraphs)
+        self.assertIn("pip install pyyaml", near,
                       f"README 还在拿「只用标准库」盖住那个例外：{near[:80]}")
 
     def test_setup_says_it_too(self):

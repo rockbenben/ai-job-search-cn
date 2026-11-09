@@ -167,10 +167,10 @@ class OneStageListForPrepAndRecord(unittest.TestCase):
         # ⚠️ 锚点要认**命令介绍**那一条，不是随便哪次提到 `/job-interview`。
         # 第一版用 `find("`/job-interview")`，命中的是依赖表里那次（第 42 行），
         # 700 字窗口里当然没有阶段清单——测试红得莫名其妙，而不是因为文档错了。
-        i = readme.find("`/job-interview [公司]`")
+        i = readme.find("`/job-interview <公司>`")
         self.assertGreater(
-            i, 0, "README 里找不到 `/job-interview [公司]` 那条命令介绍了——锚点要跟着改")
-        blk = readme[i:i + 700]
+            i, 0, "README 里找不到 `/job-interview <公司>` 那条命令介绍了——锚点要跟着改")
+        blk = readme[i:].splitlines()[0]
         missing = [s for s in PRE_INTERVIEW if s not in blk]
         self.assertEqual(
             missing, [],

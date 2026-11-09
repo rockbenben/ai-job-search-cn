@@ -40,7 +40,7 @@
 |---|---|---|
 | **① 必装** | **一个能读 `AGENTS.md` 并执行工作流的 AI 编码工具** + **Node 22.18+**（见下方「运行时」一节） | 填资料 `/job-setup`、**搜职位 `/job-scrape`**、**打分排序 `/job-rank`**、面试准备 `/job-interview`、记投递 `/job-outcome`、学习计划 `/job-upskill`、切换用户 `/job-user` |
 | **② 要出简历 PDF 就装** | Typst（中文字体一般已自带） | `/job-cv` 编译定制简历、`/job-resume` 校验（不装只给 `.typ` 源文件）。**`/job-apply` 不出简历**——它发主简历，定制走 `/job-cv` |
-| **③ 强烈建议装** | Python 3.10+（流水线全程只用标准库） | `/job-dashboard` 总览页；**以及 `/job-setup` 重跑「改搜索词」那节时先读每个词抓过的真实战绩（抓到多少岗、哪几个跑偏）、`/job-rank` 的预筛淘汰、`/job-scrape` 的 JD 详情库、`/job-outcome` 的催进度判定、`/job-upskill` 的缺口分格、`/job-add-template` 的模板撞名检查、`/job-auto` 的词表写回、`/job-refresh` 的刷新记录、以及 `/job-rank`/`/job-outcome`/`/job-gmail-sync`/`/job-interview`/`/job-user`/`/job-cv`/`/job-reset`/`/job-scrape --no-rank` 收尾刷新面板数据**——这几条命令没有它仍能跑，但各少一环（`/job-rank` 不做淘汰、每轮重抓 JD；`/job-setup` 改词时没战绩可看，只能自己想）。另外仓库自带的四个检查脚本也用它 |
+| **③ 强烈建议装** | Python 3.10+（流水线全程只用标准库） | 总览页和搜索记录、预筛、刷新数据等辅助步骤，详见 [Python 用途](#python-用途) |
 | ④ 可选 | poppler（提供 `pdftotext` 与 `pdftoppm`） | 简历 PDF 的文本层校验与视觉检查（不装则跳过并说明；两个都在 poppler 里，一条安装命令带齐） |
 | ⑤ 可选·进阶 | 能开浏览器的 AI 工具（Claude Code 装 Claude 浏览器扩展；WorkBuddy 用自带的 `agent-browser`） | BOSS 直聘 / 智联 / 前程无忧（没有则退 `site:` 兜底）。见 3.1 |
 | ⑥ 可选·进阶 | Gmail / Notion MCP 连接器 | `/job-gmail-sync`、`/job-notion-sync`（不装则整体跳过） |
@@ -89,25 +89,26 @@ npm install -g @anthropic-ai/claude-code
 需要一个 Anthropic API key 或 Claude Pro/Team 订阅。详见
 [Claude Code 文档](https://docs.anthropic.com/en/docs/claude-code)。
 
-### Python
+### Python 用途
 
 `/job-dashboard`（求职总览页）与仓库自带的四个检查脚本需要 Python 3.10+。
 **流水线全程只用标准库**；四个检查脚本里只有 `lint_skills.py` 例外，
 它要 `pip install pyyaml`（读 `SKILL.md` 的 YAML frontmatter）。
 那是给贡献者跑的，日常求职一条都用不到。
 
-**没有它也能跑完整条流水线**——`/job-setup` 填资料、`/job-scrape` 找岗、
-`/job-rank` 打分、`/job-apply` 出话术都不依赖 Python。装它换来的是：
+没装 Python 也能填资料、搜岗、评分和出话术。各命令受影响的功能如下。
 
-- **总览页**：一个岗展开就能「复制开场白」粘去投；投递状态点一下就写回、
-  记拒绝原因、投后统计（回复率、按分数段的回复率、拒绝原因分布）、
-  屏蔽不想看的公司与职位
-- 几条命令各少一环的地方补齐：`/job-rank` 的预筛淘汰与详情库、`/job-outcome`
-  的「该催哪几个」、`/job-upskill` 的缺口分格、`/job-auto` 的词表写回
-
-> 上面这一句原来写的是「**其它命令都不用它**」——不准确：本页 §1 的依赖表
-> 自己就列了一批命令用 Python 做各自的一环。它们**没有 Python 仍能跑**，
-> 但各少一环，这和「不用它」是两回事。
+| 命令 | Python 提供的功能 | 没装时 |
+|---|---|---|
+| `/job-dashboard` | 本机总览页、状态按钮和投后统计 | 查看 Markdown 材料，用 `/job-outcome <公司>` 记录结果 |
+| `/job-setup --section search` | 改搜索词前统计历史产出和跑偏情况 | 按已有资料重新讨论搜索词 |
+| `/job-scrape`、`/job-rank` | 保存职位正文、评分前预筛和去重 | 由助手评估，后续可能需要重抓正文 |
+| `/job-auto` | 写回搜索词表现 | 本轮继续，搜索词的自动统计不更新 |
+| `/job-upskill` | 汇总专业能力与行业经验差距 | 根据已有岗位评估整理差距 |
+| `/job-add-template` | 检查模板撞名 | 由助手检查现有模板名称 |
+| `/job-refresh` | 保存刷新记录 | 当次刷新继续，历史刷新记录不自动更新 |
+| `/job-outcome` | 计算用户主动查询的跟进情况 | 用户自己判断是否跟进 |
+| `/job-rank`、`/job-outcome`、`/job-gmail-sync`、`/job-interview`、`/job-user`、`/job-cv`、`/job-reset`、`/job-scrape --no-rank` | 完成后刷新总览数据 | 已生成材料仍可查看，总览数据不自动刷新 |
 
 检查：
 

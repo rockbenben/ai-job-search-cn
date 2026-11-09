@@ -49,7 +49,7 @@ CN_NUM = {1: "一", 2: "两", 3: "三", 4: "四", 5: "五"}
 #: `AGENTS.md` 里还有一句「三条命令都会写这一个文件」，说的是
 #: `/job-setup`、`/job-expand`、`/job-rank` 都写 candidate.md，是**另一个三**。
 #: 宽正则会把它一起框进来，脊梁一变它就误报。
-_DAILY = re.compile(r"日常(?:只有|只用)([一两三四五])条")
+_DAILY = re.compile(r"日常(?:只有|只用|只需)([一两三四五])条")
 _HEADING = re.compile(r"一次跑到头：只有([一两三四五])条命令")
 
 
@@ -122,19 +122,52 @@ class TheDocsAgreeOnTheNumber(unittest.TestCase):
         实测就是这么漏的：README 说了两条、表里也只有两行，`/job-outcome`
         只在功能列表里露过面，新用户照着快速开始走完根本不会去记那一笔。
         """
-        # **切到那张表本身，不是「日常只有」往后一千二百字。**
-        # 定宽窗口在这里已经失效了：它溢出到后面「之后就是 `/job-auto` 补货 →
-        # 你自己发 → `/job-outcome` 记账的循环」那句话上，于是**把表里
-        # `/job-outcome` 那一整行删掉，这条判据照样绿** —— 而那正是本方法
-        # docstring 里写着要防的那次事故（2026-09-03 变异实测）。
-        # 判据说的是「快速开始**表**里三条都得出现」，就切那张表。
-        start = README.index("日常只有")
-        block = jsx.between(README[start:], "| 顺序 |", "\n\n")
-        missing = _teaches_the_spine(block)
-        self.assertEqual(missing, [],
-                          f"README 的快速开始表里缺了 {missing}，那它们就没被教到")
-        self.assertIn("唯一要人的一步", block,
-                      "README 没标出那一步要你自己做 —— 会有人等工具替他投")
+        self.assertEqual(_readme_daily_commands(README), list(SPINE),
+                         "快速开始要按顺序各介绍一次三条日常命令")
+        quick = README.split("## 快速开始", 1)[1].split("\n## ", 1)[0]
+        self.assertRegex(quick, r"由你.*(?:发送|投递)", "快速开始要说明由用户发送材料")
+
+    def test_table_headers_and_argument_examples_can_change(self):
+        changed = README.replace("| 日常命令 |", "| 输入的命令 |")
+        changed = changed.replace("/job-outcome <公司>", "/job-outcome [公司]")
+        self.assertEqual(_readme_daily_commands(changed), list(SPINE))
+
+    def test_mentions_in_descriptions_cannot_replace_command_rows(self):
+        for command in SPINE:
+            with self.subTest(command=command):
+                lines = README.splitlines()
+                changed = "\n".join(line for line in lines
+                                    if not line.startswith(f"| `{command}"))
+                changed = changed.replace("| 会得到什么 |", f"| 说明 `{command}` |")
+                self.assertNotEqual(_readme_daily_commands(changed), list(SPINE))
+
+    def test_duplicate_or_reordered_commands_are_rejected(self):
+        row = next(line for line in README.splitlines()
+                   if line.startswith("| `/job-setup`"))
+        duplicate = README.replace(row, row + "\n" + row, 1)
+        self.assertNotEqual(_readme_daily_commands(duplicate), list(SPINE))
+        swapped = README.replace("`/job-setup`", "`/job-swap`")
+        swapped = swapped.replace("`/job-auto`", "`/job-setup`")
+        swapped = swapped.replace("`/job-swap`", "`/job-auto`")
+        self.assertNotEqual(_readme_daily_commands(swapped), list(SPINE))
+
+
+def _readme_daily_commands(text: str) -> list[str]:
+    """只读快速开始表格中的完整命令单元格，说明里的提及不算一行。"""
+    quick = text.split("## 快速开始", 1)[1].split("\n## ", 1)[0]
+    candidates = []
+    for table in re.findall(r"^\|[^\n]*(?:\n\|[^\n]*)*", quick, re.M):
+        commands = []
+        for line in table.splitlines():
+            for cell in line.strip("|").split("|"):
+                match = re.fullmatch(r"`(/job-[a-z-]+)(?:[ \t]+[^`]*)?`", cell.strip())
+                if match:
+                    commands.append(match.group(1))
+        if set(commands).intersection(SPINE):
+            candidates.append(commands)
+    if len(candidates) != 1:
+        return []
+    return candidates[0]
 
 
 def _teaches_the_spine(block: str) -> list[str]:

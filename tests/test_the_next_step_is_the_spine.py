@@ -65,35 +65,30 @@ class TheDoctrineIsStillWrittenDown(unittest.TestCase):
 
 
 class TheDocsSayTheSameThing(unittest.TestCase):
-    """教程里那句「答完第一轮就能去 X」要和自检说的是同一条命令。
-
-    2026-08-30 把零起点那条改成 `/job-auto` 时**只改了工具**。
-    次日通读发现 README 还写着「答完第一轮就能去 `/job-scrape` 搜岗，
-    第二轮够 `/job-rank` 排序」—— 而同一时刻自检说的是「下一步：跑 `/job-auto`」。
-
-    那句话本身要讲的是**分档填资料**（填到哪一档就能做到哪一步），
-    这个意思是对的；错的是它给三档各配了一条命令，
-    正是 `AGENTS.md`「别把这条脊梁说成四步」点名的那件事。
-
-    改法不是删掉分档，是**把档位和命令分开说**：
-    三档仍然列出来，而跑的都是同一条 `/job-auto`。
-    """
+    """分轮入口要与工作流的前置条件一致，第二轮起使用自动流程。"""
 
     README = (ROOT / "README.md").read_text(encoding="utf-8")
 
     def _staged(self) -> str:
-        i = self.README.index("`/job-setup` 不必一次答完")
-        return self.README[i:self.README.index(NL + NL, i)]
+        quick = self.README.split("## 快速开始", 1)[1].split("\n## ", 1)[0]
+        paragraphs = [p for p in quick.split("\n\n")
+                      if "/job-setup" in p and "第一轮" in p and "第二轮" in p]
+        self.assertEqual(len(paragraphs), 1, "快速开始应有一段分轮填写与执行说明")
+        return paragraphs[0]
 
     def test_the_staged_sentence_names_the_spine(self):
         self.assertIn("/job-auto", self._staged(), "分档那句没提脊梁那条命令")
 
-    def test_it_does_not_hand_out_one_command_per_stage(self):
+    def test_the_first_round_uses_scrape_without_ranking(self):
         seg = self._staged()
-        for cmd in ("/job-scrape", "/job-rank", "/job-apply"):
-            with self.subTest(cmd=cmd):
-                self.assertNotIn(cmd, seg,
-                                 "又把某一档配上了 " + cmd + " —— 那是脊梁的分解")
+        first = seg.split("第一轮", 1)[1].split("第二轮", 1)[0]
+        self.assertIn("/job-scrape --no-rank", first)
+        self.assertNotIn("/job-auto", first)
+        for stage in ("第二轮", "第三轮"):
+            sentence = seg.split(stage, 1)[1].split("。", 1)[0]
+            self.assertIn("/job-auto", sentence)
+        for cmd in ("/job-rank", "/job-apply"):
+            self.assertNotIn(cmd, seg, "评分与出材料已由自动流程衔接")
 
     def test_the_setup_closing_names_the_spine_too(self):
         """**源头也要说同一条。** 这条守卫原来只钉 README —— 那是**摘要**。

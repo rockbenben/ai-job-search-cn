@@ -276,8 +276,11 @@ class AutoRunsAsFarAsTheProfileAllows(unittest.TestCase):
     README = (ROOT / "README.md").read_text(encoding="utf-8")
 
     def test_the_readme_still_makes_the_promise(self):
-        self.assertIn("填到哪一档跑到哪一步", self.README,
-                      "README 不再承诺按档跑了 —— 那本文件下面那条要跟着改，别空钉")
+        paragraphs = [p for p in self.README.split("\n\n")
+                      if "第二轮" in p and "第三轮" in p and "/job-auto" in p]
+        self.assertEqual(len(paragraphs), 1, "README 要说明按资料进度执行")
+        self.assertIn("排序打分", paragraphs[0])
+        self.assertIn("出投递材料", paragraphs[0])
 
     #: 钉的是跨模块契约名（`doctor.` 限定），不是某一行长什么样 ——
     #: `test_a_guard_pins_behaviour_not_a_line` 的判据就是这条分界。
