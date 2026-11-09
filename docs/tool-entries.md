@@ -33,11 +33,13 @@
 | Antigravity CLI (agy) | ✅（`GEMINI.md` 也读，两份都加载、按条目去重；2026-09-30 读它自带的规则文档） | ✅ | ✅ | `ANTIGRAVITY_AGENT=1` |
 | Qoder | ✅（另有 `AGENTS.local.md`） | ✅（legacy 开关默认开） | ✅ | `QODERCN_CLI=1` |
 | Qwen Code | ✅ | ✅（0.24.7 起；0.14.0 不扫） | ✅ | `QWEN_CODE=1` |
-| MiMo Code | ✅ | ✅（默认开） | ✅ | `MIMOCODE=1` |
+| MiMo Code | ✅ | ✅（默认开） | ✅（2026-11-09 用户再次确认） | `MIMOCODE=1` |
 | MCode | **未验** | ✅ | ✅ | `MAVIS_SESSION_TRANSFER_CLIENT=1`（2026-10-13 逐个量出来的） |
 | Cursor | ✅（官方规则文档） | ✅（官方技能文档） | ✅（2026-11-09 用户确认 + 官方核对） | 暂无已验证自动信号；可用 `JOBS_CODE_TOOL=cursor` |
 | Codex（桌面 / CLI / IDE） | ✅ | ✅ | 桌面 `/` 菜单；CLI / IDE `/skills`；各端默认 `$job-…` | `CODEX_THREAD_ID` / `CODEX_SESSION_ID` |
-| OpenCode | ✅（首命中即停） | ✅ | **未实测** | `OPENCODE=1`（没接） |
+| OpenCode GUI | ✅（沿用 OpenCode 入口记录） | ✅（沿用已有记录） | ✅（2026-11-09 用户实测） | `opencode_gui` 显式指定 |
+| OpenCode CLI | ✅（沿用 OpenCode 入口记录） | ✅（沿用已有记录） | 用户实测斜杠未弹出命令，采用自然语言 | `opencode_cli` 显式指定；不靠 `OPENCODE` 猜界面 |
+| DeepSeek Harness（dsh） | 未单独核对 | 未单独核对 | ✅（2026-11-09 用户会话实测确认） | 暂无已验证自动信号；可用 `JOBS_CODE_TOOL=dsh` |
 | Deep Code (DeepSeek) | ✅ | ✅ | **未实测**（`/` 开菜单，技能进不进那个菜单没量到） | 没装，量不到 |
 | Crush | ✅（多份全叠加） | ✅ | ❌（`/` 是它自己的快捷键） | `CRUSH=1`（没接） |
 | Goose | ✅ | ✅ | ❌（只认注册过的 recipe） | 没有可用的 |
@@ -103,10 +105,11 @@
    拿它当禁令会让人守着规则、放着工具接不进来。
    ⚠️ 「大多是」而不是「全是」：表里已有一格是「未验」（MCode 读不读 `AGENTS.md`），
    **这一列空着就是还没量，别拿「别家都 ✅」填**。
-2. **未识别工具使用完整自然语言请求。** `generic` 现在为 `bare`，显示为
-   「请读取并执行 workflows/job-auto.md」，参数原样附后。既不猜 `/` 注册，也不假定
-   `$` 是所有工具的通用入口。裸写技能名不是明确的工作流调用；只有能读取项目文件的
-   助手才能执行这个请求。不能读文件时需要提供工作流正文，不能假装技能已加载。
+2. **默认推荐斜杠，已确认的例外单独适配。** 用户在 2026-11-09 明确要求按实测的
+   主流用法推荐 `/job-*`，因此 `generic` 为 `slash`。这是一项默认推荐，不是对所有
+   未知工具的兼容保证。若客户端不显示命令，再选择完整自然语言请求。
+   OpenCode GUI 与 CLI 分开记录：GUI 用斜杠；CLI 按用户实测采用自然语言。
+   Codex 各端仍默认 `$job-*`，不把例外推到所有工具。
 
 3. **Gemini CLI 那一行在表里划掉了（2026-09-30）** —— 留着是为了留个位置，不是它还在被支持。分清「停的是哪一层」再动手：
    npm 包**还在发版**（0.61.0，2026-09-24），关的是**个人版登录通道** ——
@@ -273,7 +276,7 @@ Chromium**，BOSS / 智联要在它里面各登录一次，之后同一 daemon �
 ## 命令形式：正本带斜杠，显示时按宿主适配
 
 `AGENTS.md` 与 `workflows/` 的命令正本仍是 `/job-*`。显示层统一读取
-`tools/doctor.py::COMMAND_SYNTAX`：已支持的其它宿主采用 `slash`，未识别宿主采用 `bare` 完整自然语言请求，
+`tools/doctor.py::COMMAND_SYNTAX`：已支持的其它宿主采用 `slash`，未识别宿主默认 `slash`；OpenCode GUI 为 `slash`，OpenCode CLI 为 `bare` 完整自然语言请求，
 Codex 采用 `dollar`，复制为 `$job-*`，参数原样保留。裸写名称属于自然语言请求。
 
 Codex CLI 支持 `/skills` 菜单；桌面版的 `/` 菜单会列出已启用技能。默认复制使用各端
@@ -294,7 +297,21 @@ Cursor 已确认支持 `/技能名`，会发现项目 `.agents/skills/`，无需
 
 当前没有经过会话实测的自动识别信号，不能将 `TERM_PROGRAM=vscode` 解释为 Cursor。
 显式指定 `JOBS_CODE_TOOL=cursor` 时，自检、总览命令显示按 slash 适配；总览也可手动
-选「斜杠模式」。无法确认身份时仍给完整自然语言请求，不能据此说 Cursor 不支持斜杠。
+选「斜杠模式」。无法确认身份时默认推荐斜杠，不能据此说 Cursor 不支持斜杠。
+
+### DeepSeek Harness（dsh，2026-11-09 用户确认）
+
+用户在本会话明确确认已实测斜杠调用，因此 dsh 归入 slash 档，不再当成未知调用方式。
+`JOBS_CODE_TOOL=dsh` 可显式指定宿主；当前不虚构自动识别的环境变量。
+此处只确认用户实测的斜杠入口，不据此推断技能发现目录或登录态。
+DeepSeek Harness 与表中的 Deep Code 分开记录，不把两个产品的接入证据混用。
+
+### OpenCode GUI 与 CLI（2026-11-09 用户实测）
+
+用户确认 GUI 支持斜杠，而 CLI 用斜杠没有弹出命令，因此 GUI 用 `/job-*`，CLI 用
+「请读取并执行 workflows/job-auto.md」这样的完整请求。配置值分别为
+`JOBS_CODE_TOOL=opencode_gui` 与 `JOBS_CODE_TOOL=opencode_cli`。
+共享的 `OPENCODE` 信号不能证明界面类型，目前不据此自动分流。
 
 ### 探测信号逐个的出处
 
@@ -314,8 +331,9 @@ Cursor 已确认支持 `/技能名`，会发现项目 `.agents/skills/`，无需
 | MiMo Code | `MIMOCODE=1` | 主进程里 `process.env.MIMOCODE = "1"`（`MiMo：packages/opencode/src/index.ts`，紧邻 `AGENT=1`），子进程继承。它是 opencode 的分支，但**不设** `OPENCODE`，所以这个变量能唯一认出它 |
 | Codex | 非空 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` | 2026-11-09 在本项目 Codex 桌面会话的子 shell 中实测；只记录变量名和是否非空，不记录会话 ID。显式覆盖优先，其后 WorkBuddy 的产品标记，再判 Codex；不拿版本号或安装路径判断，也不据此判断浏览器连接 |
 | Cursor | 暂无已验证的自动识别信号；支持 `JOBS_CODE_TOOL=cursor` | 2026-11-09 用户确认 + 官方文档核对 `/skill-name` 与 `.agents/skills/` 支持；明确识别为 Cursor 时采用 slash。不能用普通 VS Code 终端信号猜测 |
-| Goose、Amp | 没有可识别标记 | 未识别时采用 generic 的完整自然语言请求 |
-| Crush / OpenCode | 已有信号但未接入具体宿主档 | 当前使用 generic 的完整自然语言请求；不根据安装路径或未经验证的变量猜测命令语法 |
+| Goose、Amp | 没有可识别标记 | 未识别时按 generic 默认推荐斜杠，未出现命令入口时可选自然语言 |
+| Crush | 已有信号但未接入宿主档 | 默认按 generic 推荐斜杠；未出现命令入口时可手动选择自然语言 |
+| OpenCode GUI / CLI | 分别以 `opencode_gui` / `opencode_cli` 显式指定 | 2026-11-09 用户实测 GUI 支持斜杠，CLI 未弹出命令；不从共享的 OPENCODE 标记推断界面 |
 | ~~Gemini CLI~~ | ~~`GEMINI_CLI=1`~~ | **2026-09-30 删。** 它是**真信号**（那家确实给子 shell 注入过），与下面那批凭空写的假变量不是一回事；删的理由是那家已停，认一个装不上的工具没有意义 |
 
 ⚠️ **只许用实测过的信号。** 上一版写的 `CLAUDE_CODE`、`CLAUDE`、`CURSOR_VERSION`、
@@ -331,13 +349,13 @@ Qoder 会话里存在」，看不到它们是不是桌面端也注入。这不�
 不准；真敲不动的时候还有触发词，把要办的事说出来照样接得住。国际版那个
 `QODER_CLI=1`（计划文档 §6 记着）在这个真会话里**复现不出来**，只有 `-cn` 那份，
 所以没用它——将来测到了再加，不为凑一家去猜；认不出来就落 `generic`，
-那是**完整自然语言请求**那一档（2026-10-13 改，见上面的命令形式说明）。手工纠正：
-`JOBS_CODE_TOOL=workbuddy|claude|cursor|antigravity|mimo|mavis|qoder|qwen|generic|codex`
+当前默认推荐**斜杠**（见上面的命令形式说明）。手工纠正：
+`JOBS_CODE_TOOL=workbuddy|claude|cursor|dsh|opencode_gui|opencode_cli|antigravity|mimo|mavis|qoder|qwen|generic|codex`
 （覆盖优先于自动探测，任意名字原样透传；自检末尾印的那串可选值是从表里派生的，
 不是手抄的字面量）。
 
 面板那头是同一张表的**跨语言抄件**：`web/src/context/CodeToolContext.tsx` 里的
-`KNOWN_TOOLS`、`SLASH_TOOLS` 与 `DOLLAR_TOOLS` 三份名单。原来它自己写了一遍 `tool !== "claude"`，
+`KNOWN_TOOLS`、`SLASH_TOOLS` 与 `DOLLAR_TOOLS`、`BARE_TOOLS` 四份名单。原来它自己写了一遍 `tool !== "claude"`，
 于是 2026-09-29 把几家翻成吃斜杠之后**一行都不用改就全绿**，而面板继续给
 Qoder / agy 免斜杠 —— 抄件与正本分叉不会自己喊，所以现在由
 `ThePanelCarriesTheSameTable` 逐格对拍（名单不等，或又出现按单家公司硬编码的判断
@@ -345,9 +363,9 @@ Qoder / agy 免斜杠 —— 抄件与正本分叉不会自己喊，所以现在
 叫什么名字。`codex` 2026-10-13 起自己一格，2026-11-09 起自动识别；若把它归一成
 `generic`，命令形式也会错，所以那不是「只差个名字」。
 
-命令显示按宿主适配：八家工具（Claude Code、
-Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code、WorkBuddy、Cursor）都吃 `/job-apply` 这种敲法
-（Cursor 于 2026-11-09 经用户确认与官方文档核对，其他沿用已有实测）；未识别宿主显示完整自然语言请求；Codex 默认把它
+命令显示按宿主适配：十家工具（Claude Code、
+Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code、WorkBuddy、Cursor、DeepSeek Harness、OpenCode GUI）都吃 `/job-apply` 这种敲法
+（Cursor 于 2026-11-09 经用户确认与官方文档核对，其他沿用已有实测）；未识别宿主默认显示斜杠；Codex 默认把它
 换成 `$job-apply`，或直接把要办的事说出来——**同一批壳、同一行触发词**。分档的正本
 在上面那张表（`doctor.COMMAND_SYNTAX`），落地的地方是 `doctor.adapt_commands()`。
 

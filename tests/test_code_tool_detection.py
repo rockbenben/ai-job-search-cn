@@ -192,7 +192,7 @@ class TestCodeToolDetection(unittest.TestCase):
                     "https://x//job-auto")
         # 实测吃斜杠的七家 + 认不出来的那一批：一切原样（剥掉就是白退回裸形式）。
         for tool in ("workbuddy", "claude", "antigravity", "mimo", "mavis",
-                     "qoder", "qwen", "cursor"):
+                     "qoder", "qwen", "cursor", "dsh", "opencode_gui", "generic"):
             with self.subTest(tool=tool):
                 self.assertEqual(
                     doctor.adapt_commands("跑 /job-auto 接着抓", tool),
@@ -237,7 +237,7 @@ class TestCodeToolDetection(unittest.TestCase):
         # 所以这一条现在反过来验——认不出来的那一批**保留**斜杠，
         # 理由与实测见 `doctor.COMMAND_SYNTAX` 上方。
         # Codex 那一档免斜杠由 `test_main_codex_output_has_no_slash` 单独钉。
-        self.assertNotRegex(out, doctor._SLASH_CMD)
+        self.assertRegex(out, doctor._SLASH_CMD)
         self.assertIn("未识别当前助手", out)
 
     def test_main_codex_output_has_no_slash(self):
@@ -294,9 +294,9 @@ class TestCodeToolDetection(unittest.TestCase):
         """
         _rc, out = self._run_main("generic")
         hint = next(line for line in out.splitlines() if "JOBS_CODE_TOOL=" in line)
-        listed = set(re.findall(r"[a-z]+", hint.split("JOBS_CODE_TOOL=", 1)[1]))
+        listed = set(re.findall(r"[a-z][a-z_]*", hint.split("JOBS_CODE_TOOL=", 1)[1]))
         self.assertEqual(listed, {"workbuddy", "claude", "antigravity", "mimo",
-                                  "mavis", "qoder", "qwen", "codex", "cursor", "generic"})
+                                  "mavis", "qoder", "qwen", "codex", "cursor", "dsh", "opencode_gui", "opencode_cli", "generic"})
 
 
 if __name__ == "__main__":

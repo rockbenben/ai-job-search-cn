@@ -2,13 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { defaultCommandForm, formatJobCommands } from "../src/lib/commandFormatting.ts";
 
-test("未识别、缺失和拼错的宿主都回退到完整自然语言请求", () => {
+test("默认建议斜杠，OpenCode GUI 与 CLI 分别适配", () => {
   for (const tool of [undefined, "", "generic", "typo-codxe"]) {
     const form = defaultCommandForm(tool, ["claude"], ["codex"]);
-    assert.equal(form, "bare");
+    assert.equal(form, "slash");
     assert.equal(formatJobCommands("/job-apply <职位链接>", form),
-      "请读取并执行 workflows/job-apply.md <职位链接>");
+      "/job-apply <职位链接>");
   }
+  assert.equal(defaultCommandForm("opencode_gui", ["opencode_gui"], ["codex"], ["opencode_cli"]), "slash");
+  const cli = defaultCommandForm("opencode_cli", [], ["codex"], ["opencode_cli"]);
+  assert.equal(cli, "bare");
+  assert.equal(formatJobCommands("/job-apply <职位链接>", cli), "请读取并执行 workflows/job-apply.md <职位链接>");
   assert.equal(defaultCommandForm("codex", ["claude"], ["codex"]), "dollar");
   assert.equal(defaultCommandForm("claude", ["claude"], ["codex"]), "slash");
   assert.equal(defaultCommandForm("cursor", ["claude", "cursor"], ["codex"]), "slash");

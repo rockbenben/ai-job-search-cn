@@ -3112,8 +3112,9 @@ def detect_code_tool() -> str:
       （源码里技能是以 `source: "skill"` 进命令表的，文档却写成「agent 直接调用的
       工具」，两边打架），按「没实测过 → generic」处理，不为它开档。
       Cursor 已有 slash 档，可显式指定 JOBS_CODE_TOOL=cursor；当前没有验证过的
-      自动识别信号时仍落 generic。OpenCode 等未接入宿主也使用完整自然语言请求，
-      指定读取并执行 workflows/ 下的工作流；不猜斜杠或美元符号的语义。
+      自动识别信号时仍落 generic。OpenCode GUI / CLI 分别用 opencode_gui / opencode_cli 显式指定；用户实测
+      前者支持斜杠，后者需要自然语言。共享 OPENCODE 标记不能证明界面类型。
+      未识别宿主按用户要求默认推荐斜杠，具体例外由 COMMAND_SYNTAX 单列。
       Codex 使用真实会话标记自动识别，COMMAND_SYNTAX 中为 dollar：各端默认引用
       $job-*，桌面 / 菜单与 CLI /skills 可选择技能。旧版 CLI 拒绝未知 /job-*
       不等于 Codex 不支持斜杠。识别错了可用 JOBS_CODE_TOOL 覆盖；面板上的

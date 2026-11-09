@@ -2103,6 +2103,9 @@ _TOOL_LABELS = {
     "antigravity": "Antigravity（agy）",
     "claude": "Claude Code",
     "cursor": "Cursor",
+    "dsh": "DeepSeek Harness",
+    "opencode_gui": "OpenCode GUI",
+    "opencode_cli": "OpenCode CLI",
     "codex": "Codex",
     "mavis": "MCode",
     "mimo": "MiMo Code",
@@ -2121,18 +2124,21 @@ COMMAND_SYNTAX = {
     "workbuddy": "slash",
     "claude": "slash",
     "cursor": "slash",
+    "dsh": "slash",
+    "opencode_gui": "slash",
+    "opencode_cli": "bare",
     "antigravity": "slash",
     "mimo": "slash",
     "mavis": "slash",
     "qoder": "slash",
     "qwen": "slash",
-    "generic": "bare",
+    "generic": "slash",
     "codex": "dollar",
 }
 
 
 def command_syntax(tool: str) -> str:
-    """宿主的技能引用形式；未知宿主用自然语言指定工作流文件。"""
+    """宿主的技能引用形式；未识别时保留斜杠，已确认的例外单独适配。"""
     return COMMAND_SYNTAX.get(tool, COMMAND_SYNTAX["generic"])
 
 
@@ -2221,14 +2227,16 @@ def _main_body(args, tool: str) -> int:
     # 「你的工具是哪一家」这道判断退回给用户。
     print()
     label = _TOOL_LABELS.get(tool) or "通用环境"
-    if command_syntax(tool) == "slash":
+    if tool == "generic" or tool not in COMMAND_SYNTAX:
+        print("💡 未识别当前助手：默认保留 /job-*；若客户端未提供对应入口，可在总览切换自然语言模式。")
+    elif command_syntax(tool) == "slash":
         print(f"💡 已识别为 {label}：上面的命令带开头的斜杠（如 /job-auto），"
               "直接粘进对话框即可。")
     elif command_syntax(tool) == "dollar":
         print(f"💡 已识别为 {label}：上面的命令以 $ 引用技能（如 $job-auto），"
               "直接粘进对话框即可；也可以直接把要办的事说出来，比如「自动跑一轮」。")
     else:
-        print("💡 未识别当前助手：上面使用自然语言请求，明确指定要读取并执行的工作流文件；"
+        print(f"💡 已识别为 {label}：上面使用自然语言请求，明确指定要读取并执行的工作流文件；"
               "需要助手能够读取当前项目。可在总览页选择调用方式。")
     # 这串可选值**从 `COMMAND_SYNTAX` 派生**，不是手抄的字面量 —— 手抄那版
     # 在删掉 gemini、加上 qwen/mimo 之后不会有任何测试变红，印出的纠正办法

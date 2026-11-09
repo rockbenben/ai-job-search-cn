@@ -2,13 +2,15 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 import { defaultCommandForm, formatJobCommands } from "../lib/commandFormatting";
 
 const KNOWN_TOOLS = [
-  "antigravity", "claude", "cursor", "codex", "mavis", "mimo", "qoder", "qwen", "workbuddy", "generic",
+  "antigravity", "claude", "cursor", "dsh", "opencode_gui", "opencode_cli", "codex", "mavis", "mimo", "qoder", "qwen", "workbuddy", "generic",
 ] as const;
 export type CodeTool = (typeof KNOWN_TOOLS)[number];
 
 const SLASH_TOOLS: readonly CodeTool[] = [
-  "antigravity", "claude", "cursor", "mavis", "mimo", "qoder", "qwen", "workbuddy",
+  "antigravity", "claude", "cursor", "dsh", "opencode_gui", "generic", "mavis", "mimo", "qoder", "qwen", "workbuddy",
 ];
+
+const BARE_TOOLS: readonly CodeTool[] = ["opencode_cli"];
 
 const DOLLAR_TOOLS: readonly CodeTool[] = ["codex"];
 
@@ -31,7 +33,7 @@ interface CodeToolContextType {
 const CodeToolContext = createContext<CodeToolContextType>({
   commandMode: "auto",
   setCommandMode: () => {},
-  formatCommand: (cmd) => formatJobCommands(cmd, "bare"),
+  formatCommand: (cmd) => formatJobCommands(cmd, "slash"),
 });
 
 function readStoredMode(): CommandMode {
@@ -71,7 +73,7 @@ export function CodeToolProvider({
   }, [mode]);
 
   const form = mode === "auto"
-    ? defaultCommandForm(tool, SLASH_TOOLS, DOLLAR_TOOLS)
+    ? defaultCommandForm(tool, SLASH_TOOLS, DOLLAR_TOOLS, BARE_TOOLS)
     : mode;
   const formatCommand = (cmd: string) => formatJobCommands(cmd, form);
 

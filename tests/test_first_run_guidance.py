@@ -211,9 +211,12 @@ class TheFirstRunGuidanceWorksForEveryTool(unittest.TestCase):
         expected = {
             "claude": "/job-setup",
             "cursor": "/job-setup",
+            "dsh": "/job-setup",
             "codex": "$job-setup",
-            "generic": "请读取并执行 workflows/job-setup.md",
-            "unrecognized-tool": "请读取并执行 workflows/job-setup.md",
+            "generic": "/job-setup",
+            "unrecognized-tool": "/job-setup",
+            "opencode_gui": "/job-setup",
+            "opencode_cli": "请读取并执行 workflows/job-setup.md",
         }
         for tool, request in expected.items():
             with self.subTest(tool=tool):

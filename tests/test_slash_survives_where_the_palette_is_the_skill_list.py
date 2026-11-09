@@ -59,7 +59,7 @@ import doctor  # noqa: E402
 #: **枚举「探测能返回哪些值」不靠这份手抄** —— 那条断言从源码里数，见
 #: `_auto_detect_returns()`。
 DOLLAR = ("codex",)
-SLASH = ("antigravity", "claude", "cursor", "mavis", "mimo", "qoder", "qwen",
+SLASH = ("opencode_gui", "generic", "antigravity", "claude", "cursor", "dsh", "mavis", "mimo", "qoder", "qwen",
          "workbuddy")
 
 #: 面板那头自己存了一份斜杠档名单（`CodeToolContext.tsx`）。它是 Python 那张表的
@@ -84,7 +84,7 @@ def auto_detect_returns(src_name: str) -> set:
     只取字符串字面量的 `return`，所以手工覆盖那一支
     （`return override.strip().lower()`）天然不在集合里 —— 它对取值没有约束，
     任意名字都落到 `command_syntax()` 的默认档，那是设计（`doctor.py` 的
-    `COMMAND_SYNTAX` 注释与 `test_an_unknown_tool_uses_a_complete_natural_language_request`）。
+    `COMMAND_SYNTAX` 注释与 `test_unrecognized_tools_default_to_slash_and_cli_is_an_explicit_exception`）。
     """
     tree = ast.parse((ROOT / "tools" / src_name).read_text(encoding="utf-8"))
     fn = next(n for n in ast.walk(tree)
@@ -116,12 +116,14 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
         self.assertEqual(doctor.adapt_commands("/job-auto", "codex"), "$job-auto")
         self.assertEqual(doctor.command_syntax("codex"), "dollar")
 
-    def test_an_unknown_tool_uses_a_complete_natural_language_request(self):
-        for tool in ("generic", "某个没见过的工具", "", "typo-codxe"):
+    def test_unrecognized_tools_default_to_slash_and_cli_is_an_explicit_exception(self):
+        for tool in ("generic", "某个没见过的工具", "", "typo-codxe", "opencode_gui"):
             with self.subTest(tool=tool):
-                self.assertEqual(doctor.adapt_commands("/job-apply <url>", tool),
-                                 "请读取并执行 workflows/job-apply.md <url>")
-                self.assertEqual(doctor.command_syntax(tool), "bare")
+                self.assertEqual(doctor.adapt_commands("/job-apply <url>", tool), "/job-apply <url>")
+                self.assertEqual(doctor.command_syntax(tool), "slash")
+        self.assertEqual(doctor.adapt_commands("/job-apply <url>", "opencode_cli"),
+                         "请读取并执行 workflows/job-apply.md <url>")
+        self.assertEqual(doctor.command_syntax("opencode_cli"), "bare")
 
     def test_the_discontinued_tool_has_no_cell(self):
         """Gemini CLI 已停 → 整档删掉，别再给它留格子，也别再认它的信号。
@@ -163,7 +165,7 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
         # 2026-10-13 之前这里是 `==` —— 那条规则成立时看不出问题，
         # 一旦有一格只能手工进（Codex 自己一格免斜杠），它就开始报
         # 「'codex' : 探测返回值与格子对不上」，而那正是它该允许的。
-        self.assertEqual(set(DOLLAR) | set(SLASH) | {"generic"}, set(doctor.COMMAND_SYNTAX),
+        self.assertEqual(set(DOLLAR) | set(SLASH) | {"opencode_cli"}, set(doctor.COMMAND_SYNTAX),
                          "上面那两档名单与 COMMAND_SYNTAX 分了家 —— 第一条用例就只"
                          "覆盖了一半的档位")
         self.assertTrue(all(v in ("slash", "dollar", "bare")
@@ -193,6 +195,10 @@ class ThePanelCarriesTheSameTable(unittest.TestCase):
     def test_the_skill_reference_list_matches_the_table(self):
         dollar = {k for k, v in doctor.COMMAND_SYNTAX.items() if v == "dollar"}
         self.assertEqual(ts_names("DOLLAR_TOOLS"), dollar)
+
+    def test_the_natural_language_list_matches_the_table(self):
+        self.assertEqual(ts_names("BARE_TOOLS"),
+                         {k for k, v in doctor.COMMAND_SYNTAX.items() if v == "bare"})
 
     def test_nobody_re_derives_the_answer_from_one_vendor_name(self):
         src = TS_CTX.read_text(encoding="utf-8")

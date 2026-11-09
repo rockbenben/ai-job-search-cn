@@ -2,10 +2,12 @@ export function defaultCommandForm(
   tool: string | undefined,
   slashTools: readonly string[],
   dollarTools: readonly string[],
+  bareTools: readonly string[] = [],
 ): "slash" | "dollar" | "bare" {
+  if (tool && bareTools.includes(tool)) return "bare";
   if (tool && dollarTools.includes(tool)) return "dollar";
   if (tool && slashTools.includes(tool)) return "slash";
-  return "bare";
+  return "slash";
 }
 
 /** 只转换独立的工作流引用，保留参数、路径、网址和现有技能引用。 */

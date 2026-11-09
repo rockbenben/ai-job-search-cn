@@ -21,9 +21,12 @@
 | **WorkBuddy** | 打开仓库文件夹，在对话框输入 `/job-setup`；浏览器渠道使用自带的 `agent-browser` |
 | **Claude Code** | 在仓库目录启动，输入 `/job-setup`；浏览器渠道可使用 Claude 浏览器扩展 |
 | **Codex（桌面版 / CLI / IDE）** | 打开仓库，在对话框输入 `$job-setup`；桌面版也可从 `/` 菜单选技能，CLI 可用 `/skills`，见 [Codex 接入说明](docs/codex.md) |
+| DeepSeek Harness | 已加载项目技能后，在对话框输入 `/job-setup`（用户实测支持斜杠） |
 | Antigravity CLI、Qoder、Qwen Code、MiMo、MCode | 在仓库目录启动，输入 `/job-setup` |
 | **Cursor** | 打开仓库，在 Agent 对话框输入 `/job-setup`；项目技能从 `.agents/skills/` 加载 |
-| 其它未识别助手 | 打开仓库后，先让助手读取 [AGENTS.md](AGENTS.md)，再说「请读取并执行 workflows/job-setup.md」；能力差异见 [工具接入说明](docs/tool-entries.md) |
+| OpenCode GUI | 在对话框输入 `/job-setup`（用户实测） |
+| OpenCode CLI | 说「请读取并执行 workflows/job-setup.md」（用户实测斜杠未出现命令） |
+| 其它未识别助手 | 打开仓库后，先让助手读取 [AGENTS.md](AGENTS.md)，默认输入 `/job-setup`；若没有对应入口再改用自然语言，能力差异见 [工具接入说明](docs/tool-entries.md) |
 
 下文示例保留 `/`，**Codex 用户使用 `$job-…` 引用技能**。也可以直接说「自动跑一轮」「投这个岗 <职位链接>」，由助手执行对应工作流。
 

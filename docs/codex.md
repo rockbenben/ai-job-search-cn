@@ -18,8 +18,9 @@ Claude Code。依据：[OpenAI 官方技能文档](https://learn.chatgpt.com/doc
 CLI 能用斜杠菜单，但不能据此保证任意 `/job-setup` 都会自动注册成内置命令。
 旧版 `/prompts:名称` 自定义命令已弃用，不作为本项目默认入口，不额外安装全局副本。
 裸写 `job-setup` 是自然语言请求，不是显式技能引用。`$` 只作为 Codex 各端的默认，
-不是所有 coding 工具的通用语法。未识别宿主时，项目给完整自然语言请求
-（如「请读取并执行 workflows/job-auto.md」），前提是助手能读取本地项目。
+不是所有 coding 工具的通用语法。多数已实测工具采用 `/job-*`，项目对未识别宿主也默认保留斜杠。
+OpenCode GUI 用斜杠；OpenCode CLI 按用户实测采用完整自然语言请求
+（如「请读取并执行 workflows/job-auto.md」），要求助手能读取本地项目。
 依据（2026-11-09）：[桌面斜杠菜单](https://learn.chatgpt.com/docs/app/slash-commands)、
 [技能调用](https://learn.chatgpt.com/docs/build-skills)、
 [旧自定义命令](https://learn.chatgpt.com/docs/custom-prompts)。
