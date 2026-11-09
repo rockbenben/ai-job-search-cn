@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-bun.lock
 
 # 构建产物（web/ 的 antd 版面板）
 web/dist/

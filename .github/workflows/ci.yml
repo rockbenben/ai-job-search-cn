@@ -194,7 +194,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-      - run: bun install
+      - run: bun install --frozen-lockfile
         working-directory: .agents/skills/${{ matrix.tool }}/cli
       - run: bun run typecheck
         working-directory: .agents/skills/${{ matrix.tool }}/cli
