@@ -38,9 +38,9 @@ ROOT = Path(__file__).resolve().parent.parent
 def _canonical_env(tool: str = "claude") -> dict:
     """钉死标准命令形式（带斜杠）的子进程环境。
 
-    doctor 按宿主工具把 `/job-xxx` 去斜杠，而子进程继承本会话的探测信号：
-    Claude Code 会话里带斜杠、CI / 普通终端不带。这些断言钉的是文档正本的
-    标准形式，渲染层去斜杠另有 test_code_tool_detection 整条覆盖
+    doctor 按宿主工具选择斜杠、技能引用或完整自然语言请求；子进程会继承本会话
+    的探测信号。这些默认断言钉的是文档正本的标准形式，显式设置 tool 时则验证
+    对应宿主形式；格式转换另有 test_code_tool_detection 覆盖
     （2026-09-12 这套在 CI 里红过两条）。
 
     默认 `claude` 就是这个文件原来那条漏判的成因：**七个场景全都只在一家
@@ -192,8 +192,8 @@ class TheFirstRunGuidanceWorksForEveryTool(unittest.TestCase):
 
         claude              # 在这个目录启动 Claude Code
 
-    对 Claude 用户是对的，对另外几家（吃斜杠的 agy / Qoder / Qwen / MiMo / MCode、
-    要去斜杠的 Codex，以及认不出来的助手——**2026-10-13 起最后这批也吃斜杠了**）
+    对 Claude 用户是对的，对另外几家（使用斜杠的 agy / Qoder / Qwen / MiMo / MCode、
+    使用 $ 技能引用的 Codex，以及使用完整自然语言请求的未识别助手）
     是让人去敲一个手上没有的命令。
 
     **这个 bug 能活着，是本文件那条判据的形状造成的**：七个场景原来全在
@@ -204,26 +204,29 @@ class TheFirstRunGuidanceWorksForEveryTool(unittest.TestCase):
     工具就失效。
     """
 
-    #: 缩进两格以上 = 「这一行请直接敲」，不是散文。
-    _TYPED = re.compile(r"^ {2,}(\S+)")
+    #: 保留完整请求：自然语言调用包含空格，不能只拿第一个词。
+    _TYPED = re.compile(r"^ {2,}(\S.*)$")
 
     def test_it_names_no_command_but_the_repo_own(self):
-        for tool in ("claude", "codex", "generic"):
+        expected = {
+            "claude": "/job-setup",
+            "cursor": "/job-setup",
+            "codex": "$job-setup",
+            "generic": "请读取并执行 workflows/job-setup.md",
+            "unrecognized-tool": "请读取并执行 workflows/job-setup.md",
+        }
+        for tool, request in expected.items():
             with self.subTest(tool=tool):
                 # 切掉结尾那条 💡：它印的 `JOBS_CODE_TOOL=a|b|c` 里必然带着各家名字，
                 # 那是「认错了怎么纠正」，不是「现在该敲什么」。
                 nxt = _doctor("全新clone", tool).split("💡")[0]
-                typed = [m.group(1) for m in
+                typed = [m.group(1).split("#", 1)[0].rstrip() for m in
                          (self._TYPED.match(line) for line in nxt.splitlines())
                          if m]
-                self.assertTrue(typed, f"[{tool}] 首轮没印出任何「照抄就能敲」的行")
-                self.assertTrue(any(c.lstrip("/").startswith("job-setup")
-                                    for c in typed),
-                                f"[{tool}] 首轮没把建档那条命令印成可敲的一行：{typed}")
-                for cmd in typed:
-                    self.assertTrue(cmd.lstrip("/").startswith("job-"),
-                                    f"[{tool}] 首轮让人敲 {cmd} —— 那是某一家的启动命令，"
-                                    f"换一家的用户照敲就是 command not found")
+                self.assertEqual(
+                    typed, [request],
+                    f"[{tool}] 首轮必须只给一条完整的本项目建档请求，"
+                    f"不能漏掉工作流路径、加入额外命令或某家的启动程序：{typed}")
 
 
 if __name__ == "__main__":
