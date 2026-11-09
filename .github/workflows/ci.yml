@@ -225,6 +225,8 @@ jobs:
         working-directory: web
       - run: npm run typecheck
         working-directory: web
+      - run: npm test
+        working-directory: web
       # `build` 跑的是 `tsc -b && vite build` —— typecheck 过不等于打得出包
       # （import 路径、资源引用是构建期才报的）。两步都要。
       - run: npm run build
