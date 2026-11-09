@@ -1,8 +1,7 @@
 # AGENTS.md — AI 求职助手（中文版）
 
-任何 AI 编码工具都从本文件进入（逐家的接入面见 `docs/tool-entries.md`）。
-本文件是仓库规则的**唯一权威来源**；工具专属补充见各工具自己的入口文件
-（如 Claude Code 的 `CLAUDE.md`）。
+本文件是仓库规则的**唯一权威来源**。工具接入见 `docs/tool-entries.md`，专属补充见
+各工具入口文件（如 `CLAUDE.md`）；Codex 的命令、技能与浏览器映射见 `docs/codex.md`。
 
 ## 角色
 
@@ -271,7 +270,7 @@ python tools/doctor.py
 `workflows/` 正文只写下表第一列的**能力名**，不点名任何具体工具。执行时按你所在
 工具对号入座；缺某项能力时走「降级」列，并向用户说明实际用了哪条路径。
 
-| 能力 | Claude Code 对应 | 无此能力时的降级 |
+| 能力 | 按工具落点 | 无此能力时的降级 |
 |---|---|---|
 | 网页抓取（给定 URL 取正文） / web fetch | WebFetch | shell 可用则 curl；否则请用户粘贴页面文本 |
 | 网络搜索 / network search | WebSearch | 请用户代为搜索并粘贴结果，或跳过依赖搜索的环节并说明 |
@@ -279,15 +278,15 @@ python tools/doctor.py
 | 并行子代理 / 双角色审稿 / parallel sub-agents | Agent tool | 单会话分两轮：先按起草者产出，再显式切换为审稿者重读并修订；两轮都不省略 |
 | Gmail 读取 | mcp__claude_ai_Gmail__*（Connectors 连接 Gmail） | 无 → `workflows/job-gmail-sync.md` 全流程跳过并说明原因 |
 | Notion 写入 | Notion MCP（OAuth） | 无 → `workflows/job-notion-sync.md` 全流程跳过并说明原因 |
-| 浏览器取数与页面操作（含登录态） | ① Claude 浏览器扩展（`mcp__claude-in-chrome__*`）② 没有扩展才用 web-access skill 的 CDP 代理 | `site:` 域名限定搜索兜底（见 `workflows/job-scrape.md`） |
+| 浏览器取数与页面操作（含登录态） | 用你所在工具自带的浏览器能力；逐家落点与登录态差异见 `workflows/reference/cdp-portals.md` | `site:` 域名限定搜索兜底（见 `workflows/job-scrape.md`） |
 | PDF 编译与文本层校验 | typst compile / **`pdftotext -layout -enc UTF-8`**（**`-enc UTF-8` 不是可选的**：不给它，中文 Windows（cp936）上抽出来的中文简历会变成一份「没有汉字」的文本，结论就是灾难性假警报）；装了 Python 还可以 `tools/verify_pdf.py <pdf> --cjk --contains <手机号>`，一次查完乱码、汉字占比、联系方式 | 无 typst → 交付 .typ 源文件并说明编译方法 |
 
 ### 取数渠道的顺位（别搞反）
 
 1. **平台自己的公开 API** —— 有就用：结构化 JSON、免登录、不碰用户账号。
    猎聘在这一档，对它来说 CLI **优于**浏览器提取，不是退而求其次
-2. **Claude 浏览器扩展** —— 要登录态、要在页面上点填滚、或平台挂了反爬时的首选
-3. **web-access skill（CDP 代理）** —— 没有扩展或够不着时才用；第三方全局技能，本仓库不附带
+2. **你所在工具自带的浏览器能力** —— 要登录态、要在页面上点填滚，或平台挂了反爬时的首选
+3. **web-access skill（CDP 代理）** —— 工具自带能力够不着时才用；第三方全局技能，本仓库不附带
 4. **`site:` 域名限定网络搜索** —— 都没有时的兜底，信息更少，要如实说明。
 
 **不要为了凑第 1 层去破解反爬。** BOSS 直聘 / 前程无忧 / 智联这三家没有可用的免登录
@@ -329,9 +328,9 @@ API，绕过 WAF 或反爬挑战不做，直接进第 2 层；逐家实测记录
 
 ## 工具特化
 
-命令入口由 `tools/gen_entries.py` 生成到 `.claude/skills/` 与 `.agents/skills/`
-（两族逐字相同），正本只有 `workflows/INDEX.md` 与 `tools/_entries.py`。
-各工具怎么进来、`.claude/commands/` 为什么必须为空、两族壳为什么要逐字相同、
+命令入口由 `tools/gen_entries.py` 生成到各族 `skills/`（逐字相同），正本只有
+`workflows/INDEX.md` 与 `tools/_entries.py`。
+各工具怎么进来、`.claude/commands/` 为什么必须为空、各族壳为什么要逐字相同、
 缺哪项能力卡住哪几条命令，见 **`docs/tool-entries.md`**。
 
 两条常驻规则：
@@ -340,5 +339,5 @@ API，绕过 WAF 或反爬挑战不做，直接进第 2 层；逐家实测记录
   （`tools/lint_skills.py` 扫这两类）。对非 Claude 工具来说「本技能目录」这个概念
   压根不存在。
 - **可插拔平台技能在 `.agents/skills/`，判据是有没有 `.agents/skills/*/cli/src/cli.ts`**，
-  不是目录位置——同一个目录里还住着每条命令的壳（两族各一份，逐字相同）；
+  不是目录位置——同一个目录里还住着每条命令的壳（各族各一份，逐字相同）；
   **手写**的那份是路由壳 `job-application-assistant`。

@@ -309,6 +309,31 @@ CJK_FONTS = ("noto sans sc", "source han sans", "microsoft yahei", "simhei", "de
              "pingfang sc", "hiragino sans gb", "stheiti", "noto sans cjk", "wenquanyi")
 
 
+#: 「浏览器取数与页面操作（含登录态）」这项能力，在每家工具里落在哪 —— 自检那句
+#: 提示的正本。**只此一份**：`workflows/` 与面板按 `AGENTS.md` 能力对照表对号入座，
+#: 自检是唯一要把工具名印给用户看的地方。
+#:
+#: 值一律说它做的事，不写未解释的英文码（`AGENTS.md`「给用户看的措辞」）。
+#: WorkBuddy 那格 2026-11-09 在 5.9.3 上取的证：自带的 `agent-browser` 插件
+#: （vercel-labs/agent-browser CLI）首次使用自动安装，通过 `agent-browser open /
+#: snapshot / close` 驱动 Chromium。⚠️ 它开的是**独立的 Chromium**，不是用户日常
+#: 那个已登录的 Chrome——登录态要在它里面登一次，之后同一会话内保留。别照着
+#: Claude 扩展那句「登录态天然带着」写，那是假话；差异写在 SETUP.md 3.1 与
+#: `workflows/reference/cdp-portals.md`。
+BROWSER_BACKEND = {
+    "claude": "Claude Code 用浏览器扩展",
+    "codex": ("Codex 按当前会话提供的浏览器工具自动选择；"
+              "桌面浏览器或已连接的浏览器工具优先，登录状态以实际页面为准"),
+    "workbuddy": ("WorkBuddy 自带浏览器自动化（agent-browser），首次使用会自动装好；"
+                  "它开的是独立浏览器，BOSS / 智联要在里面各登录一次"),
+}
+BROWSER_BACKEND_DEFAULT = "先检查当前会话提供的工具，再使用可用的浏览器能力"
+
+
+def browser_backend(tool: str) -> str:
+    return BROWSER_BACKEND.get(tool, BROWSER_BACKEND_DEFAULT)
+
+
 def probe_env() -> list[dict]:
     """探测各项能力，返回**结构化**结果，不打印任何东西。
 
@@ -417,16 +442,25 @@ def probe_env() -> list[dict]:
                "缺它时 /job-apply 的视觉检查会如实标注「未执行」，不影响出 PDF",
     })
 
-    # 浏览器能力**不是这个仓库的依赖**，它由你所在的 AI 工具提供：
-    # Claude Code 装了 Claude 浏览器扩展就有，首选走它（驱动的就是用户已登录的
-    # Chrome，登录态天然带着）。web-access 那个 CDP skill 只是**没有扩展时的兜底**。
+    # 浏览器能力**不是这个仓库的依赖**，它由你所在的 AI 工具提供：Claude Code
+    # 是浏览器扩展（驱动用户已登录的 Chrome），WorkBuddy 是自带的 agent-browser
+    # （独立 Chromium，登录态要在里面登一次）——落点正本见 BROWSER_BACKEND。
+    # web-access 那个 CDP skill 只是**工具自带能力够不着时的兜底**。
     #
     # 所以这里不能像探 typst 那样报「未检测到 → 快去装」：脚本探不到 MCP 连接，
     # 探不到 CDP skill 也不代表用户没有浏览器能力。误报会把人推去装一个第三方
     # 全局技能，而他其实已经有扩展了。ok=None 表示「这项由工具决定，不作判定」。
     home = Path(os.path.expanduser("~"))
+    tool = detect_code_tool()
     cdp = False
-    if (home / ".claude").is_dir():
+    # WorkBuddy 不读 `~/.claude/skills/`（5.9.3 bundle 里 `.claude/` 只出现在写权限
+    # 白名单，`CLAUDE.md` 0 命中），那份为 Claude 装的 CDP skill 在它这边用不上；
+    # 照旧探测会白送一句「你另外还装了一个备用的抓取方式」——是一句假话。
+    if tool == "codex":
+        # Codex 的技能发现根与旧版安装位置；别把只装给 Claude 的技能报成可用。
+        cdp = any((home / folder / "skills" / "web-access").is_dir()
+                  for folder in (".agents", ".codex"))
+    elif tool != "workbuddy" and (home / ".claude").is_dir():
         cdp = (home / ".claude" / "skills" / "web-access").is_dir() or bool(
             list((home / ".claude" / "plugins").glob("**/web-access")))
     items.append({
@@ -435,9 +469,8 @@ def probe_env() -> list[dict]:
         # 面板与终端都会原样显示这句，所以不写「CDP skill」这种未解释的英文码；
         # 「兜底技能」同理——「技能」是本仓库的内部概念，用户不该为了看懂一句提示
         # 先去认识 skill 是什么。说它做的事就够了。
-        "detail": ("由你的 AI 工具提供，Claude Code 用浏览器扩展；"
-                   "你另外还装了一个备用的抓取方式"
-                   if cdp else "由你的 AI 工具提供，Claude Code 装了浏览器扩展即可用"),
+        "detail": (f"由你的 AI 工具提供，{browser_backend(tool)}"
+                   + ("；你另外还装了一个备用的抓取方式" if cdp else "")),
         "unlocks": "登录后抓 BOSS 直聘、智联招聘、前程无忧",
         "fix": "",
     })
@@ -2032,6 +2065,20 @@ def detect_code_tool() -> str:
     override = os.environ.get("JOBS_CODE_TOOL")
     if override:
         return override.strip().lower()
+    # WorkBuddy 5.9.3 桌面版：2026-11-09 在真会话里 `env` 逐个量到的两个信号。
+    # 取 `CLIENT_INFO_IDE_TYPE` 是因为它答的正是「跑在哪个工具里」，
+    # `WORKBUDDY_PRODUCT_NAME` 是同一台宿主上的兜底；都要求值等于 WorkBuddy，
+    # 不写「看着像」的变量名，也不靠真值判断（别的工具也可能设同名变量）。
+    # 放在各家之前：它同时给子进程注入了 `CLAUDE_PROJECT_DIR` / `CLAUDE_SESSION_ID`
+    # 这类兼容变量，而 `CLAUDECODE` 实测没有；将来万一补上，先认宿主仍然更准。
+    if (os.environ.get("CLIENT_INFO_IDE_TYPE") == "WorkBuddy"
+            or os.environ.get("WORKBUDDY_PRODUCT_NAME") == "WorkBuddy"):
+        return "workbuddy"
+    # 2026-11-09 Codex 桌面真会话实测；兼容层的 Claude 变量不能抢答。
+    # 只识别宿主，不据此声称浏览器已连接或已登录。
+    if any(os.environ.get(key, "").strip()
+           for key in ("CODEX_THREAD_ID", "CODEX_SESSION_ID")):
+        return "codex"
     if (os.environ.get("ANTIGRAVITY_AGENT")
             or os.environ.get("ANTIGRAVITY_AGENTAPI_EXE")
             or os.environ.get("ANTIGRAVITY_LS_VERSION")):
@@ -2050,12 +2097,13 @@ def detect_code_tool() -> str:
 
 
 #: 自检末尾那一行要叫得出工具名（每家都印，见 `main` 那段）。
-#: （cursor / codex 自动探测分不出来，只能手工指定；qoder 两边都在。）
+#: Codex 桌面与 CLI 共用一档；浏览器连接不能靠 shell 探测。
 _TOOL_LABELS = {
+    "workbuddy": "WorkBuddy",
     "antigravity": "Antigravity（agy）",
     "claude": "Claude Code",
     "cursor": "Cursor",
-    "codex": "Codex CLI",
+    "codex": "Codex",
     "mavis": "MCode",
     "mimo": "MiMo Code",
     "qoder": "Qoder",
@@ -2077,7 +2125,7 @@ _SLASH_CMD = re.compile(r"(?<![\w./-])/(job-[a-z][a-z-]*)")
 #: 这一格原来只把 `claude` 放进 `"slash"`、其余全去斜杠，理由写的正是「斜杠会被
 #: 客户端当成内置指令拦掉」——**那句话对逐家实测出来吃斜杠的那几家全是错的**，
 #: 白扣了斜杠这一层形式。Gemini CLI 那家已停（后继是 agy），它的格子已整档删掉。
-#: Codex 没有可用的探测信号（`CODEX` 这个变量不存在），自动探测落 `"generic"`。
+#: 2026-11-09 起 Codex 用 CODEX_THREAD_ID / CODEX_SESSION_ID 自动探测；`CODEX` 不存在。
 #
 #: ## 2026-10-13：`generic` 从免斜杠翻成带斜杠
 #:
@@ -2092,14 +2140,14 @@ _SLASH_CMD = re.compile(r"(?<![\w./-])/(job-[a-z][a-z-]*)")
 #: （`detect_code_tool()` 返回 `generic`），复制按钮复制下来的是**敲不动的命令**。
 #:
 #: 翻过来的三条理由：
-#:   1. `docs/tool-entries.md` 量过 12 家，**8 家吃斜杠**；「认不出来」更可能
-#:      落在吃斜杠的那一边。
+#:   1. `docs/tool-entries.md` 逐家量过 13 家，**7 家吃斜杠**（2026-11-09 复核）；
+#:      「认不出来」更可能落在吃斜杠的那一边。
 #:   2. 两种错法的**可见性不同**：带错斜杠，工具会报错或列出命令；
 #:      缺斜杠，用户根本不知道有这条命令（`AGENTS.md`「用户不知道该敲什么」）。
 #:   3. 真拦的那一家（Codex）现在**自己一格**，不再靠 generic 兜底。
 #:
-#: 代价说清楚：**探测不到 Codex 的人会拿到敲不动的斜杠**——它没有可用的环境变量，
-#: 只能 `JOBS_CODE_TOOL=codex` 或用面板上的开关（`CodeToolContext.setSlashMode`，
+#: 旧版若不提供 Codex 会话标记，可用 `JOBS_CODE_TOOL=codex` 或面板上的开关覆盖
+#: （`CodeToolContext.setSlashMode`，
 #: 2026-10-13 把它接上了界面；此前它零调用点，是条死路）。
 #: `cursor` 同理：`_TOOL_LABELS` 里有它，吃不吃斜杠没实测过，所以**不给它格子**，
 #: 让它落 generic（带斜杠）—— 与「认不出来按多数派」同一条判据，不是漏了。
@@ -2109,6 +2157,7 @@ _SLASH_CMD = re.compile(r"(?<![\w./-])/(job-[a-z][a-z-]*)")
 #: （它把那张表的键与探测函数源码里的 `return` 字面量逐条对拍 —— 值是从源码数的，
 #: 不是比另一份手抄名单，加一档忘了给格子就会红；同一个文件还钉着面板那份抄件）。
 COMMAND_SYNTAX = {
+    "workbuddy": "slash",
     "claude": "slash",
     "antigravity": "slash",
     "mimo": "slash",
@@ -2124,7 +2173,8 @@ def command_syntax(tool: str) -> str:
     """这一档给不给斜杠。
 
     **没实测出来的工具按 `"generic"` 那一档走，而它 2026-10-13 起是带斜杠**：
-    实测 12 家里 8 家吃斜杠，而认不出来的那一批更可能落在吃斜杠的一边；
+    2026-11-09 复核：逐家实测的 13 家里 7 家吃斜杠，而认不出来的那一批更可能
+    落在吃斜杠的一边；
     真拦的（Codex）自己一格。这段理由的完整版在 `COMMAND_SYNTAX` 上方。
     """
     return COMMAND_SYNTAX.get(tool, COMMAND_SYNTAX["generic"])
@@ -2134,9 +2184,9 @@ def adapt_commands(text, tool: str) -> str:
     """把文档正本的斜杠命令改写成当前工具能敲的形式。
 
     **文档正本（`AGENTS.md`、`workflows/`、`workflows/INDEX.md`）里一律保留斜杠**
-    ——那是标准形式；改写只发生在给用户看的最终渲染层。实测吃斜杠的六家
-    （Claude Code / agy / MiMo / MCode / Qoder / Qwen）与认不出来的那一批原样返回，
-    只有 Codex 那一档去斜杠。
+    ——那是标准形式；改写只发生在给用户看的最终渲染层。实测吃斜杠的七家
+    （WorkBuddy / Claude Code / agy / MiMo / MCode / Qoder / Qwen，2026-11-09 复核）
+    与认不出来的那一批原样返回，只有 Codex 那一档去斜杠。
     """
     if not isinstance(text, str):
         return text

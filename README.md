@@ -30,7 +30,7 @@
 | 生成简历 PDF `/job-cv`（定制版）与 `/job-resume` 的校验 | + [Typst](https://typst.app) 0.13+ | 只产出 `.typ` 源文件，不编译 PDF。**`/job-apply` 不出简历**——它发主简历，定制走 `/job-cv` |
 | 求职总览页 `/job-dashboard`、四个检查脚本，以及另外八条命令各自的一环（见表下） | + Python 3.10+（流水线全程只用标准库；四个检查脚本里只有 `lint_skills.py` 要 `pip install pyyaml`），总览页还要**一次性**构建前端：`cd web && npm install && npm run build` | 总览页跑不了；那八条仍能跑，各少一环。**`/job-apply` 完全不受影响** |
 | 简历 ATS 文本层校验 | + `pdftotext`（poppler） | 跳过校验并说明，PDF 照样产出 |
-| BOSS 直聘 / 智联 / 前程无忧 | 让你的 AI 工具能开浏览器（Claude Code 装 Claude 浏览器扩展即可，**不用装本仓库以外的东西**） | 这三家退到 `site:` 网络搜索兜底 |
+| BOSS 直聘 / 智联 / 前程无忧 | 让你的 AI 工具能开浏览器（Claude Code 装浏览器扩展；WorkBuddy 用自带的 `agent-browser`，**都不用装本仓库以外的东西**） | 这三家退到 `site:` 网络搜索兜底 |
 | Gmail 状态同步 / Notion 看板 | + 对应的 MCP 连接器 | 这两个命令整体跳过并说明原因 |
 | 改 CLI 代码、跑它的测试 | + [Bun](https://bun.sh)（只有开发才需要） | 用不了 `bun test`；日常使用完全不影响 |
 
@@ -168,7 +168,7 @@ users/<你的名字>/documents/cv/     ← 简历放这里（<你的名字> 见 
 | 渠道 | 开箱即用？ | 你需要做什么 |
 |---|---|---|
 | 猎聘 | ✅ 是 | 什么都不用做 |
-| BOSS 直聘 / 智联招聘 | 🔶 需要浏览器 | 在这两个站登录一次即可（Claude Code 用自带的 Claude 浏览器扩展开你自己的 Chrome，登录态天然带着）。**登录后在站内把「求职期望」设准，搜出来的岗会明显更对口** |
+| BOSS 直聘 / 智联招聘 | 🔶 需要浏览器 | 在这两个站登录一次即可（Claude Code 用自带的浏览器扩展开你自己的 Chrome，登录态天然带着；WorkBuddy 用自带的 `agent-browser`，它开的是独立浏览器，要在里面各登录一次）。**登录后在站内把「求职期望」设准，搜出来的岗会明显更对口** |
 | 前程无忧 | 🔶 需要浏览器 | 同上。**不登录也能读，但登录了明显更准**——未登录时裸入口返回的是本地泛招聘（实测 2026-08-19：关键词搜出来的是路网数据实习生、财务 BP；登录后裸入口 20 条全是对口岗）|
 | 其它招聘站 | ➕ 可扩展 | 用 `/job-add-portal` 接进来。**有公开接口**就装成和猎聘一样的 CLI；**要登录、或者撞反爬**就走浏览器那条——和上面三家一个办法，不是接不了 |
 
@@ -214,16 +214,16 @@ node .agents/skills/liepin-search/cli/src/cli.ts detail "<职位URL>" --format p
 
 ### 在不同 AI 工具中怎么执行命令
 
-- **在 Claude Code、Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code 里**：带斜杠就是原生形态（`/job-auto`、`/job-rank`、`/job-apply <职位链接>`），这几家都把每个技能注册成 `/<名>`。
+- **在 Claude Code、Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code、WorkBuddy 里**：带斜杠就是原生形态（`/job-auto`、`/job-rank`、`/job-apply <职位链接>`），这几家都把每个技能注册成 `/<名>`。
 - **在 Codex CLI 里**：去掉开头的斜杠，直接输入 `job-auto`、`job-rank`、`job-apply <职位链接>`。
   > 它把开头的 `/` 留给自己的内置指令——二进制里那句原文是 `Unrecognized command '/-'. Type "/" for a list of supported commands.`。逐家的实测出处与分档的判据正本在 `docs/tool-entries.md`（那张表就是 `tools/doctor.py` 的 `COMMAND_SYNTAX`）。
-- **在认不出来的助手与编辑器内置助手里**（Cursor 等）：**照给带斜杠的形式**（2026-10-13 改）。默认档曾是「去斜杠」，理由是「裸形式各家都敲得动」——那句话不成立：裸形式不是命令，只是聊天框里的一段文字，触发词接得住的是模型、不是宿主。逐家量过 12 家，**6 家**吃斜杠，真拦的只有 Codex，而它自己有一档。
+- **在认不出来的助手与编辑器内置助手里**（Cursor 等）：**照给带斜杠的形式**（2026-10-13 改）。默认档曾是「去斜杠」，理由是「裸形式各家都敲得动」——那句话不成立：裸形式不是命令，只是聊天框里的一段文字，触发词接得住的是模型、不是宿主。逐家量过 13 家，**7 家**吃斜杠，真拦的只有 Codex，而它自己有一档。
   > 探测错了可以手工改：面板上「能敲哪些命令」里有开关，或设 `JOBS_CODE_TOOL=<工具名>`（可选值自检末尾会印）。
-- **直接用自然语言**：说求职者的人话即可，例如「自动跑一轮」、「帮我给手上的岗位打分」、「投这个岗 <链接>」、「刷一下在线简历」。本仓库在 `.agents/skills/` 下配置了完整的 Agent 技能与触发词，AI 会自动识别意图并执行完全相同的工作流。
+- **直接用自然语言**：说求职者的人话即可，例如「自动跑一轮」、「帮我给手上的岗位打分」、「投这个岗 <链接>」、「刷一下在线简历」。本仓库在各族 `skills/` 目录下配置了完整的 Agent 技能与触发词，AI 会自动识别意图并执行完全相同的工作流。
 
-**那 `.claude/` 是干什么的？** 它是 Claude Code 的接入件，不是本仓库的一部分逻辑：`.claude/skills/` 是 Claude Code 找命令与自动触发技能的**固定路径**（每条命令一份壳，由 `tools/gen_entries.py` 从 `workflows/INDEX.md` 与 `tools/_entries.py` 生成，外加一份手写的求职咨询壳；壳里只有触发词和工具权限，正文一句「读取并严格执行 `workflows/<名>.md`」）；`.claude/settings.json`是它的权限预批清单。两者加上 `CLAUDE.md` **没有一行正文**——正文全部在 `workflows/`，谁都读得到。原来那批 `.claude/commands/` 命令 stub 已经删掉：斜杠命令这一层壳两族都给，不再需要第二落点。**这里不写壳有几份**——加一条命令就多一份壳，写死的数字没人钉着只会变成假话（判据与实测记录在 `docs/tool-entries.md`）。
+**那 `.claude/` 是干什么的？** 它是 Claude Code 的接入件，不是本仓库的一部分逻辑：`.claude/skills/` 是 Claude Code 找命令与自动触发技能的**固定路径**（每条命令一份壳，由 `tools/gen_entries.py` 从 `workflows/INDEX.md` 与 `tools/_entries.py` 生成，外加一份手写的求职咨询壳；壳里只有触发词和工具权限，正文一句「读取并严格执行 `workflows/<名>.md`」）；`.claude/settings.json`是它的权限预批清单。两者加上 `CLAUDE.md` **没有一行正文**——正文全部在 `workflows/`，谁都读得到。原来那批 `.claude/commands/` 命令 stub 已经删掉：斜杠命令这一层壳各族都给，不再需要第二落点。**这里不写壳有几份**——加一条命令就多一份壳，写死的数字没人钉着只会变成假话（判据与实测记录在 `docs/tool-entries.md`）。WorkBuddy 的两个项目级落点见 `docs/tool-entries.md`。
 
-**这一节只说结论，实测经过不在这儿。** 把 `.claude/` 整个挪走会丢什么、曾经从那次实验下过的那句结论怎么被 2026-09-29 那批两族壳推翻、两族对不对得上由哪几条测试钉着——正本在 `docs/tool-entries.md`。
+**这一节只说结论，实测经过不在这儿。** 把 `.claude/` 整个挪走会丢什么、曾经从那次实验下过的那句结论怎么被 2026-09-29 那批两族壳推翻、各族对不对得上由哪几条测试钉着——正本在 `docs/tool-entries.md`。
 
 ---
 

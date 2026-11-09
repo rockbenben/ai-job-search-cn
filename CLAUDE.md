@@ -25,9 +25,9 @@
   原来的 `.claude/commands/` 命令 stub 已整体删除——**入口只有壳这一种形态，
   而每个壳都带 frontmatter**。
 - **每个壳都带触发词**（自动触发），正文同在 `workflows/`，壳只负责触发与
-  `allowed-tools` 权限。生成的那些由 `tools/gen_entries.py` 落，两族逐字相同；只有
+  `allowed-tools` 权限。生成的那些由 `tools/gen_entries.py` 落，各族逐字相同；只有
   `job-application-assistant`（求职咨询语境那束宽词）是**手写**的，
-  改了它必须两族同步 —— 它不走生成器，没人替你兜。
+  改了它必须各族同步 —— 它不走生成器，没人替你兜。
 - **壳上的 `allowed-tools` 要盖得住它那份工作流。** 每个入口都是壳、每个壳都有
   frontmatter，所以工作流里要在 shell 里跑的命令没写进那行 `allowed-tools` 就够不着。
   实测栽过：`job-upskill` 的工作流写着「用工具分，别手数」，而壳里一条 `Bash` 都没有。

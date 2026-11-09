@@ -42,33 +42,41 @@
 | **② 要出简历 PDF 就装** | Typst（中文字体一般已自带） | `/job-cv` 编译定制简历、`/job-resume` 校验（不装只给 `.typ` 源文件）。**`/job-apply` 不出简历**——它发主简历，定制走 `/job-cv` |
 | **③ 强烈建议装** | Python 3.10+（流水线全程只用标准库） | `/job-dashboard` 总览页；**以及 `/job-setup` 重跑「改搜索词」那节时先读每个词抓过的真实战绩（抓到多少岗、哪几个跑偏）、`/job-rank` 的预筛淘汰、`/job-scrape` 的 JD 详情库、`/job-outcome` 的催进度判定、`/job-upskill` 的缺口分格、`/job-add-template` 的模板撞名检查、`/job-auto` 的词表写回、`/job-refresh` 的刷新记录、以及 `/job-rank`/`/job-outcome`/`/job-gmail-sync`/`/job-interview`/`/job-user`/`/job-cv`/`/job-reset`/`/job-scrape --no-rank` 收尾刷新面板数据**——这几条命令没有它仍能跑，但各少一环（`/job-rank` 不做淘汰、每轮重抓 JD；`/job-setup` 改词时没战绩可看，只能自己想）。另外仓库自带的四个检查脚本也用它 |
 | ④ 可选 | poppler（提供 `pdftotext` 与 `pdftoppm`） | 简历 PDF 的文本层校验与视觉检查（不装则跳过并说明；两个都在 poppler 里，一条安装命令带齐） |
-| ⑤ 可选·进阶 | 能开浏览器的 AI 工具（Claude Code 装 Claude 浏览器扩展即可） | BOSS 直聘 / 智联 / 前程无忧（没有则退 `site:` 兜底）。见 3.1 |
+| ⑤ 可选·进阶 | 能开浏览器的 AI 工具（Claude Code 装 Claude 浏览器扩展；WorkBuddy 用自带的 `agent-browser`） | BOSS 直聘 / 智联 / 前程无忧（没有则退 `site:` 兜底）。见 3.1 |
 | ⑥ 可选·进阶 | Gmail / Notion MCP 连接器 | `/job-gmail-sync`、`/job-notion-sync`（不装则整体跳过） |
 | ⑦ 只有改 CLI 代码才需要 | Bun | 跑 `bun test`（CLI 的单元测试）。日常使用完全不需要 |
 
 > **本仓库不绑定单一 AI 工具**（README 也是这么说的）：Claude Code、Codex CLI、
-> Antigravity CLI (agy)、Qoder、Qwen Code、MiMo、Cursor 都能用，入口都是 `AGENTS.md`。
-> 命令入口由 `tools/gen_entries.py` 生成到**两族技能目录、逐字相同**：
-> `.claude/skills/` 给 Claude Code，`.agents/skills/` 给其余几家（见 README
-> 「那 `.claude/` 是干什么的？」与 `docs/tool-entries.md`）。所以「换工具就得自己
-> 报工作流文件名」那句是旧话：说「投这个岗 <链接>」、或直接敲命令名，跑的都是同一份
-> `workflows/job-apply.md`，自动触发词也在壳里带着。索引正本 `workflows/INDEX.md`
-> 仍然是第三条路——每行写着正文在哪、怎么敲、不给参数时干什么，壳不在也照样执行。
+> Antigravity CLI (agy)、Qoder、Qwen Code、MiMo、WorkBuddy、Cursor 都能用，入口都是
+> `AGENTS.md`。命令入口由 `tools/gen_entries.py` 生成到**各族技能目录、逐字相同**：
+> `.claude/skills/` 给 Claude Code，`.agents/skills/` 给大部分家，
+> `.codebuddy/skills/` 与 `.workbuddy/skills/` 给 WorkBuddy（两个候选项目级落点都落，
+> 出处见 `docs/tool-entries.md`）。所以「换工具就得自己报工作流文件名」那句是旧话：
+> 说「投这个岗 <链接>」、或直接敲命令名，跑的都是同一份 `workflows/job-apply.md`，
+> 自动触发词也在壳里带着。索引正本 `workflows/INDEX.md` 仍然是第三条路——每行写着
+> 正文在哪、怎么敲、不给参数时干什么，壳不在也照样执行。
 >
 > **本文的示例按 Claude Code 写，理由只有一个：斜杠。** 2026-09-30 逐家实测之后
 > 这个理由不只归它一家——命令形式表（`tools/doctor.py` 的 `COMMAND_SYNTAX`）里
-> `claude` / `antigravity` / `mimo` / `mavis` / `qoder` / `qwen` 几格都是 `slash`，
-> `/job-auto` 那种敲法在这些家里就是它的原生形态。**要去掉斜杠的只有 Codex CLI**：
-> 它把开头的 `/` 留给自己的内置指令（实测出处见 `docs/tool-entries.md`），
-> 2026-10-13 起它自己一格 `no-slash`。
-> Cursor 与 Codex 至今没有可识别标记，所以它们落 `generic`；而 `generic` 那一档
-> 2026-10-13 从「去斜杠」翻成了**带斜杠**（逐家量过 12 家，**6 家吃斜杠**；认不出来的
+> `workbuddy` / `claude` / `antigravity` / `mimo` / `mavis` / `qoder` / `qwen`
+> 几格都是 `slash`，`/job-auto` 那种敲法在这些家里就是它的原生形态。
+> **要去掉斜杠的只有 Codex CLI**：它把开头的 `/` 留给自己的内置指令
+> （实测出处见 `docs/tool-entries.md`），2026-10-13 起它自己一格 `no-slash`。
+> Codex 现在用 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` 自动识别（2026-11-09 实测），
+> Cursor 这类没有可识别标记的工具仍落 `generic`；而 `generic` 那一档
+> 2026-10-13 从「去斜杠」翻成了**带斜杠**（逐家量过 13 家，**7 家吃斜杠**；认不出来的
 > 更可能落在吃斜杠的一边——理由与代价见 `docs/tool-entries.md` 表下第 2 条）。
 > 所以本文的示例在 Cursor 一类助手里也照敲 `/job-auto`。认错了手工指定：
-> `JOBS_CODE_TOOL=claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`。
+> `JOBS_CODE_TOOL=workbuddy|claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`。
 
 **只想先看看效果**：只装 ①，跑 `/job-setup` → `/job-scrape`（抓完自动打分排序），就能拿到真实的排序名单。
 猎聘搜索 CLI 直接跑在 Node 上（零 runtime 依赖、无编译步骤），不需要额外运行时。
+
+### Codex（桌面版 / CLI / IDE）
+
+用 Codex 打开仓库即可读取 `AGENTS.md` 与 `.agents/skills/`，不需要安装 Claude Code。
+在 Codex 对话框输入 `job-auto` 开始抓岗、评分和备材料。浏览器按当前会话提供的能力
+自动选择，登录态以实际页面为准；工具映射与使用说明见 [Codex 接入](docs/codex.md)。
 
 ### Claude Code
 
@@ -303,11 +311,18 @@ Pop-Location
 
 #### 顺位 1（推荐）：用你 AI 工具自带的浏览器能力
 
-**Claude Code 用户装了 Claude 浏览器扩展就已经具备**，不需要装本仓库以外的任何东西。
-它驱动的就是你自己那个日常 Chrome，所以：
+**这一档不需要装本仓库以外的任何东西**，按你用的工具对号入座：
 
-- **登录态天然带着**——你在 BOSS / 智联登录过，它就能读到你能读的东西。
-- 需要在页面上点、填、滚动时也能做（这类 GUI 操作正是它的强项）。
+- **Claude Code**：装了 Claude 浏览器扩展就已经具备。它驱动你自己那个日常
+  Chrome，**登录态天然带着**——你在 BOSS / 智联登录过，它就能读到你能读的东西；
+  在页面上点、填、滚动这类 GUI 操作也是它的强项。
+- **WorkBuddy**：自带 `agent-browser` 浏览器自动化，首次使用自动装好。
+  ⚠️ 它开的是**独立的 Chromium**，不是你日常那个 Chrome——BOSS 直聘与智联招聘
+  要在这台浏览器里各登录一次，之后同一会话内登录态保留。命令形态与会话模型见
+  `workflows/reference/cdp-portals.md`「WorkBuddy：自带的 `agent-browser`」。
+- **其它工具**：用它自带的浏览器能力即可。
+
+三者都由工具提供，**不是本仓库要你装的东西**；别把「要装什么」列成缺失去催用户。
 
 你要做的只有一件事：**在 BOSS 直聘和智联招聘各登录一次**（前程无忧不用登录也能读）。
 登录后顺手在站内把「求职期望」设准——`/job-scrape` 会先读你的站内期望，搜出来的岗明显更对口。
@@ -316,7 +331,8 @@ Pop-Location
 
 1. **一个能驱动登录态 Chrome 的 CDP skill —— ⚠️ 本项目不附带，需你自己装一次。**
 
-   仓库里只有 `.claude/skills/` 与 `.agents/skills/` 下那几个自带技能。CDP 那一层
+   仓库里只有各族 `skills/` 下那几个自带技能（清单见 `tools/_entries.py` 的
+   `SHELL_FAMILIES`）。CDP 那一层
    （连上你日常 Chrome、取 DOM、开关后台 tab）是**独立的第三方 skill**，装在你的用户
    全局目录（`~/.claude/skills/`），不在本仓库里。
 
@@ -567,6 +583,7 @@ agy 读**用户主目录**下的配置，本仓库不写那儿。它「预批准
 #   --dangerously-skip-permissions 全部自动批准（本仓库不推荐，等于把闸门拆了）
 # 下面不含 `Skill(...)` 那一条 —— 那是 Claude 的技能授权，agy 没有对应物。
   Agent
+  agent-browser
   bun --version
   bun run .agents/skills/liepin-search/cli/src/cli.ts
   node --version

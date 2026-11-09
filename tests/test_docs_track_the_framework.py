@@ -18,13 +18,15 @@ import re
 import unittest
 from pathlib import Path
 
+from tools._entries import SHELL_FAMILIES
+
 ROOT = Path(__file__).resolve().parent.parent
 
 #: 不扫的目录。`workflows/` 与 `docs/` 要排除**是有理由的**：框架自己那句
 #: 「别再叫『五维』」就写在 `workflows/reference/04-job-evaluation.md` 里，
 #: 扫它等于让废弃声明自己触发废弃检查；`docs/` 下是历史计划，本来就该留着当时的说法。
 _SKIP_DIRS = {"workflows", "docs", "node_modules", "users",
-              ".git", ".claude", ".agents", ".superpowers", ".private",
+              ".git", *SHELL_FAMILIES, ".superpowers", ".private",
               ".pytest_cache", "__pycache__", "dist"}
 
 

@@ -3040,12 +3040,14 @@ def detect_code_tool() -> str:
     """自动探测当前跑在哪个 AI 编码工具里。
 
     返回值：
+    - "workbuddy": WorkBuddy（腾讯；桌面版与 CLI 同一档）
     - "antigravity": Antigravity CLI (agy)
     - "claude": Claude Code
     - "mimo": MiMo Code（小米；opencode 的分支）
     - "mavis": MCode
     - "qoder": Qoder（实测吃斜杠：技能可按 `/<名>` 请求）
     - "qwen": Qwen Code（阿里）
+    - "codex": Codex（桌面版 / CLI / IDE，按真实会话标记识别）
     - "generic": 其它终端 / 普通命令行 / 认不出来的助手
 
     信号全部经过实测取证（对本机真实安装逐个核对；Qoder 那两个是
@@ -3054,7 +3056,19 @@ def detect_code_tool() -> str:
     **不要加「看着像」的变量名**——上一版写的 `CLAUDE_CODE`、`CLAUDE`、
     `CURSOR_VERSION`、`CODEX` 在对应工具里根本不存在，结果是真 Claude Code
     会话被认成 generic。
+    - WorkBuddy 5.9.3 桌面版（2026-11-09，真会话 `env` 逐个量）：
+      `CLIENT_INFO_IDE_TYPE=WorkBuddy`、`CLIENT_INFO_PRODUCT_NAME=WorkBuddy`、
+      `CLIENT_INFO_PLATFORM=WorkBuddy`、`WORKBUDDY_PRODUCT_NAME=WorkBuddy`、
+      `WORKBUDDY_APP_NAME=WorkBuddy`、`WORKBUDDY_APP_VERSION=5.9.3`、
+      `CODEBUDDY_HOST=workbuddy-desktop`、`WORKBUDDY_IS_PACKAGED=1`。
+      取前两个里最贴「跑在哪个 agent 里」的 `CLIENT_INFO_IDE_TYPE`，加一个产品名兜底。
+      ⚠️ 它也注入 `CLAUDE_PROJECT_DIR` / `CLAUDE_SESSION_ID`（兼容层），但
+      `CLAUDECODE` 实测不在——所以这一档必须排在 `claude` 之前，别让兼容变量抢答。
     - Claude Code 给所有子进程注入 `CLAUDECODE=1`（另有 CLAUDE_CODE_ENTRYPOINT）。
+    - Codex：2026-11-09 在本项目桌面会话的子 shell 中实测有
+      `CODEX_THREAD_ID` 与 `CODEX_SESSION_ID`，只认非空会话标记；不拿安装目录、
+      `CODEX_VERSION` 或虚构的 `CODEX` 判断。桌面与 CLI 共用 codex 档，
+      浏览器是否可用另看当轮工具清单，不由这些环境变量推断。
     - agy.exe 里有字面量 `ANTIGRAVITY_AGENT=1`。
     - Qoder CN：`QODERCN_CLI=1`（`QODER_PRODUCT_ID=qoder-cn` 那份构建的 CLI 标记）
       与 `QODER_AGENT_SDK_ENTRYPOINT=sdk-ts`（它的 agent SDK 给自己起的进程，
@@ -3094,16 +3108,17 @@ def detect_code_tool() -> str:
       被 2026-09-29 发的 0.24.7 当场打回（`PROJECT_SKILL_DIRS = [".qwen", ".agents"]`）。
       下结论前先看版本，改判据前先看是不是新版已经改了。
     - Cursor 没有可识别的标记（集成终端里 TERM_PROGRAM 是 "vscode" 不是 "cursor"）；
-      Codex CLI 也没有；OpenCode 有 `OPENCODE=1` 但**没实测**它认不认斜杠
+      OpenCode 有 `OPENCODE=1` 但**没实测**它认不认斜杠
       （源码里技能是以 `source: "skill"` 进命令表的，文档却写成「agent 直接调用的
       工具」，两边打架），按「没实测过 → generic」处理，不为它开档。
       Cursor 与 OpenCode 都落 `generic`，而认不出来的那一批**从 2026-10-13 起吃斜杠**
       ——**代价就是它们会拿到敲不动的斜杠**，见下面那段。要救只能手工指定。
       Codex 不用落 generic：它是实测过唯一拦斜杠的那一家，二进制里那句
       `Unrecognized command` 就是出处，所以 2026-10-13 给它单独立了一格 `no-slash`
-      （探测不到，靠 `JOBS_CODE_TOOL=codex` 或面板上那个开关进）。
-      认不出来就落 generic —— 理由见 `doctor.COMMAND_SYNTAX` 那段：实测 12 家里
-      8 家吃斜杠，「认不出来」更可能落在吃斜杠的那一边；而真拦的 Codex 已有自己一格。
+      （2026-11-09 起可用真实会话标记自动进入；旧版缺标记时仍可手工覆盖）。
+      认不出来就落 generic —— 理由见 `doctor.COMMAND_SYNTAX` 那段：2026-11-09 复核，
+      逐家实测的 13 家里 7 家吃斜杠，「认不出来」更可能落在吃斜杠的那一边；
+      而真拦的 Codex 已有自己一格。
       识别错了可用环境变量 JOBS_CODE_TOOL 手工覆盖（doctor 的工具名提示仍认它），
       面板上也有开关（`CodeToolContext` 的 `setSlashMode`）。
 
@@ -3113,6 +3128,20 @@ def detect_code_tool() -> str:
     override = os.environ.get("JOBS_CODE_TOOL")
     if override:
         return override.strip().lower()
+    # WorkBuddy 5.9.3 桌面版：2026-11-09 在真会话里 `env` 逐个量到的两个信号。
+    # 取 `CLIENT_INFO_IDE_TYPE` 是因为它答的正是「跑在哪个工具里」，
+    # `WORKBUDDY_PRODUCT_NAME` 是同一台宿主上的兜底；都要求值等于 WorkBuddy，
+    # 不写「看着像」的变量名，也不靠真值判断（别的工具也可能设同名变量）。
+    # 放在各家之前：它同时给子进程注入了 `CLAUDE_PROJECT_DIR` / `CLAUDE_SESSION_ID`
+    # 这类兼容变量，而 `CLAUDECODE` 实测没有；将来万一补上，先认宿主仍然更准。
+    if (os.environ.get("CLIENT_INFO_IDE_TYPE") == "WorkBuddy"
+            or os.environ.get("WORKBUDDY_PRODUCT_NAME") == "WorkBuddy"):
+        return "workbuddy"
+    # 2026-11-09 Codex 桌面真会话实测；兼容层的 Claude 变量不能抢答。
+    # 只识别宿主，不据此声称浏览器已连接或已登录。
+    if any(os.environ.get(key, "").strip()
+           for key in ("CODEX_THREAD_ID", "CODEX_SESSION_ID")):
+        return "codex"
     if (os.environ.get("ANTIGRAVITY_AGENT")
             or os.environ.get("ANTIGRAVITY_AGENTAPI_EXE")
             or os.environ.get("ANTIGRAVITY_LS_VERSION")):

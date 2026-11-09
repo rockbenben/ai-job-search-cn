@@ -154,7 +154,7 @@ class TheOrderOfChannelsBacksItUp(unittest.TestCase):
         i = AGENTS.index("### 取数渠道的顺位")
         seg = flat(AGENTS[i:i + 1800])
         self.assertRegex(seg, r"平台自己的公开 API")
-        self.assertRegex(seg, r"Claude 浏览器扩展")
+        self.assertRegex(seg, r"你所在工具自带的浏览器能力")
 
     def test_agents_says_the_other_three_have_no_free_api(self):
         i = AGENTS.index("### 取数渠道的顺位")

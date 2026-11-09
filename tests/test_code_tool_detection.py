@@ -8,7 +8,8 @@
   `QODER_AGENT_SDK_ENTRYPOINT=sdk-ts`（2026-09-29 在一个真 Qoder CN 会话里现测）、
   Qwen Code 注入 `QWEN_CODE=1`、MiMo Code 注入 `MIMOCODE=1`、MCode 注入
   `MAVIS_SESSION_TRANSFER_CLIENT`（2026-10-13 加；后三家出处见
-  `_cli.detect_code_tool` 的 docstring）。
+  `_cli.detect_code_tool` 的 docstring）、WorkBuddy 注入
+  `CLIENT_INFO_IDE_TYPE=WorkBuddy`（2026-11-09 在 5.9.3 桌面会话里 `env` 量的）。
   上一版因为信号是凭空写的，真 Claude Code 会话被认成 generic——当时那一档是
   免斜杠，于是整个面板默认少一层斜杠。所以下面专门有一组断言「不该再认的信号
   不许触发」。**加新信号时 `TOOL_ENV` 必须跟着加**：跑测试的机器正好是那一档时，
@@ -44,6 +45,11 @@ TOOL_ENV = (
     # 看不出是夹具漏了。
     "QODERCN_CLI", "QODER_AGENT_SDK_ENTRYPOINT",
     "QWEN_CODE", "MIMOCODE", "MAVIS_SESSION_TRANSFER_CLIENT",
+    # WorkBuddy 桌面版（2026-11-09 真会话量到）。这两个变量在跑测试的这台
+    # 机器上**本来就在环境里**，不列进夹具全表会一起红，报的还是
+    # 「'workbuddy' != 'generic'」——与 Qoder / MCode 那两次同一个坑。
+    "CLIENT_INFO_IDE_TYPE", "WORKBUDDY_PRODUCT_NAME",
+    "CODEX_THREAD_ID", "CODEX_SESSION_ID", "CODEX_VERSION",
     # 下面两组都「不许再认」，但**理由不同，别混成一档**：
     # 1) 上一版凭空写、实测根本不存在的假信号 —— 留着验它们不再触发。
     "CLAUDE_CODE", "CLAUDE", "CURSOR_VERSION", "TERM_PROGRAM", "CODEX",
@@ -92,6 +98,14 @@ def override_tool(name):
 #: (环境变量, 期望判定)。两份 detect 都按这张表对拍。
 SCENARIOS = [
     ({}, "generic"),
+    ({"CODEX_THREAD_ID": "test-thread"}, "codex"),
+    ({"CODEX_SESSION_ID": "test-session"}, "codex"),
+    ({"CODEX_THREAD_ID": "", "CODEX_SESSION_ID": "  "}, "generic"),
+    ({"CODEX_VERSION": "0.159.0"}, "generic"),
+    ({"CODEX_THREAD_ID": "test-thread", "CLAUDE_CODE_ENTRYPOINT": "cli"}, "codex"),
+    ({"CODEX_SESSION_ID": "test-session", "CLAUDECODE": "1"}, "codex"),
+    ({"JOBS_CODE_TOOL": "claude", "CODEX_THREAD_ID": "test-thread"}, "claude"),
+    ({"CLIENT_INFO_IDE_TYPE": "WorkBuddy", "CODEX_THREAD_ID": "inherited"}, "workbuddy"),
     ({"ANTIGRAVITY_AGENT": "1"}, "antigravity"),
     ({"ANTIGRAVITY_AGENTAPI_EXE": "x"}, "antigravity"),
     ({"ANTIGRAVITY_LS_VERSION": "1"}, "antigravity"),
@@ -102,9 +116,14 @@ SCENARIOS = [
     ({"QWEN_CODE": "1"}, "qwen"),
     ({"MIMOCODE": "1"}, "mimo"),
     ({"MAVIS_SESSION_TRANSFER_CLIENT": "1"}, "mavis"),
+    ({"CLIENT_INFO_IDE_TYPE": "WorkBuddy"}, "workbuddy"),
+    ({"WORKBUDDY_PRODUCT_NAME": "WorkBuddy"}, "workbuddy"),
     # 在 Qoder 的终端里再开 Claude Code：两家信号同时在，Claude 赢
     # （优先级问题，不是形式问题——两家现在实测都吃斜杠，见 COMMAND_SYNTAX）。
     ({"CLAUDECODE": "1", "QODERCN_CLI": "1"}, "claude"),
+    # WorkBuddy 给子进程注入了 `CLAUDE_PROJECT_DIR` / `CLAUDE_SESSION_ID` 这类
+    # 兼容变量，将来若连 `CLAUDECODE` 一起补上，也该先认宿主（它才是会话的东家）。
+    ({"CLIENT_INFO_IDE_TYPE": "WorkBuddy", "CLAUDECODE": "1"}, "workbuddy"),
     # 旧版虚构信号 —— 一个都不许再认。
     ({"CLAUDE_CODE": "1"}, "generic"),
     ({"CLAUDE": "1"}, "generic"),
@@ -141,7 +160,7 @@ class TestCodeToolDetection(unittest.TestCase):
             self.assertEqual(doctor.detect_code_tool(), "claude")
 
     def test_override_passes_unknown_name_through(self):
-        # cursor / codex 自动探测分不出来，但 JOBS_CODE_TOOL=cursor 这类
+        # cursor 自动探测分不出来，但 JOBS_CODE_TOOL=cursor 这类
         # 手工指定要原样透传 —— doctor 的脚注靠这个叫出工具名。
         with tool_env(CLAUDECODE="1"), override_tool("cursor"):
             self.assertEqual(_cli.detect_code_tool(), "cursor")
@@ -171,9 +190,9 @@ class TestCodeToolDetection(unittest.TestCase):
                 self.assertEqual(
                     doctor.adapt_commands("https://x//job-auto", tool),
                     "https://x//job-auto")
-        # 实测吃斜杠的六家 + 认不出来的那一批：一切原样（剥掉就是白退回裸形式）。
-        for tool in ("claude", "antigravity", "mimo", "mavis", "qoder", "qwen",
-                     "generic"):
+        # 实测吃斜杠的七家 + 认不出来的那一批：一切原样（剥掉就是白退回裸形式）。
+        for tool in ("workbuddy", "claude", "antigravity", "mimo", "mavis",
+                     "qoder", "qwen", "generic"):
             with self.subTest(tool=tool):
                 self.assertEqual(
                     doctor.adapt_commands("跑 /job-auto 接着抓", tool),
@@ -221,6 +240,18 @@ class TestCodeToolDetection(unittest.TestCase):
         self.assertNotRegex(out, doctor._SLASH_CMD)
         self.assertIn("不带开头的斜杠", out)
 
+    def test_auto_codex_adapts_commands_and_browser_guidance_together(self):
+        """真会话信号贯穿自检输出，不能只认出名字而仍给另一家的引导。"""
+        with tool_env(CODEX_THREAD_ID="test-thread"), \
+                contextlib.redirect_stdout(io.StringIO()) as buf:
+            rc = doctor.main([])
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("已识别为 Codex", out)
+        self.assertIn("按当前会话提供的浏览器工具自动选择", out)
+        self.assertNotIn("Claude Code 用浏览器扩展", out)
+        self.assertNotRegex(out, doctor._SLASH_CMD)
+
     def test_main_says_which_tool_it_thinks_it_is_for_everyone(self):
         """这一行每家都印 —— 探测错了的唯一线索。
 
@@ -258,8 +289,8 @@ class TestCodeToolDetection(unittest.TestCase):
         _rc, out = self._run_main("generic")
         hint = next(line for line in out.splitlines() if "JOBS_CODE_TOOL=" in line)
         listed = set(re.findall(r"[a-z]+", hint.split("JOBS_CODE_TOOL=", 1)[1]))
-        self.assertEqual(listed, {"claude", "antigravity", "mimo", "mavis",
-                                  "qoder", "qwen", "codex", "generic"})
+        self.assertEqual(listed, {"workbuddy", "claude", "antigravity", "mimo",
+                                  "mavis", "qoder", "qwen", "codex", "generic"})
 
 
 if __name__ == "__main__":

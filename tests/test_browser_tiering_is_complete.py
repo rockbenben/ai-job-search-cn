@@ -110,7 +110,7 @@ class EveryCopyStatesAllThreeTiers(unittest.TestCase):
 CDP = ROOT / "workflows" / "reference" / "cdp-portals.md"
 
 #: 四层清单，按顺序。少一层、换一层、把第 1 层挪到浏览器之后，都在这里红。
-LADDER = ("平台自己的公开 API", "Claude 浏览器扩展",
+LADDER = ("平台自己的公开 API", "你所在工具自带的浏览器能力",
           "web-access skill（CDP 代理）", "`site:` 域名限定网络搜索")
 
 #: 从 `AGENTS.md` 搬走的逐家实测记录。它们出现在 `AGENTS.md` 就是搬家搬漏了，

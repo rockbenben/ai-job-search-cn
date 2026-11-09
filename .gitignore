@@ -130,13 +130,16 @@ docs/superpowers/
 # 这里放的东西按设计就是「不该被别人看到、但本机需要」的那一类。
 .private/
 
-# `.agents/skills/` 下的技能壳与 `.claude/skills/` 逐字相同，两族都由
-# tools/gen_entries.py 生成、都入库。原来这里忽略三份「镜像副本」，理由是
-# 「一条规则两个落点，之后各自长出对方没有的一条」——生成器把这条理由接了过去：
-# 落点仍是两个，但正本只有一个（workflows/INDEX.md + tools/_entries.py），
-# CI 跑 --check，漂了就红。
+# 技能壳由 tools/gen_entries.py 一次生成到各族目录，逐字相同、全部入库。
+# 正本只有一个（workflows/INDEX.md + tools/_entries.py），CI 跑 --check，漂了就红。
 # `.agents/skills/` 本身一直照常入库 —— 那儿还放可插拔平台技能（liepin-search）。
-.workbuddy/
+#
+# `.workbuddy/` 是 WorkBuddy 的本机数据目录（会话记忆、本机笔记等），整体不进
+# 版本库；**只放行 `.workbuddy/skills/`**：那是它桌面版会话说明给的项目级技能
+# 目录，生成物得随仓库走，clone 下来就能用。例外必须精确到目录本身——
+# 只写 `!.workbuddy/skills/**` 而不取消父目录的忽略，git 是不会往下走的。
+.workbuddy/*
+!.workbuddy/skills/
 .qoder*
 promot*
 

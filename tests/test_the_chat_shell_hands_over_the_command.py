@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""聊到求职就自动接管的那个壳，手里没有跑投递所需的任何一件工具。
+"""咨询壳按宿主权限衔接执行流程。
+
+2026-11-09：下面记录的是执行 allowed-tools 限制的宿主；Codex 按会话实际工具和
+权限处理，用户明确要求执行且已有权限时直接继续。两种路径分别验证，不把其它宿主的
+工具别名当成 Codex 缺少能力的证据。
 
 `.claude/skills/job-application-assistant/` 是**自动触发**的壳（触发词里就有
 「投递」「apply」）。它原来只用一句话交代下一步：
@@ -57,7 +61,7 @@ def allowed() -> str:
 
 
 def body() -> str:
-    i = SHELL.index("## 这个壳自己做不了投递")
+    i = SHELL.index("## 咨询与执行按宿主权限区分")
     return flat(SHELL[i:])
 
 
@@ -110,8 +114,8 @@ class ItHandsOverTheCommand(unittest.TestCase):
         b = body()
         self.assertIn("`job-apply <职位链接>`", b,
                       "没给拦斜杠那一档的裸形式 —— Codex 里开头的斜杠敲不动")
-        self.assertRegex(b, r"由你此刻所在的工具定")
-        self.assertRegex(b, r"内置指令", "不写这一句，读的人不知道为什么要分两种形态")
+        self.assertRegex(b, r"按.*适配")
+        self.assertRegex(b, r"Codex 给 `job-apply", "必须说清哪种形式对应哪个宿主")
         self.assertRegex(b, r"不经过渲染层",
                          "要点明这份壳为什么得自己判断：它是手写的，不过生成器")
 
@@ -133,12 +137,12 @@ class ItHandsOverTheCommand(unittest.TestCase):
         壳，权限由它们各自的工作流正文派生，与本壳无关」——**要求没变**：壳必须
         说清交接出去那条命令的权限不归本壳管，读的人才敢交。锚点跟着换活着的措辞。
         """
-        self.assertRegex(body(), r"权限由它们各自的工作流正文派生，与本壳无关")
+        self.assertRegex(body(), r"权限由目标命令壳自己的工作流派生")
 
     def test_it_says_the_narrowness_is_deliberate(self):
         b = body()
-        self.assertRegex(b, r"\*\*权限窄是有意的，不是漏了。\*\*")
-        self.assertRegex(b, r"\*\*够不着不是缺陷，是这个壳的边界\*\*")
+        self.assertIn("支持并执行 `allowed-tools` 限制的宿主", b)
+        self.assertIn("这份咨询壳不申请 Bash 或 Agent", b)
 
     def test_it_lists_what_it_cannot_run(self):
         """光说「做不了」太虚 —— 列出来，下一个人才验得了。"""
@@ -146,21 +150,26 @@ class ItHandsOverTheCommand(unittest.TestCase):
         for cmd in ("typst compile", "typst fonts",
                     "pdftotext -layout -enc UTF-8"):
             with self.subTest(cmd=cmd):
-                self.assertIn(cmd, b)
-        self.assertRegex(b, r"\*\*Bash 和 Agent 一个都没有\*\*")
+                self.assertIn(cmd, APPLY)
+        self.assertIn("出材料需要编译与审稿", b)
+        self.assertIn("这份咨询壳不申请 Bash 或 Agent", b)
 
-    def test_the_claim_carries_a_date(self):
-        self.assertIn("2026-08-24", body())
+    def test_codex_continues_only_when_the_user_requested_it_and_permissions_allow(self):
+        b = body()
+        self.assertRegex(b, r"用户已明确要求.*当前会话具备所需权限.*直接转入")
+        self.assertIn("不要求用户再输入一次命令", b)
+        self.assertIn("Codex 的权限白名单", b)
+        self.assertIn("当前会话的实际工具和权限", b)
 
 
 class TheTwoWrongPathsAreNamed(unittest.TestCase):
     def test_it_forbids_pushing_through(self):
-        self.assertRegex(body(), r"别硬走")
-        self.assertRegex(body(), r"用户看到的是一堆失败的\s*命令|用户看到的是一堆失败的命令")
+        self.assertIn("不绕过宿主限制", body())
+        self.assertIn("若不能直接切换到命令壳，就让用户敲", body())
 
     def test_it_forbids_hand_writing_the_materials(self):
         """`Write` 它是有的 —— 挡不住就会绕过 typst、PDF 校验、双角色审稿。"""
-        self.assertRegex(body(), r"别绕道用 `Write` 手搓一份材料")
+        self.assertIn("不用 Write 手搓材料代替", body())
 
     def test_it_cites_the_rule_it_follows(self):
         self.assertIn("每一处引导都要写出该敲的命令", body())

@@ -14,6 +14,10 @@
   `skill/index.ts` 的注释写着「用户手敲斜杠照样能用」。
 - **MCode** —— 用户 2026-10-13 当场确认；信号 `MAVIS_SESSION_TRANSFER_CLIENT`
   是在一个真会话里逐个量出来的。
+- **WorkBuddy** —— 2026-11-09 在 5.9.3 桌面版上取的证：`product.json` 写着
+  「建 `.codebuddy/skills/commit/SKILL.md` 后敲 `/commit` 就能跑」，bundle 里
+  `user-invocable` / `disable-model-invocation` 的可见性逻辑把 skill 默认放进 `/` 菜单，
+  所以它是吃斜杠的那一档。信号 `CLIENT_INFO_IDE_TYPE=WorkBuddy` 是同一次 `env` 量的。
 - **Codex CLI —— 拦。** 二进制 `codex.exe` 0.159.0 里就印着
   `Unrecognized command '/-'. Type "/" for a list of supported commands.`
   （出处 `tui\\src\\bottom_pane\\chat_composer\\inline_input.rs`）。它注入给模型的
@@ -55,7 +59,8 @@ import doctor  # noqa: E402
 #: **枚举「探测能返回哪些值」不靠这份手抄** —— 那条断言从源码里数，见
 #: `_auto_detect_returns()`。
 NO_SLASH = ("codex",)
-SLASH = ("antigravity", "claude", "generic", "mavis", "mimo", "qoder", "qwen")
+SLASH = ("antigravity", "claude", "generic", "mavis", "mimo", "qoder", "qwen",
+         "workbuddy")
 
 #: 面板那头自己存了一份斜杠档名单（`CodeToolContext.tsx`）。它是 Python 那张表的
 #: **抄件**，跨语言，import 不到，只能按文本对拍 —— 原来没有这一条，所以
@@ -120,7 +125,7 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
         - 带错斜杠 → 工具报错或列出命令，**看得见**，用户当场知道不对；
         - 缺斜杠   → 复制出来的是一段普通文字，用户**不知道**有这条命令。
 
-        而 `docs/tool-entries.md` 量过 12 家，**6 家吃斜杠**——
+        而 `docs/tool-entries.md` 量过 13 家，**7 家吃斜杠**（2026-11-09 复核）——
         认不出来的那一批更可能落在吃斜杠的一边。真拦的（Codex）
         2026-10-13 起自己一格，不再靠 generic 兜底。
         """

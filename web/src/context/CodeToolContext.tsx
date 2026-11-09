@@ -15,8 +15,8 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
  *
  * ## `generic` 2026-10-13 从免斜杠翻成带斜杠
  *
- * 原来「认不出来」被归到免斜杠那一档。**实测 `docs/tool-entries.md` 里量过
- * 12 家，8 家吃斜杠** —— 认不出来的那一批更可能落在吃斜杠的一边。
+ * 原来「认不出来」被归到免斜杠那一档。**`docs/tool-entries.md` 里逐家量过
+ * 13 家，7 家吃斜杠**（2026-11-09 复核） —— 认不出来的那一批更可能落在吃斜杠的一边。
  * 而两种错法的可见性不同：带错斜杠，工具会报错或列出命令；缺斜杠，
  * 用户根本不知道有这条命令（`AGENTS.md`「用户不知道该敲什么」）。
  * 真拦的那一家（Codex）现在自己一格，不再靠 generic 兜底。
@@ -25,7 +25,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
  * `cursor` 没给格子：吃不吃斜杠没实测过，让它落 generic（带斜杠）。
  */
 const KNOWN_TOOLS = [
-  "antigravity", "claude", "codex", "mavis", "mimo", "qoder", "qwen", "generic",
+  "antigravity", "claude", "codex", "mavis", "mimo", "qoder", "qwen", "workbuddy", "generic",
 ] as const;
 export type CodeTool = (typeof KNOWN_TOOLS)[number];
 
@@ -37,7 +37,7 @@ export type CodeTool = (typeof KNOWN_TOOLS)[number];
  * 「认不出来」（`generic`）在这一档里：见上面那段与 doctor 的说明。
  */
 const SLASH_TOOLS: readonly CodeTool[] = [
-  "antigravity", "claude", "generic", "mavis", "mimo", "qoder", "qwen",
+  "antigravity", "claude", "generic", "mavis", "mimo", "qoder", "qwen", "workbuddy",
 ];
 
 const STORAGE_KEY = "job_search_command_form";

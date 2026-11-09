@@ -287,13 +287,17 @@ def _strip_code(text: str) -> str:
             opener = None                     # 合法闭合；其余行一律丢弃
     return _INLINE_CODE_RE.sub("", "\n".join(keep))
 
-#: 两族技能壳的根。`.claude/skills/` 是 Claude Code 的运行时发现根，
+#: 各族技能壳的根。`.claude/skills/` 是 Claude Code 的运行时发现根，
 #: `.agents/skills/` 是其余各家读的（2026-09-30 逐家核过：agy / Codex / Qoder /
-#: Qwen Code / MiMo Code 都扫这里）。
-#: 一份入口在两族各落一次，由 tools/gen_entries.py 一次生成 —— 与 tools/_entries.py
-#: 的 SHELL_FAMILIES 同一个值（这里内联写死，是因为本文件会被测试单独拷进临时目录
-#: 运行，不能 import 仓库里的任何兄弟模块）。
-SHELL_FAMILIES = (".claude", ".agents")
+#: Qwen Code / MiMo Code 都扫这里）；`.codebuddy/skills/` 与 `.workbuddy/skills/`
+#: 是 WorkBuddy 桌面版/CLI 的两个候选项目级落点（2026-11-09 取证，见
+#: tools/_entries.py 那段注释与 docs/tool-entries.md）。
+#: 一份入口在**每一族**各落一次，由 tools/gen_entries.py 一次生成 —— 与
+#: tools/_entries.py 的 SHELL_FAMILIES 同一个值（这里内联写死，是因为本文件会被
+#: 测试单独拷进临时目录运行，不能 import 仓库里的任何兄弟模块）。
+#: 两边相等由 tests/test_one_value_one_home.py 钉着；**族数不写死在比较里**，
+#: 加一族不该让这条守卫自己先崩。
+SHELL_FAMILIES = (".claude", ".agents", ".codebuddy", ".workbuddy")
 
 #: 手写、不生成的壳 —— 与 tools/_entries.py 的 HANDWRITTEN_NAMES 同一个值，同一个
 #: 「不能 import 兄弟模块」的理由。路由壳 `job-application-assistant` 没有对应的工作流
@@ -638,23 +642,32 @@ def main() -> int:
     if not skills:
         errors.append("no SKILL.md files found - glob roots are wrong or the tree moved")
 
-    # 两族该是**同一批**壳：生成器一次写两族，少一族就是它只跑了一半。
+    # 各族该是**同一批**壳：生成器一次写全，少一族就是它只跑了一半。
     # 这条比「逐个工作流报缺壳」更早说清发生过什么（一次少 21 份，而不是 21 条各自
     # 像独立缺陷），也覆盖反方向：只在某一族多出来的壳（手写漏跑生成器）。
     # 渠道技能不在这个集合里 —— 它只装在 `.agents` 族，见 command_shells()。
+    #
+    # ⚠️ 原来这里写的是 `left, right = SHELL_FAMILIES`：族数被解包钉死成 2，
+    # 2026-11-09 接 WorkBuddy 加族时直接 ValueError。改成「以第一族为基准，
+    # 其余逐族对拍」——加族/删族都不用再动这段。
     shells = {fam: command_shells(fam) for fam in SHELL_FAMILIES}
-    left, right = SHELL_FAMILIES
-    if shells[left] != shells[right]:
+    baseline = SHELL_FAMILIES[0]
+    want = shells[baseline]
+    for fam in SHELL_FAMILIES[1:]:
+        if shells[fam] == want:
+            continue
         gaps = []
-        for fam, other in ((left, right), (right, left)):
-            absent = sorted(shells[other] - shells[fam])
-            if absent:
-                gaps.append(f"{fam}/skills lacks {', '.join(absent)}")
+        absent = sorted(want - shells[fam])
+        if absent:
+            gaps.append(f"{fam}/skills lacks {', '.join(absent)}")
+        extra = sorted(shells[fam] - want)
+        if extra:
+            gaps.append(f"{fam}/skills has extra {', '.join(extra)}")
         errors.append(
-            f"skill families disagree on the shell set: {len(shells[left])} in "
-            f"{left}/skills vs {len(shells[right])} in {right}/skills"
+            f"skill families disagree on the shell set: {len(want)} in "
+            f"{baseline}/skills vs {len(shells[fam])} in {fam}/skills"
             + (f" ({'; '.join(gaps)})" if gaps else "")
-            + " - entries are generated into both families by tools/gen_entries.py; "
+            + " - entries are generated into every family by tools/gen_entries.py; "
               "run `python tools/gen_entries.py`")
 
     for skill in skills:
@@ -670,9 +683,12 @@ def main() -> int:
         for err in errors:
             print(f"  - {err}")
         return 1
+    # 原来这里印的是 `left` / `right` 两族的数量，与上面那段解包绑在一起；
+    # 加族之后那两个名字没了，这行会在成功路径上才崩（失败路径先 return 了），
+    # 于是「lint 全绿」反而成了唯一会踩到的分支。改成按族数报，不写死两家。
     print(f"lint_skills: OK ({n_workflows} workflows, "
-          f"{len(shells[left])} shells in {left}/skills, "
-          f"{len(shells[right])} in {right}/skills, "
+          f"{len(shells[baseline])} shells per family "
+          f"({', '.join(SHELL_FAMILIES)}), "
           f"{len(skills)} SKILL.md parsed, settings.json)")
     return 0
 

@@ -35,13 +35,45 @@
 | Qwen Code | ✅ | ✅（0.24.7 起；0.14.0 不扫） | ✅ | `QWEN_CODE=1` |
 | MiMo Code | ✅ | ✅（默认开） | ✅ | `MIMOCODE=1` |
 | MCode | **未验** | ✅ | ✅ | `MAVIS_SESSION_TRANSFER_CLIENT=1`（2026-10-13 逐个量出来的） |
-| Codex CLI | ✅ | ✅ | ❌ **拦** | 没有可用的 |
+| Codex（桌面 / CLI / IDE） | ✅ | ✅ | CLI ❌ **拦**；统一给无斜杠请求 | `CODEX_THREAD_ID` / `CODEX_SESSION_ID`（2026-11-09 桌面真会话实测） |
 | OpenCode | ✅（首命中即停） | ✅ | **未实测** | `OPENCODE=1`（没接） |
 | Deep Code (DeepSeek) | ✅ | ✅ | **未实测**（`/` 开菜单，技能进不进那个菜单没量到） | 没装，量不到 |
 | Crush | ✅（多份全叠加） | ✅ | ❌（`/` 是它自己的快捷键） | `CRUSH=1`（没接） |
 | Goose | ✅ | ✅ | ❌（只认注册过的 recipe） | 没有可用的 |
 | Amp | ✅（`AGENT.md` / `CLAUDE.md` 兜底） | ✅ | ❌（斜杠菜单已撤） | 没有可用的 |
+| WorkBuddy | ✅（2026-11-09 本次会话注入；**不读 `CLAUDE.md`**） | ❌（读项目级 `.codebuddy/skills/` 或 `.workbuddy/skills/`，两族都生成） | ✅ | `CLIENT_INFO_IDE_TYPE=WorkBuddy`（2026-11-09） |
 | ~~Gemini CLI~~ | ❌ 只读 `GEMINI.md` | ✅ | ✅ | ~~`GEMINI_CLI=1`~~ **已删** |
+
+> **WorkBuddy 这一行是 2026-11-09 在 5.9.3 桌面版上逐格量的，四列的证据各不一样。**
+> - 读 `AGENTS.md` ✅：本次会话注入的 `<project_guidance>` 正是仓库根 `AGENTS.md`；
+>   bundle `dist/codebuddy-lite-wb.mjs` 里有 `L="AGENTS.md"`，`product.json` 写着
+>   「有 AGENTS.md 就别新建 CODEBUDDY.md」。⚠️ **但注入层把它截断了**：本次在约
+>   第 250 行「跟进归用户」处 `[...too long, omitted...]`，后半段（能力对照表、
+>   取数顺位、并行分派、工具特化）没进常驻上下文。截断在 IDE 注入层，不是它读文件
+>   那一层 —— 与上面 agy 24,000 B / Codex 32 KiB 是同类题，别记成同一处。
+> - 扫 `.agents/skills/` ❌：本会话技能清单里 23 份 job-* 壳一份都没加载；
+>   项目级 `.codebuddy/`、`.workbuddy/skills/` 原本都不存在。bundle 里
+>   `.agents/skills` 只出现一次，形如 `~/.agents/skills/`（用户级），且落在
+>   `DEFAULT_TOOLCHAIN_ALLOW_WRITE_DIRS` 那串写权限白名单里，**不是**扫描路径。
+>   ⚠️ **两个候选项目级目录没能量出桌面版究竟扫哪个**：CLI 文档与 bundle 的
+>   「启动时加载的配置」清单点名 `.codebuddy/skills/`，桌面版会话说明写
+>   `.workbuddy/skills/`。按「量不出来就别猜」的规矩两族都生成（见下面「工具特化」），
+>   代价是生成物多一族；哪天实测出只认一处，从 `SHELL_FAMILIES` 删掉另一处即可。
+> - 吃斜杠 ✅：`product.json` 里那条自定义技能说明写得明白：在项目级技能目录
+>   里建一个 `SKILL.md`，然后敲 `/commit` 就能跑；bundle 里有 `user-invocable` /
+>   `disable-model-invocation` 的可见性逻辑（`deriveSkillVisibility`），
+>   skill 默认进 `/` 菜单。⚠️ 前提是壳真被加载 —— 这一行接进来之前，
+>   `/job-auto` 在这家工具里是敲不动的。
+> - 探测信号：`env` 在真会话里量到 `CLIENT_INFO_IDE_TYPE=WorkBuddy`、
+>   `WORKBUDDY_PRODUCT_NAME=WorkBuddy`、`WORKBUDDY_APP_VERSION=5.9.3`、
+>   `CODEBUDDY_HOST=workbuddy-desktop`、`WORKBUDDY_IS_PACKAGED=1` 等。
+>   取最贴「跑在哪个 agent 里」的 `CLIENT_INFO_IDE_TYPE`，加一个产品名兜底。
+>   ⚠️ 它也注入 `CLAUDE_PROJECT_DIR` / `CLAUDE_SESSION_ID`（兼容层），但
+>   `CLAUDECODE` 实测不在 —— 所以这一档必须排在 `claude` 之前。
+> - **`CLAUDE.md` / `.claude/skills` 在 bundle 里 0 命中**：Claude 侧那份
+>   「Gmail → Claude MCP、浏览器 → Claude 扩展」的落点在这家工具里整个不生效。
+>   浏览器能力改由 `workflows/reference/cdp-portals.md` 按工具对号入座，
+>   见下面「浏览器能力按工具自动适配」。
 
 > **这一行的三列不是同一档的证据，别当成一样。**
 > - 「扫 `.agents/skills/`」✅：2026-10-13 那次会话里，21 条 job-* 工作流确实是从
@@ -61,10 +93,13 @@
 
 三件事从这张表读出来：
 
-1. **几乎每家都不用为它生成任何东西。** 读 `AGENTS.md` + 扫 `.agents/skills/` 这两列
-   大多是 ✅，所以两族壳已经把它们全接住了。真需要单独伺候的只有 Claude 一家
-   （它不扫 `.agents/skills/`，所以生成器给 `.claude/skills/` 也落一份）。
-   **别为「支持某家工具」去新建一族目录** —— 先量这两列，多半是零个新文件。
+1. **先量这两列，再决定要不要建目录。** 读 `AGENTS.md` + 扫 `.agents/skills/`
+   大多是 ✅，所以各族壳已经把它们全接住了。真需要单独伺候的有两家：Claude
+   （不扫 `.agents/skills/` → 给它 `.claude/skills/`）与 WorkBuddy
+   （两个候选项目级目录都量到了证据、却量不出桌面版认哪个 → 两族都落）。
+   ⚠️ **2026-11-09 修掉一句旧结论**：原来这里写「别为『支持某家工具』去新建
+   一族目录」，那是对「量过且两列都 ✅」的归纳，不是禁令。真量出 ❌ 就该建，
+   拿它当禁令会让人守着规则、放着工具接不进来。
    ⚠️ 「大多是」而不是「全是」：表里已有一格是「未验」（MCode 读不读 `AGENTS.md`），
    **这一列空着就是还没量，别拿「别家都 ✅」填**。
 2. **后六家落 `generic` 就是对的，不是漏了。**
@@ -74,8 +109,8 @@
    命令，只是聊天框里的一段文字**，触发词接得住的是模型、不是宿主。
 
    而两种错法的**可见性不同**：带错斜杠，工具报错或列出命令；缺斜杠，用户根本不知道
-   有这条命令（`AGENTS.md`「每一处引导都要写出该敲的命令」那一节）。这张表里量过的是 **6 家吃斜杠、
-   4 家不吃、2 家未实测**（活表 12 行，Gemini 那一行已划掉）——
+   有这条命令（`AGENTS.md`「每一处引导都要写出该敲的命令」那一节）。这张表里量过的是 **7 家吃斜杠、
+   4 家不吃、2 家未实测**（活表 13 行，Gemini 那一行已划掉；2026-11-09 加 WorkBuddy）——
    认不出来的那一批更可能落在吃斜杠的一边。
    真拦的 Codex 已经自己一格（`JOBS_CODE_TOOL=codex`），不再靠 generic 兜底。
 
@@ -103,11 +138,15 @@
 
 ## 工具特化
 
-- **每一条命令的入口都是两族技能壳**，由 `tools/gen_entries.py` 从 `workflows/INDEX.md`
-  与 `tools/_entries.py` 生成，两族**逐字相同**：`.claude/skills/` 是 Claude Code 唯一
-  的运行时技能目录，`.agents/skills/` 是上面那张表里其余每一家读的那一份。
+- **每一条命令的入口都是各族技能壳**，由 `tools/gen_entries.py` 从 `workflows/INDEX.md`
+  与 `tools/_entries.py` 生成，各族**逐字相同**：`.claude/skills/` 是 Claude Code 唯一
+  的运行时技能目录，`.agents/skills/` 是上面那张表里大部分家读的那一份，
+  `.codebuddy/skills/` 与 `.workbuddy/skills/` 是 WorkBuddy 的两个候选项目级落点
+  （两处都量到证据、没量出桌面版究竟认哪个，所以都落；出处见表格下那段脚注）。
+  **族数不写死在任何文档里**，正本是 `tools/_entries.py::SHELL_FAMILIES`，
+  `tools/lint_skills.py` 保一份逐字副本（相等由 `test_one_value_one_home.py` 钉住）。
   壳里只有触发词与工具权限，正文一律指回 `workflows/`。
-- **两族之外还有一条路，且它才是正本**：`workflows/INDEX.md` 那张索引表每行给了正文
+- **各族之外还有一条路，且它才是正本**：`workflows/INDEX.md` 那张索引表每行给了正文
   在哪、怎么敲、不给参数时干什么，读它就能执行任何一条命令，不依赖壳在不在
   （`AGENTS.md` 里那节工作流索引现在只是一个指向它的指针）。壳与索引表不是两种能力，
   是同一个能力的两种到货方式。
@@ -119,7 +158,7 @@
 手写的路由壳 `job-application-assistant`（`/job-scrape` 与 `/job-upskill` 也一样，
 没有特例）。壳就干两件事：什么时候自动触发、跑起来手里有哪些工具；正文全在
 `workflows/`，别的工具照索引读那一份就行，不会少任何东西。原来那批
-`.claude/commands/` 薄 stub 已整体删除：斜杠命令这一层壳两族都给，那个目录里
+`.claude/commands/` 薄 stub 已整体删除：斜杠命令这一层壳各族都给，那个目录里
 再长出文件，`tools/lint_skills.py` 就报。
 
 对应地，**工作流正文里不许出现 `.claude/` 路径，也不许自称「本技能 / this skill」**。
@@ -136,11 +175,13 @@ AI 工具无关。
 一份**（每条命令一份生成壳，另加手写的 `job-application-assistant` 路由壳；
 具体几份由 `workflows/INDEX.md` 的行数决定，不在这儿写死），与
 `.claude/skills/` 下的逐字相同 —— 那是给不读 `.claude/` 的工具准备的
-同一份壳。所以「哪些是渠道」的判据不是目录位置，是**有没有 `.agents/skills/*/cli/src/cli.ts`**；
+同一份壳。WorkBuddy 那两族同样各有这一整套（含手写路由壳；它不走生成器，
+加族时要人工同步，由 `test_shell_families_are_byte_identical.py` 逐族对拍）。
+所以「哪些是渠道」的判据不是目录位置，是**有没有 `.agents/skills/*/cli/src/cli.ts`**；
 凡是发现渠道的地方都按这个判（`job-scrape.md` 1b、`job-add-portal --list`）；
 这份点名清单由 `tests/test_a_portal_skill_is_the_one_with_a_cli.py` 的
 `BothDiscoverySitesSayIt.SITES` 对着扫——多一个发现点而名单没改，那边就红。
-两份壳必须逐字一致，否则同一个技能在 Claude Code 和别的工具里触发词、权限都能不一样。
+各族壳必须逐字一致，否则同一个技能在 Claude Code 和别的工具里触发词、权限都能不一样。
 
 **这一族有几份壳，本文件、`AGENTS.md` 与各份文档都不写数字。** 加一条命令就多一份壳，
 而写死的数字没有任何东西钉着，只会安静地变成假话。`AGENTS.md` 与 `workflows/INDEX.md`
@@ -187,10 +228,52 @@ AI 工具无关。
 > Antigravity CLI (agy)、Qoder、Qwen Code、MiMo Code）。所以它们同样有命令入口与自然语言
 > 触发，**没有 `.codex/` 这个落点，也不需要新增任何目录**。
 >
+> ⚠️ **2026-11-09 补一句**：WorkBuddy 是这条的例外——它两个候选项目级目录都不在
+> 当时那两族里，而两个都量到了证据、却量不出桌面版究竟认哪个，于是新增了两族。
+> 判据没变（先量那两列），变的是量出来的结果；别把上面那句当成「永远不许新增目录」。
+>
 > 守卫钉着这条边界：`.claude/commands/` 里再长出任何文件（命令 stub 已删，入口只由
-> 生成器落到两族技能壳）、某条工作流在两族缺壳、或两族的壳集合对不上、工作流正文里
+> 生成器落到各族技能壳）、某条工作流在某族缺壳、或各族的壳集合对不上、工作流正文里
 > 出现 `.claude/` 路径或自称「本技能」、`CLAUDE.md` 复述 `AGENTS.md` 已有的流程——
 > `tools/lint_skills.py` 都会报。
+
+### 浏览器能力按工具自动适配（2026-11-09）
+
+Codex 接入补充见 [docs/codex.md](codex.md)。现在先从真实会话标记识别宿主，
+再由执行者检查当轮实际工具清单（含延迟发现的工具），选择浏览器；两步分开，
+不把「识别到 Codex」当成「浏览器已连接」。执行步骤的正本在
+`workflows/reference/cdp-portals.md`「执行时自动选择浏览器」。生成器为涉及浏览器
+的命令壳自动加入该入口，`job-scrape` 的探测步骤也指向它。
+
+Codex 桌面本次实测提供 `mcp__cua_repl` 与 `mcp__chrome_devtools`；CLI / IDE
+是否提供浏览器工具要看实际连接。工具名只作已知示例，不是固定白名单。
+`allowed-tools` 对其它宿主的声明不替代 Codex 自身工具与权限；咨询转入已授权的
+执行流程时，不再要求用户重新输入命令。
+
+「浏览器取数」这一行以前只写了 Claude 的落点。换到 WorkBuddy 时，AI 照着
+`AGENTS.md` 那句「Claude 浏览器扩展」去找 `mcp__claude-in-chrome__*`，找不到就
+判定「这个工具没有浏览器能力」，**直接退到 `site:` 兜底** —— 能力明明在，却用不上。
+三处一起改掉，让落点按当前工具对号入座：
+
+1. **能力对照表**（`AGENTS.md`）那一行改成中立的「用你所在工具自带的浏览器能力」，
+   逐家落点指向 `workflows/reference/cdp-portals.md`（它是权威）。
+2. **自检输出**（`tools/doctor.py::BROWSER_BACKEND`）按 `detect_code_tool()` 渲染那句，
+   不再写死「Claude Code 用浏览器扩展」。WorkBuddy 下会明说自带的 `agent-browser`
+   首次使用自动装好，并**如实说明它开的是独立 Chromium、登录态要登一次**；
+   `~/.claude/skills/web-access` 那份 CDP skill 在 WorkBuddy 下也不再被误报为
+   「你还装了备用抓取方式」（这家工具不读那个目录）。
+3. **壳的 `allowed-tools`**（`tools/_entries.py::BROWSER_BASH`）：WorkBuddy 的
+   `agent-browser` 是 Bash CLI，不是 MCP 工具。壳里没有 `Bash(agent-browser:*)`
+   时 `/job-scrape` 走顺位 1 会被逐次弹授权。现在按「工作流正文提到这项能力」
+   自动派生**程序名级**白名单（与 `PORTAL_BASH` / `_uses_portal()` 同构），
+   各族壳逐字一致，权限文件 `.claude/settings.json` 也由 `shared_grants()` 同步。
+   落点**不写进共用工作流正文** —— `AGENTS.md` 要求正文只写能力名、不点名工具。
+
+⚠️ **登录态不是白来的，别把一家的说法照抄给另一家**：Claude 浏览器扩展驱动用户
+日常那个已登录的 Chrome，登录态天然带着；`agent-browser` 开的是**独立的
+Chromium**，BOSS / 智联要在它里面各登录一次，之后同一 daemon 会话内 cookies 才保留
+（见它 SKILL.md 里讲 daemon 与会话保留的那一节）。差异写进 `SETUP.md` 3.1 与
+`workflows/reference/cdp-portals.md`，自检那句也照实说。
 
 ## 命令形式：正本带斜杠，只有渲染层改
 
@@ -205,13 +288,14 @@ AI 工具无关。
 
   | 工具 | 形式 | 实测出处 |
   |---|---|---|
+  | `workbuddy` | `slash` | `product.json` 里写着在项目级技能目录建一个 `SKILL.md` 后敲 `/commit` 就能跑；bundle 的 `user-invocable` 让技能默认进 `/` 菜单（2026-11-09 取证，见接入面表下那段脚注） |
   | `claude` | `slash` | 技能进它的斜杠表（二进制里的 `skillToolCommands`） |
   | `qoder` | `slash` | 它自己的口径：技能可按 `/<名>` 请求（2026-09-29 在真会话里看到的） |
   | `antigravity` | `slash` | 用户 2026-09-28 当场在 `/` 面板测过 `/job-scrape` 能匹配 |
   | `qwen` | `slash` | 0.24.7 把每个技能注册成 `/<技能名>`（2026-09-30 核；本机先前那版 0.14.0 不注册，结论按新版翻） |
   | `mimo` | `slash` | `MiMo：command/index.ts` 把技能以 `source: "skill"` 塞进命令表，`MiMo：skill/index.ts` 的注释写着「用户手敲斜杠照样能用」（2026-09-30 读源码） |
   | `mavis` | `slash` | 用户 2026-10-13 当场确认；信号 `MAVIS_SESSION_TRANSFER_CLIENT` 是逐个量出来的（见上面接入面表那一行） |
-  | `codex`（探测不到，只能手工指定） | `no-slash` | `codex.exe` 0.159.0 里印着 `Unrecognized command '/-'. Type "/" for a list of supported commands.`（`tui\src\bottom_pane\chat_composer\inline_input.rs`）；技能是以 `<skills_instructions>` 注入给模型的，不注册成斜杠项 |
+  | `codex`（真实会话标记自动识别，手工指定保留） | `no-slash` | `codex.exe` 0.159.0 里印着 `Unrecognized command '/-'. Type "/" for a list of supported commands.`（`tui\src\bottom_pane\chat_composer\inline_input.rs`）；技能是以 `<skills_instructions>` 注入给模型的，不注册成斜杠项 |
   | `generic` | `slash` | 兜「认不出来的那一批」。**2026-10-13 从 `no-slash` 翻过来的**，理由与代价见上面第 2 条 |
   | ~~`gemini`~~ | — | **2026-09-30 整格删掉**：那家已停（见上面那张接入面表的第 3 条）。它原来在这一档是**实测过的** —— bundle 里的 `SkillCommandLoader.ts` 确实把技能注册成 `/<技能名>`；删格的理由不是量错，是那家工具装不上了 |
 
@@ -223,7 +307,8 @@ AI 工具无关。
 > ⚠️ **`codex` 那一格在 2026-10-13 之前是不存在的**——那时免斜杠靠默认值兜，
 > 而 `codex` 探测不到（`CODEX` 那个变量根本不存在）、自动落 `generic`。
 > 把它单独立格之后，「手工指定」第一次成了**有效**操作：
-> `JOBS_CODE_TOOL=codex` 与面板上那个开关是仅有的两条退路。
+> 当时 `JOBS_CODE_TOOL=codex` 与面板开关是两条退路。2026-11-09 补上真实会话
+> 标记的自动识别；`CODEX` 仍然不是有效信号。
 
 > 这张表的第一版把除 Claude 以外的各家全写成 `no-slash`，理由就是「斜杠会被客户端
 > 当成内置指令拦掉」。那句话是从 Codex 一家的行为推广出去的，其余几家当时**没有
@@ -247,12 +332,14 @@ AI 工具无关。
 
 | 工具 | 实测信号 | 怎么测出来的 |
 |---|---|---|
+| WorkBuddy | `CLIENT_INFO_IDE_TYPE=WorkBuddy`（另有 `WORKBUDDY_PRODUCT_NAME` / `WORKBUDDY_APP_VERSION=5.9.3` / `CODEBUDDY_HOST=workbuddy-desktop`） | 2026-11-09 在真 5.9.3 桌面会话里 `env` 逐个量；取最贴「跑在哪个 agent 里」的那个，产品名兜底。⚠️ 它也注入 `CLAUDE_PROJECT_DIR` / `CLAUDE_SESSION_ID`，但 `CLAUDECODE` 实测不在，所以排在各家之前 |
 | Claude Code | `CLAUDECODE=1`（另有 `CLAUDE_CODE_ENTRYPOINT`） | 对它注入给子进程的环境取证 |
 | agy | `ANTIGRAVITY_AGENT=1`（另有 AGENTAPI_EXE / LS_VERSION） | agy.exe 里的字面量 |
 | Qoder | `QODERCN_CLI=1`（另有 `QODER_AGENT_SDK_ENTRYPOINT=sdk-ts`） | 2026-09-29 在真 Qoder CN 会话里 `env \| grep -i qoder` |
 | Qwen Code | `QWEN_CODE=1` | 它的 ShellExecutionService 给自己起的每个子 shell 注入（`cli.js` 里两处 `cpSpawn` 的 `env:` 块，2026-09-30 核） |
 | MiMo Code | `MIMOCODE=1` | 主进程里 `process.env.MIMOCODE = "1"`（`MiMo：packages/opencode/src/index.ts`，紧邻 `AGENT=1`），子进程继承。它是 opencode 的分支，但**不设** `OPENCODE`，所以这个变量能唯一认出它 |
-| Cursor、Codex CLI、Goose、Amp | 没有可识别标记 | 集成终端里 `TERM_PROGRAM` 是 `vscode` 不是 `cursor`；落 `generic` 那一档。**Codex 正好该落这里**——它是实测拦斜杠的那家，没有信号反而把它放进了安全档，所以既不为它加信号、也不给表里加格 |
+| Codex | 非空 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` | 2026-11-09 在本项目 Codex 桌面会话的子 shell 中实测；只记录变量名和是否非空，不记录会话 ID。显式覆盖优先，其后 WorkBuddy 的产品标记，再判 Codex；不拿版本号或安装路径判断，也不据此判断浏览器连接 |
+| Cursor、Goose、Amp | 没有可识别标记 | 集成终端里 `TERM_PROGRAM` 是 `vscode` 不是 `cursor`；落 `generic` 那一档 |
 | Crush / OpenCode | 有信号（`CRUSH=1` / `OPENCODE=1`）却**没接** | 接了只改自检里那行工具名，命令形式一个字都不变。判据是「吃不吃斜杠」，不是「认不认得出」。⚠️ 2026-10-13 起这层顾虑变了：Crush 实测**不吃**斜杠、OpenCode 未实测，两者落 `generic` 会拿到敲不动的斜杠——**所以「接上」现在能改变命令形式了**（各加一格 `no-slash`）。留着的唯一理由是没量过它们的桌面端与 CLI 是否同一形态，别为凑一家去猜 |
 | ~~Gemini CLI~~ | ~~`GEMINI_CLI=1`~~ | **2026-09-30 删。** 它是**真信号**（那家确实给子 shell 注入过），与下面那批凭空写的假变量不是一回事；删的理由是那家已停，认一个装不上的工具没有意义 |
 
@@ -270,7 +357,7 @@ Qoder 会话里存在」，看不到它们是不是桌面端也注入。这不�
 `QODER_CLI=1`（计划文档 §6 记着）在这个真会话里**复现不出来**，只有 `-cn` 那份，
 所以没用它——将来测到了再加，不为凑一家去猜；认不出来就落 `generic`，
 那是**带斜杠**那一档（2026-10-13 改，见上面第 2 条）。手工纠正：
-`JOBS_CODE_TOOL=claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`
+`JOBS_CODE_TOOL=workbuddy|claude|antigravity|mimo|mavis|qoder|qwen|generic|codex`
 （覆盖优先于自动探测，任意名字原样透传；自检末尾印的那串可选值是从表里派生的，
 不是手抄的字面量）。
 
@@ -280,11 +367,11 @@ Qoder 会话里存在」，看不到它们是不是桌面端也注入。这不�
 Qoder / agy 免斜杠 —— 抄件与正本分叉不会自己喊，所以现在由
 `ThePanelCarriesTheSameTable` 逐格对拍（名单不等，或又出现按单家公司硬编码的判断
 → 红）。表外的名字（`codex` 除外）仍然**有意**归一到 `generic`：归一之后差别只在那一行
-叫什么名字。`codex` 2026-10-13 起自己一格——它探测不到，但归一之后**命令形式也不再
-跟着它走**了，所以那不是「只差个名字」。
+叫什么名字。`codex` 2026-10-13 起自己一格，2026-11-09 起自动识别；若把它归一成
+`generic`，命令形式也会错，所以那不是「只差个名字」。
 
-换工具丢的东西**只剩斜杠那一层字形，而且只剩一家丢**：六家工具（Claude Code、
-Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code）都吃 `/job-apply` 这种敲法
+换工具丢的东西**只剩斜杠那一层字形，而且只剩一家丢**：七家工具（Claude Code、
+Antigravity CLI (agy)、MiMo、MCode、Qoder、Qwen Code、WorkBuddy）都吃 `/job-apply` 这种敲法
 （Claude 还带补全）；**认不出来的那一批现在也吃**（2026-10-13 改）；只有 Codex 要把它
 换成 `job-apply`，或直接把要办的事说出来——**同一批壳、同一行触发词**。分档的正本
 在上面那张表（`doctor.COMMAND_SYNTAX`），落地的地方是 `doctor.adapt_commands()`。

@@ -93,13 +93,13 @@ ALLOWED = {
         "test_the_bash_fence_pattern_matches 钉住（模式与旗标都比）。"
         "tests/test_skill_permissions_cover_its_workflow.py 里的第三份由 Task 5 删掉"
         "（改为 import _entries.commands_in），那张网只看 tools/，看不见它"),
-    ("tuple", "('.claude', '.agents')"): (
+    ("tuple", "('.claude', '.agents', '.codebuddy', '.workbuddy')"): (
         {"_entries.py:SHELL_FAMILIES", "lint_skills.py:SHELL_FAMILIES"},
-        "两族技能壳的根。同一个「必须能单独拷进临时目录跑」的契约（上面那条 "
-        "CopyableToolsStayStandalone）：正本在 lint 跑起来的那个临时目录里不存在，"
-        "import 不过去，只能各留一份。相等由本文件 test_the_shell_families_match "
-        "钉住 —— 两边一旦分叉，lint 会去查一族根本不存在的外壳，而生成器真正写的"
-        "那两族没人查"),
+        "各族技能壳的根（2026-11-09 接 WorkBuddy 时从两族扩到四族）。同一个「必须能"
+        "单独拷进临时目录跑」的契约（上面那条 CopyableToolsStayStandalone）：正本在 "
+        "lint 跑起来的那个临时目录里不存在，import 不过去，只能各留一份。相等由本文件 "
+        "test_the_shell_families_match 钉住 —— 两边一旦分叉，lint 会去查一族根本不存在的"
+        "外壳，而生成器真正写的那几族没人查"),
 }
 
 

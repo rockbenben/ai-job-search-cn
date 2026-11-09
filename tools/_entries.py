@@ -43,7 +43,21 @@ ROOT = Path(__file__).resolve().parent.parent
 GENERATED_HEADER = ("<!-- 由 tools/gen_entries.py 生成："
                     "改 workflows/INDEX.md 或 tools/_entries.py，别改这里 -->")
 
-SHELL_FAMILIES = (".claude", ".agents")
+#: 各族技能壳的根，由 `tools/gen_entries.py` 一次写全、逐字相同。
+#:
+#: - `.claude/skills/`：Claude Code 唯一的运行时技能目录。
+#: - `.agents/skills/`：Claude 以外那批工具读的（含可插拔平台渠道）。
+#: - `.codebuddy/skills/`：WorkBuddy/CodeBuddy 的项目级技能目录，CLI 文档与
+#:   桌面版 bundle 的「启动时加载的配置」清单里都点名了它。
+#: - `.workbuddy/skills/`：WorkBuddy 桌面版会话说明里给的项目级目录。
+#:
+#: ⚠️ 后两族是**同一个工具的两个候选落点**，不是两家工具：2026-11-09 在
+#: WorkBuddy 5.9.3 上量到两处都有证据（bundle 里 `.codebuddy/skills/` 在启动加载
+#: 清单、会话说明写 `.workbuddy/skills/`），但**没能从会话内部量出桌面版究竟扫哪
+#: 一处**。按「量不出来就别猜」的规矩两处都落，代价是生成物多一族；哪天实测出
+#: 只认一处，从本元组删掉另一处再跑生成器即可。`.gitignore` 为 `.workbuddy/skills/`
+#: 开了精确例外，让这一族照样入库（其余 `.workbuddy/` 数据仍不进版本库）。
+SHELL_FAMILIES = (".claude", ".agents", ".codebuddy", ".workbuddy")
 
 #: 手写、不生成的壳。`job-application-assistant` 没有对应的工作流文件，
 #: 它是「聊到求职就自动接管」的路由壳，正文是三十几行的边界说明，不是壳套正文。
@@ -99,6 +113,21 @@ PORTAL_BASH = (
     "Bash(node .agents/skills/liepin-search/cli/src/cli.ts:*)",
     "Bash(bun run .agents/skills/liepin-search/cli/src/cli.ts:*)",
 )
+
+#: 工具自带浏览器能力的程序名级授权。**只批程序名，不开宽授权**（与
+#: `Bash(pdftotext:*)` 同形）。
+#:
+#: WorkBuddy 5.9.3 自带 `agent-browser` 插件（vercel-labs/agent-browser CLI，
+#: 首次使用自动安装），通过 Bash 调 `agent-browser open / snapshot / close`。
+#: 它**不是** WorkBuddy 的 MCP 工具，所以壳的 `allowed-tools` 里没有这一条时，
+#: `/job-scrape` 走顺位 1 会被逐次弹授权——浏览器能力明明在，却用不上。
+#:
+#: 为什么不从工作流的 ```bash 围栏派生：`AGENTS.md` 能力对照表要求 workflows/
+#: 正文只写**能力名**、不点名具体工具，浏览器落点按工具对号入座；把
+#: `agent-browser open …` 写进围栏等于把一家工具塞进共用的工作流正文。
+#: 这里走与 `PORTAL_BASH` 同一条路——按「正文提到这项能力」追加，判据在
+#: `_uses_browser()`。别家工具没有这个程序名，多一条白名单对它们无害。
+BROWSER_BASH = ("Bash(agent-browser:*)",)
 
 #: 跨壳共用的授权：**凡某个壳里已经批过的 Bash 条目，壳外也该批**。
 #:
@@ -540,8 +569,19 @@ def _uses_portal(workflow_text: str) -> bool:
     return ".agents/skills" in workflow_text or "cli/src/cli.ts" in workflow_text
 
 
+def _uses_browser(workflow_text: str) -> bool:
+    """这份工作流会不会走「浏览器取数与页面操作（含登录态）」这一档能力。
+
+    认的是 `AGENTS.md` 能力对照表里那项能力的**说法**，不是某家工具的名字：
+    正文只写能力名，所以对任何工具都成立。宁可给几条用不上的壳多带一条
+    程序名级白名单，也别让 WorkBuddy 下的 `/job-scrape` 卡在授权弹窗上。
+    """
+    return any(word in workflow_text for word in
+               ("浏览器取数", "浏览器渠道", "登录态", "能开浏览器"))
+
+
 def allowed_tools(name: str) -> list[str]:
-    """一个壳的 `allowed-tools` 全序列：基础能力 + 正文派生的 Bash + 渠道前缀。"""
+    """一个壳的 `allowed-tools` 全序列：基础能力 + 正文派生的 Bash + 渠道/浏览器前缀。"""
     tools = list(BASE_TOOLS)
     wf = ROOT / "workflows" / f"{name}.md"
     if not wf.is_file():
@@ -552,6 +592,10 @@ def allowed_tools(name: str) -> list[str]:
             tools.append(rule)
     if _uses_portal(text):
         for rule in PORTAL_BASH:
+            if rule not in tools:
+                tools.append(rule)
+    if _uses_browser(text):
+        for rule in BROWSER_BASH:
             if rule not in tools:
                 tools.append(rule)
     for extra in MANIFEST.get(name, {}).get("extra_tools", ()):
@@ -644,6 +688,13 @@ def render_shell(name: str) -> str:
     bare = it.get("bare", "")
     trigger_line = f"  触发词：{'、'.join(trig)}\n" if trig else ""
     bare_line = f"裸命令的行为：{bare}。\n" if bare else ""
+    wf = ROOT / "workflows" / f"{name}.md"
+    browser_line = (
+        "涉及浏览器时，先按当前会话实际提供的工具自动选择，执行 "
+        "`workflows/reference/cdp-portals.md`「执行时自动选择浏览器」；"
+        "不要只查某一家扩展，也不要从工具名推断已有登录态。\n"
+        if wf.is_file() and _uses_browser(wf.read_text(encoding="utf-8")) else ""
+    )
     return (
         "---\n"
         f"name: {name}\n"
@@ -659,6 +710,9 @@ def render_shell(name: str) -> str:
         f"# {it['cmd'].lstrip('/')}（壳）\n"
         "\n"
         f"读取并严格执行 `workflows/{name}.md`。\n"
+        "`allowed-tools` 是支持该字段的宿主使用的权限声明；其它宿主按当前会话"
+        "实际工具与权限执行，不把工具别名差异当成能力缺失。\n"
+        f"{browser_line}"
         "\n"
         "用户在这条命令后面给的内容（链接、公司名、方向词、整段职位描述）原样带进工作流。\n"
         # 索引表的第四列会把它那些路径原样抄进壳里（`job-resume` 那条就写着

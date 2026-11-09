@@ -142,7 +142,7 @@ python -m unittest discover -s tests -t .
 > `pip install pyyaml`），而 README 与 SETUP 都说「只用标准库」—— 
 > 新贡献者照着这一节敲，第一条就撞 `requires PyYAML`。
 
-- `lint_skills.py` 检查每个 `SKILL.md` 的结构（frontmatter、标题格式等），两族
+- `lint_skills.py` 检查每个 `SKILL.md` 的结构（frontmatter、标题格式等），各族
   （`.claude/skills/` 与 `.agents/skills/`）壳集合一致且每条工作流都有自己那两份壳，
   `.claude/commands/` 底下不再长出命令 stub（入口只有生成的技能壳这一种形态；手写的
   第二落点直接报错，指向 `workflows/INDEX.md` 与 `tools/gen_entries.py`），

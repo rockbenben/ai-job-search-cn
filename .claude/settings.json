@@ -4,6 +4,7 @@
     "allow": [
       "Skill(job-application-assistant)",
       "Agent",
+      "Bash(agent-browser:*)",
       "Bash(bun --version)",
       "Bash(bun run .agents/skills/liepin-search/cli/src/cli.ts:*)",
       "Bash(node --version)",

@@ -300,6 +300,12 @@ REQUIRED_IGNORE_RULES = [
     # 维护者的本机笔记：发布前清单（点名了哪些标识符要清）、历史 bundle。
     # 按设计就是「不该被别人看到、但本机需要」的那一类。
     ".private/",
+    # WorkBuddy 的本机数据（会话记忆、本机配置等）。2026-11-09 前写的是整目录
+    # `.workbuddy/`，**却从没进过这份必需清单**——删掉那行不会有任何守卫报警，
+    # 与 web/public/ 那次同一个脆处。接 WorkBuddy 时改成逐项忽略 + 精确放行
+    # `.workbuddy/skills/`，这条把「除技能壳外一律忽略」钉进必需清单；
+    # 放行那一条由 ALLOWED_IGNORE_NEGATIONS 单独审阅，两件事一起看。
+    ".workbuddy/*",
 ]
 
 # Negation (re-include) rules the template legitimately ships. .gitignore is
@@ -312,6 +318,14 @@ REQUIRED_IGNORE_RULES = [
 # so the widening is explicit and reviewable.
 ALLOWED_IGNORE_NEGATIONS = {
     "!documents/**/.gitkeep",
+    # 2026-11-09 接 WorkBuddy：只放行**由 tools/gen_entries.py 生成**的技能壳目录。
+    # 前面的 `.workbuddy/*` 仍然逐项忽略会话记忆、本机配置等所有其它一级子项，
+    # 这条只把 `skills/` 这一个目录重新包含进来 —— 那边装的全是入库的
+    # SKILL.md 生成物，不含任何个人数据。放行范围精确到目录本身（不是
+    # `!.workbuddy/**`），所以不会连带把 memory/ 一起放出来；
+    # `test_security_guards.py` 与 `git check-ignore` 都验过 memory 仍在忽略内。
+    # 若哪天这条被放宽成通配、或 skills/ 下开始写个人数据，守卫要重新审。
+    "!.workbuddy/skills/",
 }
 
 FORBIDDEN_SCRIPTS = {"preinstall", "install", "postinstall", "prepare", "prepack"}

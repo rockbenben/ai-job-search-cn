@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tools._entries import SHELL_FAMILIES
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LINTER_SCRIPT = REPO_ROOT / "tools" / "lint_skills.py"
@@ -61,7 +63,7 @@ class LinterRepoFixture(unittest.TestCase):
         # 壳却没有正文」那条判据（test_shell_in_both_families_without_workflow_fails）
         # 会把后者判红，而本文件大半测试都从 make_layout() 起。换句话说这份夹具今天
         # 同时是那条判据的**反向对照** —— 路由壳不许被点着，点着了这里一起红。
-        for fam in (".claude", ".agents"):
+        for fam in SHELL_FAMILIES:
             skill = self.root / fam / "skills" / "job-application-assistant" / "SKILL.md"
             skill.parent.mkdir(parents=True)
             skill.write_text(
@@ -128,15 +130,15 @@ class SettingsShapeTests(LinterRepoFixture):
 
 
 class WorkflowLayoutTests(LinterRepoFixture):
-    """workflows/ 布局检查：壳指向、两族各一份、残留 stub、中立性。"""
+    """workflows/ 布局检查：壳指向、各族各一份、残留 stub、中立性。"""
 
     def make_entry(self, stem):
-        """给 `workflows/<stem>.md` 在**两族各**放一份壳。
+        """给 `workflows/<stem>.md` 在**各族各**放一份壳。
 
-        生成器（`tools/gen_entries.py`）就是一次落两族，夹具只落一族的话，
+        生成器（`tools/gen_entries.py`）一次写全各族，夹具只落一族的话，
         「两族壳集合一致」那条守卫会先红，掩盖掉本条测试真正要验的那一项。
         """
-        for fam in (".claude", ".agents"):
+        for fam in SHELL_FAMILIES:
             shell = self.root / fam / "skills" / stem / "SKILL.md"
             shell.parent.mkdir(parents=True, exist_ok=True)
             shell.write_text(
@@ -243,7 +245,7 @@ class WorkflowLayoutTests(LinterRepoFixture):
         「它不该顺手过滤掉悬空壳」也一并钉住了：见 `command_shells()` 的那条 ⚠️。
         """
         self.make_layout()
-        for fam in (".claude", ".agents"):
+        for fam in SHELL_FAMILIES:
             shell = self.root / fam / "skills" / "ghost" / "SKILL.md"
             shell.parent.mkdir(parents=True)
             shell.write_text("---\nname: ghost\ndescription: d\n---\n\n"
@@ -252,7 +254,7 @@ class WorkflowLayoutTests(LinterRepoFixture):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         out = result.stdout.replace("\\", "/")
         # 两族**分别**报：只报一族看不出另一族是不是也带着同一份悬空壳
-        for fam in (".claude", ".agents"):
+        for fam in SHELL_FAMILIES:
             self.assertIn(f"{fam}/skills/ghost/SKILL.md: no workflows/ghost.md", out)
         # 指引要给去处：索引 + 生成器，与残留 stub 那条同样一条不落
         self.assertIn("workflows/INDEX.md", out)
