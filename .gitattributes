@@ -6,4 +6,6 @@
 # 加全局规则会让老 clone 重排整份文件的行尾）。
 .claude/skills/*/SKILL.md text eol=crlf
 .agents/skills/*/SKILL.md text eol=crlf
+.codebuddy/skills/*/SKILL.md text eol=crlf
+.workbuddy/skills/*/SKILL.md text eol=crlf
 .claude/settings.json text eol=crlf

@@ -90,6 +90,42 @@ class GeneratedEntriesAreCurrent(unittest.TestCase):
             self.assertFalse(raw.replace(b"\r\n", b"").count(b"\n"),
                              f"{path.name} 里混进了裸 LF")
 
+    @unittest.skipUnless(shutil.which("git"), "需要 Git 验证检出行尾")
+    def test_checkout_keeps_crlf_without_autocrlf(self):
+        """模拟 Linux 检出，避免 Windows 的 autocrlf 掩盖新族漏配行尾规则。
+
+        除生成物外也覆盖手写路由壳：它同样必须与其它族逐字一致。
+        不复制个人数据，不提交，只从临时索引检出。
+        """
+        paths = set(gen_entries.desired_files(ROOT))
+        paths.update(ROOT / fam / "skills" / name / "SKILL.md"
+                     for fam in _entries.SHELL_FAMILIES
+                     for name in _entries.HANDWRITTEN_NAMES)
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td) / "repo"
+            checkout = Path(td) / "checkout"
+            repo.mkdir()
+
+            def git(*args):
+                return subprocess.run(
+                    ["git", "-c", "core.autocrlf=false", "-C", str(repo), *args],
+                    check=True, capture_output=True)
+
+            git("init", "--quiet")
+            shutil.copyfile(ROOT / ".gitattributes", repo / ".gitattributes")
+            for path in paths:
+                target = repo / path.relative_to(ROOT)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(path.read_bytes().replace(b"\r\n", b"\n"))
+            git("add", "--all")
+            git("checkout-index", "--all", f"--prefix={checkout.as_posix()}/")
+            for path in sorted(paths):
+                rel = path.relative_to(ROOT)
+                with self.subTest(path=rel.as_posix()):
+                    expected = (repo / rel).read_bytes().replace(b"\n", b"\r\n")
+                    self.assertEqual((checkout / rel).read_bytes(), expected,
+                                     f"{rel} 检出后不是 CRLF，检查 .gitattributes")
+
 
 if __name__ == "__main__":
     unittest.main()
