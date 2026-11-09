@@ -180,7 +180,7 @@ class TheAllowedCopiesReallyAgree(unittest.TestCase):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)
-            (root / "users" / "空壳" / "profile").mkdir(parents=True)
+            (root / "users" / "空壳" / "profile").mkdir(parents=True, exist_ok=True)
             line = _cli.user_list_line(root)
         self.assertIn("还没建档，切过去是空的", line,
                       "正本没说这句话 —— 底下那半条就是在空集上断言")
@@ -217,10 +217,10 @@ class TheAllowedCopiesReallyAgree(unittest.TestCase):
         live = dict(gone, expired=False, queuedDays=9, queuedLong=False)
         with tempfile.TemporaryDirectory() as d:
             tmp = pathlib.Path(d)
-            (tmp / "web" / "public").mkdir(parents=True)
+            (tmp / "users" / "甲" / "job_scraper" / "dashboard").mkdir(parents=True, exist_ok=True)
             udir = tmp / "users" / "甲"
-            udir.mkdir(parents=True)
-            (tmp / "web" / "public" / "data.json").write_text(
+            udir.mkdir(parents=True, exist_ok=True)
+            (tmp / "users" / "甲" / "job_scraper" / "dashboard" / "data.json").write_text(
                 json.dumps({"activeUser": "甲",
                             "jobs": [gone] * 3 + [live] * 4},
                            ensure_ascii=False), encoding="utf-8")

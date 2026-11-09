@@ -384,10 +384,10 @@ class SellableWithoutMaterialsAsksBeforeItAssumes(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = pathlib.Path(td)
             u = root / "users" / "某人"
-            (u / "job_scraper").mkdir(parents=True)
-            (root / "web" / "public").mkdir(parents=True)
+            (u / "job_scraper").mkdir(parents=True, exist_ok=True)
+            (root / "users" / "某人" / "job_scraper" / "dashboard").mkdir(parents=True, exist_ok=True)
             (root / ".active_user").write_text("某人", encoding="utf-8")
-            (root / "web" / "public" / "data.json").write_text(
+            (root / "users" / "某人" / "job_scraper" / "dashboard" / "data.json").write_text(
                 json.dumps({"activeUser": "某人", "jobs": jobs},
                            ensure_ascii=False), encoding="utf-8")
             # 没有 `url` 的岗也要能构造出来 —— 「对不上职位库」那一支正是靠它验的。

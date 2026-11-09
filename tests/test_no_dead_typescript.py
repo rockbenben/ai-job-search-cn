@@ -19,6 +19,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "web" / "src"
 
+def imported_paths(source):
+    return set(re.findall(
+        r"""(?:from\s+|import\s*\(\s*)["']\.{1,2}/([\w/.-]+)["']""", source))
+
 
 class NoDeadExports(unittest.TestCase):
 
@@ -44,11 +48,17 @@ class NoDeadExports(unittest.TestCase):
     def test_no_orphan_files(self):
         files = {p: p.read_text(encoding="utf-8") for p in SRC.rglob("*.ts*")}
         allsrc = "\n".join(files.values())
-        imported = set(re.findall(r'from "\.{1,2}/([\w/.-]+)"', allsrc))
+        imported = imported_paths(allsrc)
         orphan = [str(p.relative_to(SRC)) for p in files
                   if p.stem != "main"
                   and not any(p.stem == Path(i).stem for i in imported)]
         self.assertEqual(orphan, [], "没被任何地方 import 的文件：\n  " + "\n  ".join(orphan))
+
+    def test_dynamic_imports_are_dependencies(self):
+        self.assertEqual(imported_paths(
+            'import { App } from "./App";\n'
+            'const Panel = lazy(() => import("./components/Panel"));\n'),
+            {"App", "components/Panel"})
 
     def test_the_detector_can_fail(self):
         """变异内建：只出现一次的导出必须被判成死的。"""

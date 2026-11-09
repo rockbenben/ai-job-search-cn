@@ -32,6 +32,8 @@
 
 from __future__ import annotations
 
+from file_lock import file_lock, locked
+
 import argparse
 import hashlib
 import os
@@ -648,6 +650,7 @@ def run_cli(main, argv=None) -> int:
         return 2
 
 
+@locked(lambda path: path)
 def load_json_stamped(path):
     """读 JSON，同时记下版本戳。与 `atomic_write(..., expect=...)` 配对用。
 
@@ -699,78 +702,27 @@ def _stamp_of(p) -> tuple:
     return (st.st_mtime_ns, st.st_size)
 
 
+@locked(lambda path, *a, **kw: path)
 def atomic_write(path, text: str, *, encoding: str = "utf-8",
                  newline: str | None = None,
                  expect: tuple | None = None) -> tuple:
-    """写文件时**不要先把它截断**——写临时文件再原子替换。
+    """Atomically replace a file while holding its cooperating-writer lock.
 
-    `expect` 传 `load_json_stamped` 给的版本戳时，会在替换前再比一次：
-    文件被别人动过就抛 `StaleWrite`，**不写**。
-
-    ## `expect` 为什么值得有：实测过的静默数据丢失
-
-    本文件下面写着「跨进程没有锁……最后一个替换的赢」——那对**短窗口**的写是对的
-    （两个进程各自读完立刻写，谁后写谁生效，本来就是无锁语义）。
-    但**长窗口**不是这个语义，它是丢数据：
-
-        命令行侧读职位库  →  ……AI 评分十几分钟……  →  整份写回
-                              ↑ 用户在总览页点了「不投」，已经落盘
-
-    命令行那份是十几分钟前的快照，写回去把用户那一下**整个抹掉，且不报错**。
-    2026-08-19 实测复现：面板写入 `skipped`，命令行写回后变回 `ranked`，
-    `skip_reason` 消失。用户以为点上了，刷新才发现没有。
-
-    加了 `expect` 之后，这种情况**抛异常而不是悄悄覆盖**——调用方重读一次
-    再把自己的改动应用上去即可。**把静默的数据丢失换成大声的报错**，
-    是这里最省的正确做法：真造一把跨进程锁，要处理死锁、超时、残留锁文件，
-    而它们每一个都比现在这个问题更难查。
-
-    ## 为什么这条要单拎出来
-
-    2026-08-13 第 9 轮检查发现一处方向反了的不对称：
-
-        web/public/data.json        派生快照，丢了能重新生成   → 原子写
-        users/*/job_scraper/seen_jobs.json   1246 条职位，唯一副本 → 裸 write_text
-        users/*/job_search_tracker.csv       76 条投递记录        → 裸 write_text
-
-    `Path.write_text` 走的是 `open(mode="w")`：**它先把文件截断成 0 字节，再写内容**。
-    中途被打断——Ctrl+C、断电、磁盘满、进程被杀——文件就停在空的或半截的状态。
-    派生快照丢了跑一次导出就回来；**原始数据丢了就是丢了**。
-
-    而这个仓库的日常恰恰是「长跑的命令 + 随时可能 Ctrl+C」：`/job-auto` 一跑几十分钟，
-    中间反复写 `seen_jobs.json`。
-
-    `os.replace` 在同一文件系统内是原子的（POSIX rename / Windows MoveFileEx），
-    并发的读要么看到旧的完整文件、要么看到新的完整文件，不存在中间态。
-
-    临时文件与目标同目录——跨盘 `os.replace` 会退化成拷贝，失去原子性。
-
-    **返回写完之后那个文件的戳。** 戳在 `os.replace` **之前**从临时文件上取，
-    因为替换后再 `stat()` 会拿到「替换之后又被别人写了一次」的戳 —— 调用方
-    拿它当下一笔的 `expect`，就会把别人的改动当成自己的基线。临时文件的
-    mtime/size 会原样跟着 rename 过去。
+    Long-running callers pass the version returned by load_json_stamped.
+    Short read/modify/write operations hold the same reentrant lock throughout.
+    External editors do not participate in this locking protocol.
     """
     from pathlib import Path as _P
     import os as _os
     import threading as _th
     import time as _time
     p = _P(path)
-    # **临时文件名必须唯一。** 固定成 `<名>.tmp` 时，两个并发的写会踩同一个中转文件：
-    # A 写完 → B 覆盖 → A 替换成功（临时文件没了）→ B 替换时
-    # `FileNotFoundError: [WinError 2] 系统找不到指定的文件`。
-    #
-    # 2026-08-13 实测撞上：面板那个「并发点几下按钮」的测试当场抛这个异常。
-    # 同进程有 `serve._WRITE_LOCK` 挡着，但**跨进程没有锁**——命令行工具
-    # （`/job-rank` 写 seen_jobs.json）和面板的导出子进程完全可能同时落盘。
-    #
-    # 带上 pid + 线程 id：并发时各写各的中转文件，最后一个替换的赢
-    # （那是「谁后写谁生效」，本来就是无锁写入的语义），但不会再有人替换一个
-    # 已经被别人搬走的文件。留下的垃圾也认得出是哪个进程的。
+    # Keep each writer temporary file distinct, including across processes.
     tmp = p.with_name(f"{p.name}.{_os.getpid()}.{_th.get_ident()}.tmp")
     # `newline` 要透传：CSV 必须用 newline="" 关掉换行转换，
     # 少这一路，台账每写一次就多出一堆空行。
     # 戳是 `(mtime_ns, size)` —— 见 `load_json_stamped` 里为什么不能只比 mtime。
-    if expect is not None and p.exists() and _stamp_of(p) != expect:
+    if expect is not None and (_stamp_of(p) if p.exists() else (0, 0)) != expect:
         # **只陈述事实，不给指令。** 该怎么办取决于谁在听：
         # 命令行前面的人要的是「把这条命令再跑一遍」（`run_cli` 会补上这句），
         # 而库的调用方要的是「重新读一次再应用」——写在这个类的 docstring 里。
@@ -928,7 +880,7 @@ def read_tracker_rows(path) -> list:
         return []
 
 
-def load_user_state(seen_file) -> dict:
+def load_user_state(seen_file, *, strict=False) -> dict:
     """`{seen 的键: {"decision": "skipped"|"expired", "date": ..., "reason": ...}}`
 
     **每个值都保证是字典。** 上面那行只判了外层：外层是字典而**某一行是
@@ -949,21 +901,24 @@ def load_user_state(seen_file) -> dict:
     if not p.is_file():
         return {}
     try:
-        d = _json.loads(p.read_text(encoding="utf-8"))
+        d = _json.loads(p.read_text(encoding="utf-8-sig"))
+        if not isinstance(d, dict) or (strict and any(not isinstance(v, dict) for v in d.values())):
+            raise ValueError("用户决定必须是 JSON 对象且每条记录为对象")
     except (ValueError, OSError):
-        return {}
-    if not isinstance(d, dict):
+        if strict:
+            raise ValueError("用户决定文件读不出来，原文件已保留，请修复后重试") from None
         return {}
     return {k: (v if isinstance(v, dict) else {}) for k, v in d.items()}
 
 
+@locked(lambda seen_file, *a, **kw: user_state_path(seen_file))
 def set_user_decision(seen_file, key: str, decision: str | None, **extra) -> dict:
     """写一条用户决定；`decision=None` 表示撤销（删掉这个键）。
 
     整份读-改-写，但这份只有几十 KB、且**只有面板会写**，窗口是毫秒级。
     """
     import json as _json
-    st = load_user_state(seen_file)
+    st = load_user_state(seen_file, strict=True)
     row = dict(st.get(key) or {})
     if decision is None:
         # **只撤销「决定」那三个键，别把整行删掉。** 同一行上还挂着别的标记
@@ -1007,10 +962,11 @@ def set_hr_viewed(seen_file, key: str, viewed) -> dict:
     return _set_flag(seen_file, key, "hr_viewed", viewed)
 
 
+@locked(lambda seen_file, *a, **kw: user_state_path(seen_file))
 def _set_flag(seen_file, key: str, name: str, value) -> dict:
     import json as _json
     from datetime import date as _date
-    st = load_user_state(seen_file)
+    st = load_user_state(seen_file, strict=True)
     row = dict(st.get(key) or {})
     if value is None:
         row.pop(name, None)
@@ -3156,3 +3112,7 @@ def detect_code_tool() -> str:
         return "mavis"
     return "generic"
 
+
+def dashboard_dir(user: str, root=None) -> Path:
+    """Private, rebuildable dashboard files belonging to one user."""
+    return store_dir(user, root) / "dashboard"

@@ -34,7 +34,7 @@ def main(argv=None):
     user = _cli.pick_user(args.user, root=ROOT)
     if args.target is None or args.target <= 0:
         parser.error("请提供大于零的 --target 目标数量")
-    data = json.loads((ROOT / "web/public/data.json").read_text(encoding="utf-8"))
+    data = json.loads((_cli.dashboard_dir(user, ROOT) / "data.json").read_text(encoding="utf-8"))
     if data.get("activeUser") != user:
         raise SystemExit("总览用户不一致，请运行 python tools/export_web_data.py 后重试")
     prefs_file = ROOT / "users" / user / "job_scraper/prefs.json"

@@ -45,7 +45,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
 import _cli  # noqa: E402,F401  import 即把管道输出定到 UTF-8（见 _cli.force_utf8_output）
-import export_web_data as ex  # noqa: E402  复用 stable_id，别造第二套 id
 
 #: 详情里值得回填进 seen_jobs 的字段。与 `scrape.md` Step 4 的 schema 同名。
 #: `description` **不在**这里——它留在详情文件里，不进 seen_jobs。
@@ -110,7 +109,7 @@ def store_dir(user: str) -> Path:
 
 
 def key_for(url: str, title: str) -> str:
-    return ex.stable_id(url or "", title or "")
+    return _cli.stable_id(url or "", title or "")
 
 
 class DetailIndex(dict):
@@ -165,7 +164,7 @@ def _seen(user: str) -> tuple[Path, dict]:
     p = ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
     if not p.is_file():
         raise SystemExit(_cli.no_store(p))
-    return p, json.loads(p.read_text(encoding="utf-8"))
+    return p, _cli.read_json(p)
 
 
 def _seen_stamped(user: str):
@@ -284,6 +283,17 @@ def merge_into_seen(user: str, apply: bool) -> dict:
             "refined": refined}
 
 
+def select_entry(seen, reference):
+    if reference in seen and not reference.startswith(("http://", "https://", "//")):
+        return seen[reference]
+    matches = [e for e in seen.values() if isinstance(e, dict)
+               and (key_for(e.get("url") or "", e.get("title") or "") == reference
+                    or _cli.norm_url(e.get("url") or "") == _cli.norm_url(reference))]
+    if len(matches) > 1:
+        raise ValueError("这个链接对应多个岗位，请使用岗位 ID 指定完整岗位")
+    return matches[0] if matches else None
+
+
 def save_from_text(user: str, url: str, body: str, apply: bool) -> dict:
     """把刚在浏览器里读到的一份 JD 正文**一步存进库**。
 
@@ -314,8 +324,7 @@ def save_from_text(user: str, url: str, body: str, apply: bool) -> dict:
     _, data = _seen(user)
     seen = _cli.seen_of(data)
     want = _cli.norm_url(url or "")
-    hit = next((e for e in seen.values()
-                if isinstance(e, dict) and _cli.norm_url(e.get("url") or "") == want), None)
+    hit = select_entry(seen, url)
     if hit is None:
         raise SystemExit(
             f"职位库里没有这条链接：{url}\n"
@@ -411,12 +420,8 @@ def main(argv=None) -> int:
         # 传空标题会算出另一个键，然后报「没抓过」。这个坑本会话踩过一次，
         # 当时把 281 份有正文的详情全报成了「没有 JD」。
         _, seen = _seen(user)
-        title = ""
-        for v in _cli.seen_of(seen).values():
-            if _cli.norm_url(v.get("url") or "") == _cli.norm_url(args.show):
-                title = v.get("title") or ""
-                break
-        d = load(user, args.show, title)
+        hit = select_entry(_cli.seen_of(seen), args.show)
+        d = load(user, hit.get("url") or "", hit.get("title") or "") if hit else None
         if not has_body(d):
             print(f"库里没有这份 JD 的正文（{args.show}）。"
                   f"抓一份存进来：python tools/jd_store.py --save {args.show} --apply")

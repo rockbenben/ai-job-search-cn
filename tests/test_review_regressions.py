@@ -167,7 +167,7 @@ class ReviewRegressions(unittest.TestCase):
             first = hashlib.sha256("张三".encode()).hexdigest()[:20]
             second = hashlib.sha256("李四".encode()).hexdigest()[:20]
             for namespace, content in ((first, b"first pdf"), (second, b"second pdf")):
-                folder = fixture.tmp / "web" / "public" / "pdf" / namespace
+                folder = fixture.tmp / "users" / "张三" / "job_scraper" / "dashboard" / "pdf" / namespace
                 folder.mkdir(parents=True)
                 (folder / "resume.pdf").write_bytes(content)
             server = ThreadingHTTPServer(("127.0.0.1", 0), serve.Handler)

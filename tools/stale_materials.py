@@ -157,7 +157,7 @@ def plan(user: str, out_urls: set | None = None) -> tuple[list, dict]:
     byurl = {_cli.norm_url(v.get("url") or ""): v for v in seen.values() if v.get("url")}
     if out_urls is None:
         out_urls = set()
-        snap = ROOT / "web" / "public" / "data.json"
+        snap = _cli.dashboard_dir(user, ROOT) / "data.json"
         if snap.is_file():
             d = json.loads(snap.read_text(encoding="utf-8"))
             out_urls = {_cli.norm_url(j.get("url") or "") for j in d.get("jobs", [])

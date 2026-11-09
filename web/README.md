@@ -44,7 +44,7 @@ npm run typecheck
 ## 接你自己的真实数据
 
 ```bash
-python tools/export_web_data.py          # 导出到 web/public/（已 gitignore）
+python tools/export_web_data.py          # 导出到 users/<活动用户>/job_scraper/dashboard/（已 gitignore）
 cd web && npm run build && cd ..
 python tools/serve.py                    # 起本地服务，自动打开浏览器
 ```
@@ -205,3 +205,5 @@ antd 6 起 CSS variables 主题**默认开启且不可关**（`cssVar` 只剩 pr
   ——一次性、有权威、不可自行摘掉。方章是这个语义的正确形制。
 - **匹配理由不用图表**：曾经做过一条「段宽 = 权重、高度 = 得分」的权重带，后来撤了
   ——它展示的是打分器怎么算，而用户要的是投不投、为什么、怎么投。理由直接用文字列出。
+
+总览快照与 PDF 按用户保存在 job_scraper/dashboard/ 下，由本地服务提供。Vite 禁用 public 目录，旧的 public 文件不会进入构建或开发静态资源。

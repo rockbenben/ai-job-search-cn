@@ -47,11 +47,11 @@ def _run(jobs):
     from unittest import mock
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / "web" / "public").mkdir(parents=True)
-        (root / "web" / "public" / "data.json").write_text(
+        (root / "users" / "u" / "job_scraper" / "dashboard").mkdir(parents=True, exist_ok=True)
+        (root / "users" / "u" / "job_scraper" / "dashboard" / "data.json").write_text(
             json.dumps({"activeUser": "u", "jobs": jobs}, ensure_ascii=False),
             encoding="utf-8")
-        (root / "users" / "u").mkdir(parents=True)
+        (root / "users" / "u").mkdir(parents=True, exist_ok=True)
         (root / ".active_user").write_text("u", encoding="utf-8")
         with mock.patch.object(ap, "ROOT", root), mock.patch.object(ap, "_USER", ["u"]):
             return ap.check_dimension_notes_explain_something({}, {})

@@ -313,11 +313,20 @@ def off_supply_note(off) -> str:
             f"要开就在这一页的「招聘网站」那一段点一下")
 
 
-def match_application(entry: dict, applications: list, entries) -> dict | None:
+def application_index(applications, entries):
+    apps, peers = {}, {}
+    for rows, grouped in ((applications, apps), (entries, peers)):
+        for row in rows:
+            url = _cli.norm_url(row.get("url") or "").split("#", 1)[0]
+            grouped.setdefault(url, []).append(row)
+    return apps, peers
+
+
+def match_application(entry: dict, applications: list, entries, *, index=None) -> dict | None:
     url = _cli.norm_url(entry.get("url") or "").split("#", 1)[0]
-    candidates = [a for a in applications
+    candidates = index[0].get(url, []) if index is not None else [a for a in applications
                   if url and _cli.norm_url(a.get("url") or "").split("#", 1)[0] == url]
-    peers = [e for e in entries
+    peers = index[1].get(url, []) if index is not None else [e for e in entries
              if _cli.norm_url(e.get("url") or "").split("#", 1)[0] == url]
     exact = [a for a in candidates if a.get("url") == entry.get("url")]
     if len(candidates) > 1 or len(peers) > 1 or not exact:
@@ -1744,7 +1753,11 @@ def _fuzzy(a: str, b: str) -> bool:
     return bool(a) and bool(b) and (a in b or b in a)
 
 
-def match_tracker(job: dict, url: str, tracker: list):
+def normalize_role(role: str) -> str:
+    return normalize_key(re.sub(r"[（(](?:社招|急招)[）)]$", "", role or ""))
+
+
+def match_tracker(job: dict, url: str, tracker: list, *, strict=False):
     """source URL 精确优先；退化 company+role 模糊（与 /job-html-report 同法）。
 
     **URL 比对前先剥协议**（`_cli.norm_url`）。同一个岗在台账里存 `https://`、
@@ -1755,6 +1768,20 @@ def match_tracker(job: dict, url: str, tracker: list):
     同名材料目录、`validThrough` vs `deadline`、http vs https），这是第五处。
     """
     key = _cli.norm_url(url)
+    exact = [row for row in tracker
+             if key and _cli.norm_url(row.get("source")) == key
+             and normalize_role(row.get("role") or "") == normalize_role(job.get("title") or "")]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        if strict:
+            raise ValueError("同一岗位有多条投递记录，请先核对投递记录")
+        return None
+    same_url = [row for row in tracker if key and _cli.norm_url(row.get("source")) == key]
+    if len(same_url) > 1:
+        if strict:
+            raise ValueError("这个链接对应多个岗位，请先核对完整职位名")
+        return None
     for row in tracker:
         if key and _cli.norm_url(row.get("source")) == key:
             # URL 相同不足以断定是同一个职位：51job 实测同一详情 URL 下挂着两个不同
@@ -1762,7 +1789,7 @@ def match_tracker(job: dict, url: str, tracker: list):
             # 乙随之从待投区消失。行里填了 role 就一并比对；没填（手工记的行常见）
             # 才退回只比 URL，避免因缺列而漏匹配。
             role = (row.get("role") or "").strip()
-            if role and not _fuzzy(role, job.get("title", "")):
+            if role and normalize_role(role) != normalize_role(job.get("title", "")):
                 continue
             return row
     for row in tracker:
@@ -1770,7 +1797,7 @@ def match_tracker(job: dict, url: str, tracker: list):
         # 同公司的新岗会被子串模糊匹配吃掉（「后端工程师」是「后端工程师（社招）」的
         # 子串），于是一个全新职位被标成已投、从待投区消失，ranked_urls 也随之为空。
         source = _cli.norm_url(row.get("source"))
-        if key and source and source != key:
+        if key and source:
             continue
         # **脱敏串不构成公司身份。** 猎聘给猎头岗打的「某知名公司」「某上海互联网
         # 公司」是占位符不是名字：全库 2638 个岗里 1355 个脱敏，光「某知名公司」

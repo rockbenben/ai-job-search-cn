@@ -53,15 +53,15 @@ class _Temp:
         self._t = tempfile.TemporaryDirectory()
         self.tmp = Path(self._t.name)
         u = self.tmp / "users" / "张三"
-        (u / "job_scraper").mkdir(parents=True)
-        (u / "documents" / "applications" / "某公司_某岗").mkdir(parents=True)
-        (self.tmp / "web" / "public").mkdir(parents=True)
+        (u / "job_scraper").mkdir(parents=True, exist_ok=True)
+        (u / "documents" / "applications" / "某公司_某岗").mkdir(parents=True, exist_ok=True)
+        (self.tmp / "users" / "张三" / "job_scraper" / "dashboard").mkdir(parents=True, exist_ok=True)
         (self.tmp / ".active_user").write_text("张三", encoding="utf-8")
         self.sj = u / "job_scraper" / "seen_jobs.json"
         self.sj.write_text(json.dumps({"seen": {}}), encoding="utf-8")
         self.eval_md = u / "documents" / "applications" / "某公司_某岗" / "evaluation.md"
         self.eval_md.write_text("初稿", encoding="utf-8")
-        self.data = self.tmp / "web" / "public" / "data.json"
+        self.data = self.tmp / "users" / "张三" / "job_scraper" / "dashboard" / "data.json"
 
         self.calls = 0
         self._saved = (srv.ROOT, srv._export_now)
@@ -127,7 +127,7 @@ class StaleUpstreamTriggersReexport(unittest.TestCase):
     def test_switching_users_is_picked_up(self):
         """切用户后面板必须换一份数据，否则会显示上一个人的职位。"""
         with _Temp() as t:
-            (t.tmp / "users" / "李四" / "job_scraper").mkdir(parents=True)
+            (t.tmp / "users" / "李四" / "job_scraper").mkdir(parents=True, exist_ok=True)
             _bump(t.tmp / ".active_user", "李四")
             self.assertTrue(srv.refresh_if_stale(), "切了用户还在用旧用户的快照")
 
@@ -158,7 +158,7 @@ class StaleUpstreamTriggersReexport(unittest.TestCase):
         """`profile/hr-answers.md` 是导出器的输入，也必须在刷新判据里。"""
         with _Temp() as t:
             hr = t.tmp / "users" / "张三" / "profile" / "hr-answers.md"
-            hr.parent.mkdir(parents=True)
+            hr.parent.mkdir(parents=True, exist_ok=True)
             old = time.time() - 100
             for p in t.tmp.rglob("*"):
                 if p.is_file():

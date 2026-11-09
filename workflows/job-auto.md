@@ -174,7 +174,7 @@ while 真:
     没给          → /job-apply（可投的全部出材料，不限量）
     照 job-apply.md 第 0 步的批量部分（判词闸门表在那里）
     ⚠️ 别先自己判断「还有没有可投但没材料的岗」——直接按那七条从
-       web/public/data.json 选，选出来是空集就是没活。判据见下。
+       users/<活动用户>/job_scraper/dashboard/data.json 选，选出来是空集就是没活。判据见下。
     （产出定义在那里：深评 + 开场白；定制简历不进批量——特殊情况才 /job-cv）
     分批做时，每批写完盘后先跑这两条，再选下一批：
         python tools/audit_pipeline.py --sections   # 这一批小节写全没有，非零就是没写全
@@ -208,7 +208,7 @@ while 真:
     python tools/export_web_data.py     # **先刷新，再审计。** 上面四条 --apply
                                         # 刚改过职位库与话术，而下面那一档里
                                         # 有一条（「可投档却没材料」）读的正是
-                                        # `web/public/data.json`。不刷新的话它
+                                        # `users/<活动用户>/job_scraper/dashboard/data.json`。不刷新的话它
                                         # 判的是 writeback 补账**之前**的档位：
                                         # 刚被补账升上「值得投」的岗它看不见，
                                         # 刚被降下去的它照旧点名。
@@ -498,7 +498,7 @@ Step 6 那一眼够用 —— 而 `/job-apply` 承诺不依赖 Python，那条�
 > 事后能审计——**能审计不等于可复现**，别把前者当成后者。
 
 > ⚠️ **「还有没有活」不许自己算，按 `job-apply.md` 第 0 步那七条选。**
-> 那一节写得很清楚：**从 `web/public/data.json` 挑，不要照着 `seen_jobs.json`
+> 那一节写得很清楚：**从 `users/<活动用户>/job_scraper/dashboard/data.json` 挑，不要照着 `seen_jobs.json`
 > 自己再筛一遍**，`j["materials"] is falsy` 就是「还没出材料」这一条。
 > 选出来是空集，就是这一轮没有材料要做 —— 那是**结论**，不是需要另外验证的猜测。
 >
@@ -509,7 +509,7 @@ Step 6 那一眼够用 —— 而 `/job-apply` 承诺不依赖 Python，那条�
 > 去重的都错」。岗与材料的对应**只认职位链接**（`archive.py` 就是这么对的）。
 
 **收尾必须刷新面板。** 这一条原来整个漏了：auto 跑完写了一堆分数和材料，
-而 `web/public/data.json` 还是旧的——用户打开面板看到的是跑之前的状态，
+而 `users/<活动用户>/job_scraper/dashboard/data.json` 还是旧的——用户打开面板看到的是跑之前的状态，
 会以为什么都没发生。
 
 > **`--top <target>` 在没给 target 时是个空洞。** 2026-08-13 把 `--target` 的默认

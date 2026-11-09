@@ -247,8 +247,7 @@ class TheProbeRunsBeforeTheExpensivePart(unittest.TestCase):
         """「已经在跑」时用户要的还是那一页 —— 少这一步就得他自己复制地址。"""
         i = SRC.index("_running = probe_running(PORT)")
         seg = SRC[i:i + 500]
-        self.assertIn("webbrowser.open(", seg)
-        self.assertIn('JOBS_NO_BROWSER', seg)
+        self.assertIn("open_dashboard(", seg)
 
     def test_the_reason_is_recorded(self):
         i = SRC.index("# **先看这个端口上是不是已经有一个在跑。**")

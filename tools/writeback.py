@@ -523,6 +523,10 @@ def main(argv=None) -> int:
             # 按维度拼的说明 —— 两者本就不同字，拿「不同」当分叉判据会把 249 条
             # 手写正文一次性抹平。第一版正是这样，试运行当场报出要改 249 条。
             # 「数没变就别动这一格」在上一条注释里已经写过一次，这里是同一条。
+            for dimension in _cli.WEIGHTED_DIMS:
+                if dimension in dims and b.get(dimension) != dims[dimension]:
+                    if dimension not in ("技能与经验", "薪资与职级"):
+                        changes.append(f"同步{dimension}评分")
             if not changes:
                 continue
             if _cli.gate_in_verdict(verdict)[0] == "候选人明确排除":

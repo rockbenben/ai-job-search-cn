@@ -106,9 +106,9 @@ def _bounds(user: str):
 
     「没查」和「查过没有」是两件事：读不出时**一条都不改**，并说清原因。
     """
-    import audit_pipeline as ap
-    ap._USER[:] = [user]
-    return ap._annual_floor(), ap._annual_expect()
+    import salary_profile
+    return (salary_profile.annual_floor(user, ROOT),
+            salary_profile.annual_expect(user, ROOT))
 
 
 def plan(user: str, deep: bool = False) -> tuple[list, dict]:

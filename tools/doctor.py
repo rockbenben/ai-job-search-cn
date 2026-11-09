@@ -604,7 +604,7 @@ def ready_age(udir, today=None) -> dict:
     这次修的是它旁边那一队 —— 同样的病，只治了一半。
     """
     import datetime as _dt
-    snap = udir.parent.parent / "web" / "public" / "data.json"
+    snap = udir / "job_scraper" / "dashboard" / "data.json"
     if not snap.is_file():
         return {}
     try:
@@ -740,7 +740,7 @@ def count_ready(udir, seen: dict) -> tuple[int, int | None, int | None]:
     快照不在（新 clone、这台机器没跑过导出）才退回目录粗数，那时它偏大，
     但方向是对的：确实有一堆材料没发。
     """
-    snap = udir.parent.parent / "web" / "public" / "data.json"
+    snap = udir / "job_scraper" / "dashboard" / "data.json"
     if snap.is_file():
         try:
             import json as _json
@@ -848,7 +848,7 @@ def count_restock(udir) -> tuple[int | None, int | None]:
     读不到快照（新 clone、没跑过导出、或老导出没有这两个键）就返回
     `(None, None)`：调用方退回原来那条说法，不猜。
     """
-    snap = udir.parent.parent / "web" / "public" / "data.json"
+    snap = udir / "job_scraper" / "dashboard" / "data.json"
     if not snap.is_file():
         return None, None
     try:

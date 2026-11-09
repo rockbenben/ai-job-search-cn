@@ -21,6 +21,8 @@
 与校准）、`profile/hr-answers.md`（HR 反复问的那几句，他在总览页上定过稿的那一版）。`profile/candidate.md` 不存在 → 尚未初始化，引导用户执行
 `workflows/job-setup.md`。
 
+`/job-dashboard` 直接启动服务，用户检查交给服务，跳过资料读取与会话自检。
+
 ## 活动用户与多用户
 
 多人可共用一份 clone，各自数据独立。**所有个人数据位于 `users/<活动用户>/` 下**，
@@ -254,7 +256,7 @@ python tools/doctor.py
 
 ### 有一件事不必回命令行：改投递状态
 
-**用户要看总览页时你自己起 `python tools/serve.py`**，不要产出 HTML 再把路径贴给他——
+**用户要看总览页时你自己在后台任务起 `python tools/serve.py`**，不要产出 HTML 再把路径贴给他——
 新用户不知道该敲什么，单文件那条路点了按钮还写不回盘上。没权限就开口要授权。
 详见 `workflows/job-dashboard.md`。
 

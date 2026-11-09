@@ -41,6 +41,7 @@ import secrets
 import subprocess          # 导出走子进程（见 `_export_now`：同进程 import 会用旧代码）
 import sys
 import threading
+import time
 import webbrowser
 import datetime as _dt
 from datetime import date
@@ -419,7 +420,7 @@ def _job_and_row(job_id: str):
     # 写路径用严格的 `tracker.load`：GBK 台账降级成空表再写回，会把整份
     # 中文记录覆盖成一行。读/显示那条仍走 `bd.load_tracker` 的宽容版。
     _, trows = tracker.load(path)
-    return job, path, bd.match_tracker(job, job["url"], trows)
+    return job, path, bd.match_tracker(job, job["url"], trows, strict=True)
 
 
 def apply_status(job_id: str, status: str, reason: str | None = None) -> dict:
@@ -850,11 +851,11 @@ def refresh_if_stale() -> bool:
     判定放在数据出口这一个点上，谁改的、改了什么都不必知道。
     """
     warn_if_code_changed()      # 代码比进程新就喊一声（见它的说明：注释不是机制）
-    data = ROOT / "web" / "public" / "data.json"
     try:
         user = active_user()
     except NoActiveUser:
         return False                      # 没有活动用户：交给页面自己报，别让请求崩掉
+    data = _cli.dashboard_dir(user, ROOT) / "data.json"
     with _REGEN_LOCK:
         if not needs_reexport(data, user, sources_mtime(user)):
             return False
@@ -886,13 +887,17 @@ class Handler(BaseHTTPRequestHandler):
     # ---------- 工具 ----------
 
     def _send(self, code: int, body: bytes, ctype: str) -> None:
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        # 数据会被写操作改变，别让浏览器缓存出一个过期的视图
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            # 数据会被写操作改变，别让浏览器缓存出一个过期的视图
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            # 刷新、关闭页面或客户端超时会取消响应。
+            self.close_connection = True
 
     def _json(self, code: int, payload: dict) -> None:
         self._send(code, json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -924,11 +929,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:                 # noqa: N802
         path = urlparse(self.path).path
+        if path == "/api/health":
+            return self._json(200, {
+                "activeUser": active_user(),
+                "staleCode": warn_if_code_changed(),
+            })
         if path in ("/", "/index.html"):
             return self._serve_index()
         if path == "/data.json":
             refresh_if_stale()            # 命令行改过数据 → 刷新页面就能看到，不用记着跑导出
-            f = ROOT / "web" / "public" / "data.json"
+            f = _cli.dashboard_dir(active_user(), ROOT) / "data.json"
             # **重导失败时，别把上一个用户的数据发出去。**
             # `main()` 起服务前查过一次归属，但那只挡得住启动那一刻；
             # 用户在服务开着的时候跑 `/job-user 李四`，`needs_reexport` 认出
@@ -941,7 +951,7 @@ class Handler(BaseHTTPRequestHandler):
                 owner = json.loads(raw).get("activeUser", "")
             except (ValueError, TypeError):
                 owner = ""
-            if owner and owner != active_user():
+            if owner != active_user():
                 return self._send(
                     409,
                     json.dumps({"error": f"这份数据是「{owner}」的，而现在的用户是"
@@ -972,7 +982,7 @@ class Handler(BaseHTTPRequestHandler):
             user_namespace = hashlib.sha256(active_user().encode("utf-8")).hexdigest()[:20]
             if not path.startswith(f"/pdf/{user_namespace}/"):
                 return self._json(409, {"error": "这份简历链接属于其他用户或旧页面，请刷新总览"})
-            pub = (ROOT / "web" / "public").resolve()
+            pub = _cli.dashboard_dir(active_user(), ROOT).resolve()
             target = (pub / path.lstrip("/")).resolve()
             pdf_root = (pub / "pdf" / user_namespace).resolve()
             if not target.is_relative_to(pdf_root) or target.suffix.lower() != ".pdf":
@@ -1152,7 +1162,7 @@ class Handler(BaseHTTPRequestHandler):
         # 而界面还照常显示成功。宁可显式。
         tag = (f"<script>window.__API_TOKEN__={json.dumps(TOKEN)};"
                f"window.__API_USER__={json.dumps(active_user())};</script>")
-        injected = re.sub(r"(<head[^>]*>)", r"\1" + tag, html, count=1)
+        injected = re.sub(r"(<head[^>]*>)", lambda m: m.group(1) + tag, html, count=1)
         if injected == html:
             # 注不进去就别装作没事——静默降级正是这里最不该有的行为
             return self._send(500, (
@@ -1195,7 +1205,8 @@ def probe_running(port: int, timeout: float = 1.5) -> dict | None:
     """这个端口上已经有服务了吗？有就返回它的自述，没有返回 None。
 
     返回 `{"ours": bool, "user": str, "stale": [文件名]}`。
-    `ours` 靠 `/data.json` 里有没有 `activeUser` 认 —— 别的程序占着这个端口时
+    `ours` 靠健康接口里的 `activeUser` 认，旧服务回退到 `/data.json`。
+    别的程序占着这个端口时
     该说「换个端口」，不是「停掉旧的总览」。
     """
     import socket
@@ -1203,12 +1214,32 @@ def probe_running(port: int, timeout: float = 1.5) -> dict | None:
     import urllib.request
 
     with socket.socket() as sk:
+        # A free Windows loopback port can consume the entire connect timeout.
+        # An exclusive bind detects that case immediately without a connection.
+        if os.name == "nt":
+            sk.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        try:
+            sk.bind(("127.0.0.1", port))
+        except OSError:
+            pass
+        else:
+            return None
+    with socket.socket() as sk:
         sk.settimeout(timeout)
         if sk.connect_ex(("127.0.0.1", port)) != 0:
             return None
     try:
-        with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/data.json", timeout=timeout) as r:
+        try:
+            response = urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/api/health", timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            exc.close()
+            if exc.code != 404:
+                raise
+            # Older local servers have no health endpoint.
+            response = urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/data.json", timeout=timeout)
+        with response as r:
             d = json.loads(r.read().decode("utf-8"))
     except (OSError, ValueError, urllib.error.URLError):
         return {"ours": False, "user": "", "stale": []}
@@ -1246,6 +1277,85 @@ def report_running(info: dict, port: int, url: str) -> int:
     return 1
 
 
+def open_dashboard(url: str) -> None:
+    """报告浏览器是否接受打开请求，服务就绪与打开结果分别表述。"""
+    if os.environ.get("JOBS_NO_BROWSER") == "1":
+        print(f"总览已启动：{url}")
+        return
+    try:
+        opened = webbrowser.open(url)
+    except (OSError, webbrowser.Error):
+        opened = False
+    if opened:
+        print(f"已请求浏览器打开总览：{url}")
+    else:
+        print(f"总览已启动，浏览器未能自动打开，请点击：{url}")
+
+
+def start_background(user: str, port: int, timeout: float = 30) -> int:
+    """启动独立服务，确认就绪或报告本次启动失败后返回。"""
+    directory = _cli.dashboard_dir(user, ROOT)
+    directory.mkdir(parents=True, exist_ok=True)
+    log_path = directory / "serve.log"
+    options = {}
+    if os.name == "nt":
+        options["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        options["start_new_session"] = True
+    # 子进程只负责服务，确认就绪后由父进程打开一次浏览器。
+    environment = dict(os.environ, JOBS_NO_BROWSER="1")
+    with log_path.open("ab") as log:
+        log_start = log.tell()
+        process = subprocess.Popen(
+            [sys.executable, "-u", str(ROOT / "tools" / "serve.py"),
+             "--user", user, "--port", str(port)],
+            cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+            env=environment,
+            **options,
+        )
+    print(f"正在启动总览（进程 {process.pid}）：http://127.0.0.1:{port}/")
+    print(f"启动日志：{log_path}")
+    deadline = time.monotonic() + timeout
+    url = f"http://127.0.0.1:{port}/"
+    rejected = False
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        info = probe_running(port, timeout=min(0.5, remaining))
+        if info and info["ours"]:
+            if info["user"] != user:
+                print(f"这个端口的总览属于另一位用户。请运行 python tools/serve.py --background --user \"{user}\" --port {port + 1}", file=sys.stderr)
+                rejected = True
+                break
+            if info["stale"]:
+                report_running(info, port, url)
+                rejected = True
+                break
+            if process.poll() is None:
+                open_dashboard(url)
+                return 0
+            break
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(0.2, remaining))
+    code = process.poll()
+    if code is None and not rejected:
+        print(f"总览未能在 {timeout:g} 秒内确认就绪，进程 {process.pid} 仍在运行。查看日志：{log_path}", file=sys.stderr)
+    elif code is not None:
+        print(f"总览启动失败（退出码 {code}）。", file=sys.stderr)
+    # 只读取本次启动的最后 8 KiB，避免混入历史失败或输出整份日志。
+    with log_path.open("rb") as log:
+        log.seek(0, 2)
+        log.seek(max(log_start, log.tell() - 8192))
+        tail = log.read().decode("utf-8", errors="replace").strip()
+    if tail:
+        print(tail, file=sys.stderr)
+    return 1
+
+
 def _main(argv=None) -> int:
     # 从前这里不解析参数：`serve.py --help` 会**直接起服务器卡住**，
     # `--user bob` 被静默吞掉、照样端出活动用户的面板。
@@ -1257,7 +1367,9 @@ def _main(argv=None) -> int:
             ap.add_argument("--user", metavar="用户名",
                             help="服务哪个用户的数据，默认读 .active_user（不改它）"),
             ap.add_argument("--port", type=int, default=PORT,
-                            help=f"换个端口（默认 {PORT}，也可用环境变量 JOBS_PORT）")))
+                            help=f"换个端口（默认 {PORT}，也可用环境变量 JOBS_PORT）"),
+            ap.add_argument("--background", action="store_true",
+                            help="在独立后台进程启动，日志保存到当前用户目录")))
     if args.user:
         u = args.user.strip()
         if not _cli.valid_user_name(u) or not (ROOT / "users" / u).is_dir():
@@ -1293,9 +1405,12 @@ def _main(argv=None) -> int:
             print(f"这个端口的总览属于另一位用户。请运行 python tools/serve.py --port {PORT + 1}", file=sys.stderr)
             return 1
         _code = report_running(_running, PORT, f"http://127.0.0.1:{PORT}/")
-        if _code == 0 and os.environ.get("JOBS_NO_BROWSER") != "1":
-            webbrowser.open(f"http://127.0.0.1:{PORT}/")
+        if _code == 0:
+            open_dashboard(f"http://127.0.0.1:{PORT}/")
         return _code
+
+    if args.background:
+        return start_background(active_user(), PORT)
 
     try:
         user = active_user()
@@ -1323,7 +1438,7 @@ def _main(argv=None) -> int:
                             then="/job-scrape 抓一批，抓完再打开总览"),
               file=sys.stderr)
         return 1
-    data = ROOT / "web" / "public" / "data.json"
+    data = _cli.dashboard_dir(active_user(), ROOT) / "data.json"
     refresh_if_stale()                    # 不存在或过期都在这里补上，不必先手动跑导出
     if not data.is_file():
         # 原因已经由 refresh_if_stale 打在上面一行了。**不要再让用户「跑一次导出器
@@ -1345,7 +1460,7 @@ def _main(argv=None) -> int:
         print(f"总览页的数据读不出来（{type(exc).__name__}）—— "
               f"跑一次 python tools/export_web_data.py 看它报什么错", file=sys.stderr)
         return 1
-    if belongs_to and belongs_to != user:
+    if belongs_to != user:
         print(f"总览页现有的数据是「{belongs_to}」的，重新导出又没成功 —— "
               f"不发别人的数据。先跑 python tools/export_web_data.py 看它报什么错，"
               f"修好再起服务", file=sys.stderr)
@@ -1363,8 +1478,7 @@ def _main(argv=None) -> int:
     print("  只监听 127.0.0.1，别的机器连不上；Ctrl+C 停止")
 
     srv = _Server(("127.0.0.1", PORT), Handler)
-    if os.environ.get("JOBS_NO_BROWSER") != "1":
-        webbrowser.open(url)
+    open_dashboard(url)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

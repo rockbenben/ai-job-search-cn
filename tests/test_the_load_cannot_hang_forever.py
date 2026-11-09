@@ -95,19 +95,12 @@ class AFailedLoadSaysSoInsteadOfBorrowingSomebodyElsesProgress(unittest.TestCase
                          "命令不在可复制块里")
 
     def test_the_first_screen_still_says_what_it_is_waiting_for(self):
-        """加载中那一句要说明在等什么，否则分不清加载还是卡死。
-
-        ⚠️ **断言不能锚在体量单位上**：第一版写的是「约 2.4 MB」，而字母单位
-        夹在中文句子里会被 `test_web_copy` 判成散落英文 —— 于是那句提示本身
-        把一条守卫弄红了。这里断言「说了多久/多大」这件事，不锚具体写法。
-        """
+        """说明正在读取的内容，避免用固定的数据量和耗时描述所有用户。"""
         app = _src(APP)
         i = app.index("正在读取本机数据")
         seg = app[i:i + 200]
-        self.assertNotEqual(seg.strip(), "正在读取本机数据…",
-                            "加载提示只有一句干话：用户不知道该等多久")
-        # 句尾要带一个括注（等多久/多大），而不是补一个「请稍候」就完事
-        self.assertIn("（", seg, "加载提示没有说明体量或时长")
+        self.assertIn("岗位与投递记录", seg)
+        self.assertNotIn("等十几秒", seg)
 
 
 class AServerThatIsNotRunningIsNotAnError(unittest.TestCase):

@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Cmd } from "./components/Cmd";
+import { JobPrefs } from "./components/JobPrefs";
+import { HrAnswers } from "./components/HrAnswers";
+import { CommandBook } from "./components/CommandBook";
+import { BaseResume } from "./components/BaseResume";
+import { ResumeRead } from "./components/ResumeRead";
 import { App as AntApp, Button, Collapse, ConfigProvider, Modal } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { cockpitComponents, cockpitTheme } from "./theme/tokens";
 import { Shortlist, ShelvedList, plainVerdict } from "./components/Shortlist";
-import { ResumeRead } from "./components/ResumeRead";
-import { BaseResume } from "./components/BaseResume";
-import { CommandBook } from "./components/CommandBook";
 import { CodeToolProvider } from "./context/CodeToolContext";
 import { OutcomeStatsPanel, sayRate } from "./components/OutcomeStats";
 import { HidePrefs } from "./components/HidePrefs";
-import { HrAnswers } from "./components/HrAnswers";
 import { loadHidden, saveHidden, isHidden, compile, appliedCompanySet,
   EMPTY as EMPTY_HIDDEN } from "./data/hidden";
 import { GATE_FAIL, type Job } from "./types";
 import { loadSnapshot, type Snapshot } from "./data/load";
 import { Portals, blockNeedsYou } from "./components/Portals";
-import { JobPrefs } from "./components/JobPrefs";
 import {
   hasServer, loadDelta, saveDelta, deltaFrom, applyDelta, postSkip, postRestore,
   postExpire,
@@ -233,7 +233,14 @@ export default function App() {
     // 挪反而把视线从他刚放回的那个岗上带走。
     if (on) setSelectedId(nextInList(id));
     (on ? postSkip(id, "在总览页标的不投") : postRestore(id))
-      .then(() => refreshAnd()).catch(
+      .then(() => {
+        if (!on) setJustExpired((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        return refreshAnd();
+      }).catch(
       (err: Error) => {
         // 写失败就把界面改回去。留着「已排除」的样子是最坏的：
         // 页面说排除了、盘上没有，刷新一下它又回来，而用户不知道为什么。
@@ -675,12 +682,9 @@ export default function App() {
     return (
       <ConfigProvider theme={cockpitTheme} locale={zhCN} button={cockpitComponents.button}>
         <div className="cockpit">
-          {/* 这句话会停在这儿很久（数据两兆多，本机实测浏览器里约 7 秒），
-              所以它得说清「在等什么」——否则用户分不清是在加载还是卡死了。
-              ⚠️ 别写「2.4 MB」：字母单位夹在中文句子里会被措辞守卫判成
-              散落英文（`test_web_copy` 那条）。说「两兆多」就够。 */}
+          {/* 加载时说明正在读取的内容，数据量和耗时由实际文件决定。 */}
           <p className="loading">
-            正在读取本机数据…（两兆多，等十几秒）
+            正在读取本机数据…（岗位与投递记录）
           </p>
         </div>
       </ConfigProvider>
@@ -710,6 +714,14 @@ export default function App() {
             如果你刚才点过按钮，那一笔可能没写进去；服务恢复后刷新这一页再确认。
           </p>
           <Cmd>python tools/serve.py</Cmd>
+          <p>
+            <Button onClick={() => {
+              setSnap(null);
+              void loadSnapshot().then(setSnap);
+            }}>
+              重试读取
+            </Button>
+          </p>
         </div>
       </ConfigProvider>
     );

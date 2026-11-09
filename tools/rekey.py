@@ -130,12 +130,35 @@ def _load(path: Path) -> tuple[dict, dict, object]:
     return data, _cli.seen_of(data), stamp
 
 
+def _finish_pending(base, pending):
+    for item in pending:
+        if item["file"] not in ("seen_jobs.json", "archive.json", OVERLAY):
+            raise ValueError("换键恢复文件名无效")
+        path = base / item["file"]
+        current, stamp = _cli.load_json_stamped(path)
+        if current == item["after"]:
+            continue
+        if current != item["before"]:
+            raise _cli.StaleWrite("换键中断后文件已有更新，请核对恢复记录")
+        _cli.atomic_write(path, json.dumps(item["after"], ensure_ascii=False, indent=1),
+                          expect=stamp)
+
+
+@_cli.locked(lambda user, apply, root=None: _cli.store_dir(user, root) / "seen_jobs.json")
 def run(user: str, apply: bool, root: Path = None) -> dict:
     base = _cli.store_dir(user, root)
     sj, arc = base / "seen_jobs.json", base / "archive.json"
     if not sj.is_file():
         raise SystemExit(_cli.no_store(sj))
 
+    journal = base / "rekey-pending.json"
+    if journal.is_file():
+        pending = _cli.read_json(journal)
+        if apply:
+            _finish_pending(base, pending)
+            journal.unlink()
+        else:
+            raise ValueError("上次换键尚未完成，请用 --apply 继续恢复")
     stores, collisions = [], []
     for path in (sj, arc):
         data, rows, stamp = _load(path)
@@ -146,23 +169,28 @@ def run(user: str, apply: bool, root: Path = None) -> dict:
                        "rows": rows, "stamp": stamp, "mapping": mapping})
 
     ost = _cli.user_state_path(sj)
-    orows = _cli.load_user_state(sj)
+    orows = _cli.load_user_state(sj, strict=True)
     omapping, ocoll = plan_overlay(orows, [s["mapping"] for s in stores])
     collisions += [(OVERLAY, *c) for c in ocoll]
     if collisions:
         return {"collisions": collisions, "stores": [], "overlay": None}
 
     if apply:
-        for s in stores:
-            if not s["mapping"]:
+        pending = []
+        for store in stores:
+            if not store["mapping"]:
                 continue
-            apply_rekey(s["rows"], s["mapping"])
-            _cli.atomic_write(s["path"],
-                              json.dumps(s["data"], ensure_ascii=False, indent=1),
-                              expect=s["stamp"])
+            before = json.loads(json.dumps(store["data"]))
+            apply_rekey(store["rows"], store["mapping"])
+            pending.append({"file": store["path"].name, "before": before,
+                            "after": store["data"]})
         if omapping:
-            new = {omapping.get(k, k): v for k, v in orows.items()}
-            _cli.atomic_write(ost, json.dumps(new, ensure_ascii=False, indent=1))
+            pending.append({"file": OVERLAY, "before": orows,
+                            "after": {omapping.get(k, k): v for k, v in orows.items()}})
+        if pending:
+            _cli.atomic_write(journal, json.dumps(pending, ensure_ascii=False))
+            _finish_pending(base, pending)
+            journal.unlink()
 
     tokens = [{_cli.job_token(e.get("url"), e.get("title"))
                for e in s["rows"].values()

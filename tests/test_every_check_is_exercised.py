@@ -104,7 +104,7 @@ class TheTwoSilentOnesReallyFire(unittest.TestCase):
                       "rank_breakdown": {"来源": "粗筛（未抓 JD）"}}}
         with tempfile.TemporaryDirectory() as d:
             tmp = pathlib.Path(d)
-            (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True)
+            (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True, exist_ok=True)
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
@@ -119,7 +119,7 @@ class TheTwoSilentOnesReallyFire(unittest.TestCase):
                       "rank_breakdown": {"来源": "粗筛（读过 JD 正文）"}}}
         with tempfile.TemporaryDirectory() as d:
             tmp = pathlib.Path(d)
-            (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True)
+            (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True, exist_ok=True)
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
@@ -139,7 +139,7 @@ class TheSameQuestionOnManyJobsIsReported(unittest.TestCase):
         tmp = pathlib.Path(d)
         apps = tmp / "users" / "u" / "documents" / "applications"
         for name, greeting in files.items():
-            (apps / name).mkdir(parents=True)
+            (apps / name).mkdir(parents=True, exist_ok=True)
             (apps / name / "outreach.md").write_text(
                 "# t\n\n## 打招呼开场白\n\n" + greeting + "\n", encoding="utf-8")
         return tmp
@@ -233,8 +233,8 @@ class AnUnclosedQuoteMeansItWasCutOff(unittest.TestCase):
         import json
         with tempfile.TemporaryDirectory() as d:
             tmp = pathlib.Path(d)
-            (tmp / "web" / "public").mkdir(parents=True)
-            (tmp / "web" / "public" / "data.json").write_text(
+            (tmp / "users" / "u" / "job_scraper" / "dashboard").mkdir(parents=True, exist_ok=True)
+            (tmp / "users" / "u" / "job_scraper" / "dashboard" / "data.json").write_text(
                 json.dumps({"activeUser": "u", "jobs": jobs},
                            ensure_ascii=False), encoding="utf-8")
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
@@ -281,7 +281,7 @@ class TheGateColumnAlsoUsesTheSevenNames(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             tmp = pathlib.Path(d)
             ev = tmp / "users" / "u" / "documents" / "applications" / "一个岗"
-            ev.mkdir(parents=True)
+            ev.mkdir(parents=True, exist_ok=True)
             (ev / "evaluation.md").write_text(table, encoding="utf-8")
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
@@ -311,7 +311,7 @@ class ASnapshotWithoutTheJdSaysSo(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             tmp = pathlib.Path(d)
             ev = tmp / "users" / "u" / "documents" / "applications" / "一个岗"
-            ev.mkdir(parents=True)
+            ev.mkdir(parents=True, exist_ok=True)
             (ev / "posting.md").write_text(text, encoding="utf-8")
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
@@ -388,7 +388,7 @@ class ClaimingToHaveReadTheJdMeansItIsStored(unittest.TestCase):
     def _run(self, seen):
         with tempfile.TemporaryDirectory() as d:
             tmp = pathlib.Path(d)
-            (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True)
+            (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True, exist_ok=True)
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):

@@ -217,7 +217,7 @@ class TheWorkflowPointsAtTheList(unittest.TestCase):
     def test_it_names_the_field(self):
         s = self._seg()
         self.assertIn("`sameJd`", s)
-        self.assertIn("web/public/data.json", s)
+        self.assertIn("job_scraper/dashboard/data.json", s)
 
     def test_it_names_what_the_panel_says(self):
         """他手边多半开着面板，不会去读 JSON。"""

@@ -55,9 +55,9 @@ def flat(s: str) -> str:
 def snap(tmp, jobs):
     """在临时树里放一份面板快照，`ready_age` 读的就是它。"""
     u = tmp / "users" / "甲"
-    (tmp / "web" / "public").mkdir(parents=True, exist_ok=True)
+    (tmp / "users" / "甲" / "job_scraper" / "dashboard").mkdir(parents=True, exist_ok=True)
     u.mkdir(parents=True, exist_ok=True)
-    (tmp / "web" / "public" / "data.json").write_text(
+    (tmp / "users" / "甲" / "job_scraper" / "dashboard" / "data.json").write_text(
         json.dumps({"activeUser": "甲", "jobs": jobs}, ensure_ascii=False),
         encoding="utf-8")
     return u
@@ -162,7 +162,7 @@ class TheAgeIsComputed(unittest.TestCase):
         """读不到就说读不到——同本文件其余几处对「没查」的处理。"""
         with tempfile.TemporaryDirectory() as t:
             u = pathlib.Path(t) / "users" / "甲"
-            u.mkdir(parents=True)
+            u.mkdir(parents=True, exist_ok=True)
             self.assertEqual(doctor.ready_age(u), {})
 
     def test_another_users_snapshot_is_refused(self):
@@ -170,7 +170,7 @@ class TheAgeIsComputed(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             tmp = pathlib.Path(t)
             snap(tmp, [job()])
-            (tmp / "users" / "乙").mkdir(parents=True)
+            (tmp / "users" / "乙").mkdir(parents=True, exist_ok=True)
             self.assertEqual(doctor.ready_age(tmp / "users" / "乙"), {})
 
 

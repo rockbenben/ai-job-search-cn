@@ -62,7 +62,7 @@ class AtomicWriteBehaves(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "x.json"
             _cli.atomic_write(p, "内容")
-            self.assertEqual([f.name for f in Path(d).iterdir()], ["x.json"])
+            self.assertEqual(sorted(f.name for f in Path(d).iterdir()), ["x.json", "x.json.lock"])
 
     def test_the_temp_file_sits_next_to_the_target(self):
         """跨盘 `os.replace` 会退化成拷贝、失去原子性——临时文件必须同目录。"""

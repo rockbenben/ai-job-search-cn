@@ -266,6 +266,7 @@ def load(path: Path) -> tuple[list[str], list[dict]]:
     return cols, rows
 
 
+@_cli.locked(lambda path, *a, **kw: path)
 def save(path: Path, cols: list[str], rows: list[dict]) -> None:
     """整表写回。列序沿用读进来的那份，不重排。
 
@@ -339,6 +340,7 @@ def row_version(row: dict) -> str:
     return hashlib.sha256(json.dumps(row, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
+@_cli.locked(lambda path, *a, **kw: path)
 def set_status(path: Path, row, job: dict, status: str, day: str,
                reason: str | None = None) -> dict:
     """把 `status` 写进台账。`row` 是 `match_tracker` 找到的行，没有就传 None。
@@ -349,6 +351,10 @@ def set_status(path: Path, row, job: dict, status: str, day: str,
     cols, rows = load(path)
     created = row is None
     if created:
+        identity = {"source": job.get("url"), "company": job.get("company"),
+                    "role": job.get("title")}
+        if any(_same(r, identity) for r in rows):
+            return {"ok": False, "code": "stale_write", "error": "投递记录已创建，请刷新后再试"}
         hit = {c: "" for c in cols}
         hit["date"] = day
         hit["company"] = (job.get("company") or "").strip()
@@ -365,6 +371,9 @@ def set_status(path: Path, row, job: dict, status: str, day: str,
         hit = next((r for r in rows if _same(r, row)), None)
         if hit is None:
             return {"ok": False, "error": ROW_GONE}
+        if row_version(hit) != row_version(row):
+            return {"ok": False, "code": "stale_write",
+                    "error": "投递记录后来已更新，请刷新后再试"}
         prev = (hit.get("status") or "").strip()
     hit["status"] = status
     hit["notes"] = "; ".join(x for x in [(hit.get("notes") or "").strip(),
@@ -386,6 +395,7 @@ def set_status(path: Path, row, job: dict, status: str, day: str,
             "then": AFTER.get(status, "")}
 
 
+@_cli.locked(lambda path, *a, **kw: path)
 def undo(path: Path, row, prev, day: str, *, version: str | None = None) -> dict:
     """撤销一次 `set_status`。
 

@@ -1,22 +1,10 @@
 #!/usr/bin/env python3
-"""把活动用户的真实数据导出成 web/ 那个 antd 页能读的 JSON。
+"""导出当前用户的总览快照和可打开的简历 PDF。
 
-## 为什么需要它
-
-`web/` 原来只有一份**虚构**演示数据（`src/data/sample.ts`）。虚构数据的问题不是
-"不够真"，而是**它长得像真的**：职位链接点了打不开、「打开定制简历 PDF」指向一个
-不存在的文件——按钮看着能用，其实是死的。这比没有按钮更糟。
-
-所以这个脚本干两件事：
-1. 把 `seen_jobs.json` + `documents/applications/*/` 里的真实内容导出成 `data.json`；
-2. **把真实的 resume.pdf 复制进 web/public/pdf/**，让那个按钮真的能打开。
-
-## 隐私
-
-输出目录 `web/public/` 整体 gitignore。这里面是简历 PDF、话术、薪资期望、能力边界
-——都属于 `users/<你>/`，绝不进版本库。脚本只写这一个目录，不改任何源文件。
-
-零依赖，只用标准库。
+默认写入 users/<用户>/job_scraper/dashboard/，由本地服务按用户提供。
+文件可从资料、职位库、投递记录和材料目录重新生成，不修改这些源文件。
+显式 OUT_DIR / PDF_DIR 覆盖保留给测试和嵌入调用者。
+只使用标准库。
 """
 
 from __future__ import annotations
@@ -40,7 +28,7 @@ from build_dashboard import (NO_REPLY_ALARM,  # noqa: E402
                              _INTERVIEW_STATUSES as INTERVIEW_STATUSES,
                              dedup_apps_by_url,
                              _OFFER_STATUSES as OFFER_STATUSES,
-                             find_applications, match_application, is_parked, job_next_step, match_tracker,
+                             find_applications, application_index, match_application, is_parked, job_next_step, match_tracker,
                              is_optional, load_tracker, n_parked, n_processed,
                              n_waiting,
                              next_step, parse_commands, profile_ready, resolve_score)
@@ -1490,8 +1478,8 @@ def _stored_details(user: str) -> list:
         if len((j.get("description") or "").strip()) >= _cli.JD_MIN_BODY:   # 阈值正本在 _cli
             out.append({"url": j.get("url")})
     return out
-OUT_DIR = ROOT / "web" / "public"
-PDF_DIR = OUT_DIR / "pdf"
+OUT_DIR = None
+PDF_DIR = None
 
 def publish_pdf(source: Path, destination: Path) -> str:
     """Publish an immutable PDF without exposing a partly written download."""
@@ -3650,6 +3638,7 @@ def main(argv=None, *, show_next_step=True) -> int:
     user, _ = _cli.resolve_user(
         argv, root=ROOT, description="把这个用户的求职数据导成面板要读的 data.json")
     ud = ROOT / "users" / user
+    output_dir = OUT_DIR if OUT_DIR is not None else _cli.dashboard_dir(user, ROOT)
 
     sj_file = ud / "job_scraper" / "seen_jobs.json"
     if not sj_file.is_file():
@@ -3685,10 +3674,11 @@ def main(argv=None, *, show_next_step=True) -> int:
     # 计数和实际滤掉的数就会对不上。
     _onsite = _onsite_ids(user)
     pdf_user = hashlib.sha256(user.encode("utf-8")).hexdigest()[:20]
-    pdf_dir = PDF_DIR / pdf_user
+    pdf_dir = (PDF_DIR if PDF_DIR is not None else output_dir / "pdf") / pdf_user
     pdf_dir.mkdir(parents=True, exist_ok=True)
 
     jobs, n_pdf, n_drift = [], 0, 0
+    app_index = application_index(all_apps, seen.values())
     directory_jobs = {}
     # **`k` 是职位库的键，链接一律从 `e["url"]` 取。** 键既可能是
     # `<url>#<职位名>`，也可能是稳定 id（当前库就是后者）；`ustate.get(...)`
@@ -3698,7 +3688,7 @@ def main(argv=None, *, show_next_step=True) -> int:
     for k, e in seen.items():
         # 分数与判词走面板同一个 resolve_score：**有 evaluation.md 就以深评为准**。
         # 两处各写一套必然飘，而这正是「面板 76、深评 62」那个 bug 的形状。
-        app = match_application(e, all_apps, seen.values())
+        app = match_application(e, all_apps, seen.values(), index=app_index)
         score, verdict, evaluated = resolve_score(e, app)
         verdict = str(verdict or "")
         # **兜底要自嚷，不许静默圆场。** resolve_score 以 evaluation.md 为准，
@@ -4922,8 +4912,8 @@ def main(argv=None, *, show_next_step=True) -> int:
         ss = insight["sweetSpot"]
         print(f"  简历市场反馈：行业对口 {ss['count']}/{ss['total']} 个岗"
               f" · 专业能力中位 {insight['medianStack']} / 行业经验中位 {insight['medianDomain']}")
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out = OUT_DIR / "data.json"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out = output_dir / "data.json"
     # 原子写：先写临时文件再 os.replace。serve.py 的 GET 在锁外读这个文件，
     # 直接 write_text（截断后重写）会让并发的读拿到半截 JSON。
     # 走 `_cli.atomic_write`，别自己拼一个：它的临时名带 pid/tid（两个导出并发
@@ -4951,8 +4941,7 @@ def main(argv=None, *, show_next_step=True) -> int:
     # **被别的工具调用时不印这句。** `serve.py` 自动重导时会调这里，而那时服务
     # 已经在跑了——再叫人去起一遍是岔路。
     if show_next_step:
-        print("  下一步：cd web && npm install && npm run build "
-              "&& cd .. && python tools/serve.py")
+        print("  下一步：python tools/serve.py --background")
     return 0
 
 
