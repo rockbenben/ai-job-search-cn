@@ -201,7 +201,7 @@ class DocsCoverTheWholeLifecycle(unittest.TestCase):
         cited = set(re.findall(r"`/([a-z-]+)[ `<]", joined + " "))
         have = {p.stem for p in (ROOT / "workflows").glob("*.md")}
         # `/mcp` 之类是外部命令，不归本仓库管
-        external = {"mcp", "login", "help", "clear", "config", "model"}
+        external = {"skills", "mcp", "login", "help", "clear", "config", "model"}
         ghosts = sorted(cited - have - external)
         self.assertEqual(ghosts, [],
                          f"文档里提到了不存在的命令：{ghosts}")

@@ -2112,87 +2112,39 @@ _TOOL_LABELS = {
 
 #: 给用户敲的斜杠命令。前面贴着单词 / 点 / 斜杠 / 连字符的不动——
 #: 那是路径（workflows/job-apply.md）或 URL 里的片段，不是命令。
-_SLASH_CMD = re.compile(r"(?<![\w./-])/(job-[a-z][a-z-]*)")
+_SLASH_CMD = re.compile(r"(?<![\w./$-])/(job-[a-z][a-z-]*)(?![\w./-])")
 
-#: 每家工具的命令语法。逐家实测过：认得出来的那些**几乎都吃斜杠**，只有 Codex
-#: 把 `/` 留给自己的内置指令（最新一轮的数与翻过来的理由见下面那段）。各家怎么认的：
-#: Claude Code 的技能进它的斜杠表；Qoder 的 harness 自己写着技能可按 `/<名>` 请求；
-#: agy 的 `/` 面板用户当场测过（`/job-scrape` 能匹配）；Qwen Code 0.24.7 起把技能
-#: 注册成 `/<技能名>`；MiMo Code 的技能以 `source: "skill"` 进它的命令表；
-#: MCode 同形态（2026-10-13 用户确认，`MAVIS_SESSION_TRANSFER_CLIENT`
-#: 是量出来的信号）。Codex 那条是它二进制自己印着的：
-#: `Unrecognized command '/-'. Type "/" for a list of supported commands.`
-#: 这一格原来只把 `claude` 放进 `"slash"`、其余全去斜杠，理由写的正是「斜杠会被
-#: 客户端当成内置指令拦掉」——**那句话对逐家实测出来吃斜杠的那几家全是错的**，
-#: 白扣了斜杠这一层形式。Gemini CLI 那家已停（后继是 agy），它的格子已整档删掉。
-#: 2026-11-09 起 Codex 用 CODEX_THREAD_ID / CODEX_SESSION_ID 自动探测；`CODEX` 不存在。
-#
-#: ## 2026-10-13：`generic` 从免斜杠翻成带斜杠
-#:
-#: **原来 `generic` 是免斜杠那一档**，理由是「裸形式各家都敲得动（触发词接得住），
-#: 留着一个敲不动的斜杠则每一条引导都作废」。前半句在 harness 里不成立：
-#: 裸形式不是命令，只是聊天框里的一段文字——触发词接得住的是**模型**，
-#: 不是**宿主**，而这一页给的每一条都是「敲这个」。
-#:
-#: 后果当场可见（同一屏两种形态）：流水线格子与弹层里的 `<Cmd>` 走了
-#: `formatCommand`、被剥成 `job-scrape`，而「下一步」那行是纯文本、
-#: 原样留着 `/job-outcome <公司>`。实测这台机器跑在 MCode 里
-#: （`detect_code_tool()` 返回 `generic`），复制按钮复制下来的是**敲不动的命令**。
-#:
-#: 翻过来的三条理由：
-#:   1. `docs/tool-entries.md` 逐家量过 13 家，**7 家吃斜杠**（2026-11-09 复核）；
-#:      「认不出来」更可能落在吃斜杠的那一边。
-#:   2. 两种错法的**可见性不同**：带错斜杠，工具会报错或列出命令；
-#:      缺斜杠，用户根本不知道有这条命令（`AGENTS.md`「用户不知道该敲什么」）。
-#:   3. 真拦的那一家（Codex）现在**自己一格**，不再靠 generic 兜底。
-#:
-#: 旧版若不提供 Codex 会话标记，可用 `JOBS_CODE_TOOL=codex` 或面板上的开关覆盖
-#: （`CodeToolContext.setSlashMode`，
-#: 2026-10-13 把它接上了界面；此前它零调用点，是条死路）。
-#: `cursor` 同理：`_TOOL_LABELS` 里有它，吃不吃斜杠没实测过，所以**不给它格子**，
-#: 让它落 generic（带斜杠）—— 与「认不出来按多数派」同一条判据，不是漏了。
-#:
-#: `detect_code_tool` 自动探测能返回的每一个值都要在这里有一格，见
-#: `tests/test_slash_survives_where_the_palette_is_the_skill_list.py`
-#: （它把那张表的键与探测函数源码里的 `return` 字面量逐条对拍 —— 值是从源码数的，
-#: 不是比另一份手抄名单，加一档忘了给格子就会红；同一个文件还钉着面板那份抄件）。
+#: 命令正本保留 /job-*。Codex 复制为各端支持的 $job-* 技能引用；
+#: CLI 的 /skills 与桌面 / 菜单也是入口，不保证 CLI 直接注册 /job-*。
+#: 官方说明与复核日期见 docs/codex.md。Python 与前端格式由测试对拍。
 COMMAND_SYNTAX = {
     "workbuddy": "slash",
     "claude": "slash",
+    "cursor": "slash",
     "antigravity": "slash",
     "mimo": "slash",
     "mavis": "slash",
     "qoder": "slash",
     "qwen": "slash",
-    "generic": "slash",
-    "codex": "no-slash",
+    "generic": "bare",
+    "codex": "dollar",
 }
 
 
 def command_syntax(tool: str) -> str:
-    """这一档给不给斜杠。
-
-    **没实测出来的工具按 `"generic"` 那一档走，而它 2026-10-13 起是带斜杠**：
-    2026-11-09 复核：逐家实测的 13 家里 7 家吃斜杠，而认不出来的那一批更可能
-    落在吃斜杠的一边；
-    真拦的（Codex）自己一格。这段理由的完整版在 `COMMAND_SYNTAX` 上方。
-    """
+    """宿主的技能引用形式；未知宿主用自然语言指定工作流文件。"""
     return COMMAND_SYNTAX.get(tool, COMMAND_SYNTAX["generic"])
 
 
 def adapt_commands(text, tool: str) -> str:
-    """把文档正本的斜杠命令改写成当前工具能敲的形式。
-
-    **文档正本（`AGENTS.md`、`workflows/`、`workflows/INDEX.md`）里一律保留斜杠**
-    ——那是标准形式；改写只发生在给用户看的最终渲染层。实测吃斜杠的七家
-    （WorkBuddy / Claude Code / agy / MiMo / MCode / Qoder / Qwen，2026-11-09 复核）
-    与认不出来的那一批原样返回，只有 Codex 那一档去斜杠。
-    """
+    """只改独立的 /job-* 引用，保留参数、路径、网址及已有 $ 引用。"""
     if not isinstance(text, str):
         return text
-    if command_syntax(tool) == "slash":
-        return text
-    return _SLASH_CMD.sub(r"\1", text)
+    if command_syntax(tool) == "dollar":
+        return _SLASH_CMD.sub(lambda m: "$" + m.group(1), text)
+    if command_syntax(tool) == "bare":
+        return _SLASH_CMD.sub(lambda m: "请读取并执行 workflows/" + m.group(1) + ".md", text)
+    return text
 
 
 class _CommandStream:
@@ -2272,12 +2224,12 @@ def _main_body(args, tool: str) -> int:
     if command_syntax(tool) == "slash":
         print(f"💡 已识别为 {label}：上面的命令带开头的斜杠（如 /job-auto），"
               "直接粘进对话框即可。")
-    elif label:
-        print(f"💡 已识别为 {label}：上面的命令不带开头的斜杠，"
+    elif command_syntax(tool) == "dollar":
+        print(f"💡 已识别为 {label}：上面的命令以 $ 引用技能（如 $job-auto），"
               "直接粘进对话框即可；也可以直接把要办的事说出来，比如「自动跑一轮」。")
     else:
-        print("💡 没认出你在用哪家助手：上面给的是不带开头斜杠的写法，哪家都敲得动；"
-              "也可以直接把要办的事说出来，比如「自动跑一轮」。")
+        print("💡 未识别当前助手：上面使用自然语言请求，明确指定要读取并执行的工作流文件；"
+              "需要助手能够读取当前项目。可在总览页选择调用方式。")
     # 这串可选值**从 `COMMAND_SYNTAX` 派生**，不是手抄的字面量 —— 手抄那版
     # 在删掉 gemini、加上 qwen/mimo 之后不会有任何测试变红，印出的纠正办法
     # 就会指向一个已经删掉的档。

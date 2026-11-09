@@ -112,10 +112,10 @@ class ItHandsOverTheCommand(unittest.TestCase):
     def test_it_defers_the_leading_slash_to_the_running_tool(self):
         """斜杠形式在文首，裸形式作为拦斜杠那一档给出，且说清为什么要分两种。"""
         b = body()
-        self.assertIn("`job-apply <职位链接>`", b,
-                      "没给拦斜杠那一档的裸形式 —— Codex 里开头的斜杠敲不动")
+        self.assertIn("`$job-apply <职位链接>`", b,
+                      "没给拦斜杠那一档的裸形式 —— Codex 各端应使用明确的技能引用")
         self.assertRegex(b, r"按.*适配")
-        self.assertRegex(b, r"Codex 给 `job-apply", "必须说清哪种形式对应哪个宿主")
+        self.assertRegex(b, r"Codex 给 `\$job-apply", "必须说清哪种形式对应哪个宿主")
         self.assertRegex(b, r"不经过渲染层",
                          "要点明这份壳为什么得自己判断：它是手写的，不过生成器")
 

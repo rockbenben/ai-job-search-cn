@@ -72,25 +72,25 @@ function Examples({ it }: { it: CommandItem }) {
 export function CommandBook(
   { groups, spineOnly = false }: { groups: CommandGroup[]; spineOnly?: boolean },
 ) {
-  const { isSlashMode, setSlashMode } = useCodeTool();
+  const { commandMode, setCommandMode } = useCodeTool();
 
   return (
     <div className="cmdbook">
       <div className="cmdbook-bar">
-        <span className="cmdbar-label">{"终端工具适配："}</span>
+        <span className="cmdbar-label">{"命令调用方式："}</span>
         <Radio.Group
           size="small"
-          value={isSlashMode ? "slash" : "no_slash"}
-          onChange={(e) => setSlashMode(e.target.value === "slash")}
+          value={commandMode}
+          onChange={(e) => setCommandMode(e.target.value)}
           buttonStyle="solid"
         >
-          <Radio.Button value="no_slash">{"免斜杠模式"}</Radio.Button>
+          <Radio.Button value="auto">自动</Radio.Button>
+          <Radio.Button value="dollar">$ 技能</Radio.Button>
+          <Radio.Button value="bare">自然语言</Radio.Button>
           <Radio.Button value="slash">{"斜杠模式"}</Radio.Button>
         </Radio.Group>
         <span className="cmdbar-note">
-          {isSlashMode
-            ? "已开启斜杠模式：复制出来的命令带开头的 `/`，用得上客户端的快捷指令"
-            : "已开启免斜杠模式：复制出来的命令不带开头的 `/`，直接粘进对话框就能用"}
+          {{ auto: "按当前 AI 工具自动选择引用形式", dollar: "以 $ 引用技能，适用于 Codex 各端", slash: "通过客户端的 / 菜单选择技能", bare: "明确指定工作流文件，请助手读取并执行" }[commandMode]}
         </span>
       </div>
       {/* 这里原来是两段开场白，第一段还是**假的**：「这一页只负责让你看得见。真正

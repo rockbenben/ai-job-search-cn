@@ -175,24 +175,24 @@ class TestCodeToolDetection(unittest.TestCase):
             with self.subTest(tool=tool):
                 self.assertEqual(
                     doctor.adapt_commands("跑 /job-auto 接着抓", tool),
-                    "跑 job-auto 接着抓")
+                    "跑 $job-auto 接着抓")
                 self.assertEqual(
                     doctor.adapt_commands("/job-apply <url>", tool),
-                    "job-apply <url>")
+                    "$job-apply <url>")
                 self.assertEqual(
                     doctor.adapt_commands("`/job-rank --all`", tool),
-                    "`job-rank --all`")
+                    "`$job-rank --all`")
                 # 路径与 URL 里的片段不是命令，不许动。
                 self.assertEqual(
                     doctor.adapt_commands(
                         "workflows/job-apply.md 里写着 /job-setup", tool),
-                    "workflows/job-apply.md 里写着 job-setup")
+                    "workflows/job-apply.md 里写着 $job-setup")
                 self.assertEqual(
                     doctor.adapt_commands("https://x//job-auto", tool),
                     "https://x//job-auto")
         # 实测吃斜杠的七家 + 认不出来的那一批：一切原样（剥掉就是白退回裸形式）。
         for tool in ("workbuddy", "claude", "antigravity", "mimo", "mavis",
-                     "qoder", "qwen", "generic"):
+                     "qoder", "qwen", "cursor"):
             with self.subTest(tool=tool):
                 self.assertEqual(
                     doctor.adapt_commands("跑 /job-auto 接着抓", tool),
@@ -208,6 +208,12 @@ class TestCodeToolDetection(unittest.TestCase):
 
     def test_adapt_passes_non_string_through(self):
         self.assertIs(doctor.adapt_commands(None, "generic"), None)
+
+    def test_skill_references_are_idempotent_and_do_not_change_other_commands(self):
+        source = "/job-rank --all；/skills $job-auto https://x/job-auto workflows/job-apply.md /job-auto.md /job-auto/path 中文/job-auto"
+        expected = "$job-rank --all；/skills $job-auto https://x/job-auto workflows/job-apply.md /job-auto.md /job-auto/path 中文/job-auto"
+        self.assertEqual(doctor.adapt_commands(source, "codex"), expected)
+        self.assertEqual(doctor.adapt_commands(expected, "codex"), expected)
 
     # ---- doctor.main 全输出适配（48 个 print 点一起被盖住）----
 
@@ -231,14 +237,14 @@ class TestCodeToolDetection(unittest.TestCase):
         # 所以这一条现在反过来验——认不出来的那一批**保留**斜杠，
         # 理由与实测见 `doctor.COMMAND_SYNTAX` 上方。
         # Codex 那一档免斜杠由 `test_main_codex_output_has_no_slash` 单独钉。
-        self.assertRegex(out, doctor._SLASH_CMD)
-        self.assertNotIn("用 Claude Code 时带斜杠", out)
+        self.assertNotRegex(out, doctor._SLASH_CMD)
+        self.assertIn("未识别当前助手", out)
 
     def test_main_codex_output_has_no_slash(self):
         """Codex 是唯一免斜杠的那一档（它的二进制里印着会拦）。"""
         _rc, out = self._run_main("codex")
         self.assertNotRegex(out, doctor._SLASH_CMD)
-        self.assertIn("不带开头的斜杠", out)
+        self.assertIn("以 $ 引用技能", out)
 
     def test_auto_codex_adapts_commands_and_browser_guidance_together(self):
         """真会话信号贯穿自检输出，不能只认出名字而仍给另一家的引导。"""
@@ -290,7 +296,7 @@ class TestCodeToolDetection(unittest.TestCase):
         hint = next(line for line in out.splitlines() if "JOBS_CODE_TOOL=" in line)
         listed = set(re.findall(r"[a-z]+", hint.split("JOBS_CODE_TOOL=", 1)[1]))
         self.assertEqual(listed, {"workbuddy", "claude", "antigravity", "mimo",
-                                  "mavis", "qoder", "qwen", "codex", "generic"})
+                                  "mavis", "qoder", "qwen", "codex", "cursor", "generic"})
 
 
 if __name__ == "__main__":

@@ -3111,16 +3111,13 @@ def detect_code_tool() -> str:
       OpenCode 有 `OPENCODE=1` 但**没实测**它认不认斜杠
       （源码里技能是以 `source: "skill"` 进命令表的，文档却写成「agent 直接调用的
       工具」，两边打架），按「没实测过 → generic」处理，不为它开档。
-      Cursor 与 OpenCode 都落 `generic`，而认不出来的那一批**从 2026-10-13 起吃斜杠**
-      ——**代价就是它们会拿到敲不动的斜杠**，见下面那段。要救只能手工指定。
-      Codex 不用落 generic：它是实测过唯一拦斜杠的那一家，二进制里那句
-      `Unrecognized command` 就是出处，所以 2026-10-13 给它单独立了一格 `no-slash`
-      （2026-11-09 起可用真实会话标记自动进入；旧版缺标记时仍可手工覆盖）。
-      认不出来就落 generic —— 理由见 `doctor.COMMAND_SYNTAX` 那段：2026-11-09 复核，
-      逐家实测的 13 家里 7 家吃斜杠，「认不出来」更可能落在吃斜杠的那一边；
-      而真拦的 Codex 已有自己一格。
-      识别错了可用环境变量 JOBS_CODE_TOOL 手工覆盖（doctor 的工具名提示仍认它），
-      面板上也有开关（`CodeToolContext` 的 `setSlashMode`）。
+      Cursor 已有 slash 档，可显式指定 JOBS_CODE_TOOL=cursor；当前没有验证过的
+      自动识别信号时仍落 generic。OpenCode 等未接入宿主也使用完整自然语言请求，
+      指定读取并执行 workflows/ 下的工作流；不猜斜杠或美元符号的语义。
+      Codex 使用真实会话标记自动识别，COMMAND_SYNTAX 中为 dollar：各端默认引用
+      $job-*，桌面 / 菜单与 CLI /skills 可选择技能。旧版 CLI 拒绝未知 /job-*
+      不等于 Codex 不支持斜杠。识别错了可用 JOBS_CODE_TOOL 覆盖；面板上的
+      CodeToolContext.setCommandMode 可切回自动或选择明确的调用形式。
 
     doctor.py 因「只用标准库、不 import 仓库模块」的契约保有一份逐字副本，
     两份判得一样由 tests/test_code_tool_detection.py 钉住。

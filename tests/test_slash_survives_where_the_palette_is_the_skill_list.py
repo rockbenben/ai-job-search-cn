@@ -58,8 +58,8 @@ import doctor  # noqa: E402
 #: 渲染层的两档名单，喂给下面第一条用例（逐档验斜杠去没去掉）。
 #: **枚举「探测能返回哪些值」不靠这份手抄** —— 那条断言从源码里数，见
 #: `_auto_detect_returns()`。
-NO_SLASH = ("codex",)
-SLASH = ("antigravity", "claude", "generic", "mavis", "mimo", "qoder", "qwen",
+DOLLAR = ("codex",)
+SLASH = ("antigravity", "claude", "cursor", "mavis", "mimo", "qoder", "qwen",
          "workbuddy")
 
 #: 面板那头自己存了一份斜杠档名单（`CodeToolContext.tsx`）。它是 Python 那张表的
@@ -84,7 +84,7 @@ def auto_detect_returns(src_name: str) -> set:
     只取字符串字面量的 `return`，所以手工覆盖那一支
     （`return override.strip().lower()`）天然不在集合里 —— 它对取值没有约束，
     任意名字都落到 `command_syntax()` 的默认档，那是设计（`doctor.py` 的
-    `COMMAND_SYNTAX` 注释与 `test_an_unknown_tool_falls_into_the_no_slash_group`）。
+    `COMMAND_SYNTAX` 注释与 `test_an_unknown_tool_uses_a_complete_natural_language_request`）。
     """
     tree = ast.parse((ROOT / "tools" / src_name).read_text(encoding="utf-8"))
     fn = next(n for n in ast.walk(tree)
@@ -99,39 +99,29 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
 
     def test_only_the_unverified_group_strips_the_slash(self):
         text = "跑 /job-auto 然后 /job-outcome <公司>"
-        for tool in NO_SLASH:
+        for tool in DOLLAR:
             out = doctor.adapt_commands(text, tool)
             self.assertNotIn("/job-", out, f"{tool} 那一档还留着斜杠：{out}")
         for tool in SLASH:
             self.assertEqual(doctor.adapt_commands(text, tool), text,
                              f"{tool} 实测吃斜杠，被剥掉就是白退回裸形式")
 
-    def test_codex_manual_override_strips_the_slash(self):
+    def test_codex_uses_an_explicit_skill_reference(self):
         """Codex 拦斜杠是实测的，但它没有探测信号 → 只能手工指定，走默认档。
 
         这一条是那张表**没有** `codex` 那一格的理由：`detect_code_tool()` 自动探测
         永远不返回它，加一格会让 `test_the_syntax_table_names_every_tool` 变红，
         而行为靠默认值就已经对。真给 `codex` 单开一格的那天，把这条改成钉格子。
         """
-        self.assertNotIn("/job-", doctor.adapt_commands("/job-auto", "codex"))
-        self.assertEqual(doctor.command_syntax("codex"), "no-slash")
+        self.assertEqual(doctor.adapt_commands("/job-auto", "codex"), "$job-auto")
+        self.assertEqual(doctor.command_syntax("codex"), "dollar")
 
-    def test_an_unknown_tool_falls_into_the_no_slash_group(self):
-        """没探测出来的工具按**带斜杠**处理 —— **2026-10-13 从去斜杠翻过来的。**
-
-        原来这一条钉的是去斜杠，理由是「留斜杠会让所有引导都敲不动」。
-        那个理由把两件事当成了对称的，其实不对称：
-
-        - 带错斜杠 → 工具报错或列出命令，**看得见**，用户当场知道不对；
-        - 缺斜杠   → 复制出来的是一段普通文字，用户**不知道**有这条命令。
-
-        而 `docs/tool-entries.md` 量过 13 家，**7 家吃斜杠**（2026-11-09 复核）——
-        认不出来的那一批更可能落在吃斜杠的一边。真拦的（Codex）
-        2026-10-13 起自己一格，不再靠 generic 兜底。
-        """
-        self.assertEqual(doctor.adapt_commands("/job-auto", "某个没见过的工具"),
-                         "/job-auto")
-        self.assertEqual(doctor.command_syntax("某个没见过的工具"), "slash")
+    def test_an_unknown_tool_uses_a_complete_natural_language_request(self):
+        for tool in ("generic", "某个没见过的工具", "", "typo-codxe"):
+            with self.subTest(tool=tool):
+                self.assertEqual(doctor.adapt_commands("/job-apply <url>", tool),
+                                 "请读取并执行 workflows/job-apply.md <url>")
+                self.assertEqual(doctor.command_syntax(tool), "bare")
 
     def test_the_discontinued_tool_has_no_cell(self):
         """Gemini CLI 已停 → 整档删掉，别再给它留格子，也别再认它的信号。
@@ -150,7 +140,7 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
         """`COMMAND_SYNTAX` 覆盖 `detect_code_tool` 自动探测能返回的每一个值。
 
         **值从源码里数，不比手抄名单。** 原来这一条比的是本文件顶上那两个元组
-        （NO_SLASH + SLASH）—— 同一份文件里的手抄名单，`detect_code_tool()` 一次都没
+        （DOLLAR + SLASH）—— 同一份文件里的手抄名单，`detect_code_tool()` 一次都没
         调用过，于是给探测加第六档（`return "trae"`）它照样全绿，而 `doctor.py` 那行
         注释写的正是「逐条对拍」。**注释比着代码，代码比着空气。**
         现在加一档而没在 `COMMAND_SYNTAX` 里给它一格 → 红；两族副本（`_cli.py` 与
@@ -173,10 +163,10 @@ class CommandSyntaxFollowsTheTool(unittest.TestCase):
         # 2026-10-13 之前这里是 `==` —— 那条规则成立时看不出问题，
         # 一旦有一格只能手工进（Codex 自己一格免斜杠），它就开始报
         # 「'codex' : 探测返回值与格子对不上」，而那正是它该允许的。
-        self.assertEqual(set(NO_SLASH) | set(SLASH), set(doctor.COMMAND_SYNTAX),
+        self.assertEqual(set(DOLLAR) | set(SLASH) | {"generic"}, set(doctor.COMMAND_SYNTAX),
                          "上面那两档名单与 COMMAND_SYNTAX 分了家 —— 第一条用例就只"
                          "覆盖了一半的档位")
-        self.assertTrue(all(v in ("slash", "no-slash")
+        self.assertTrue(all(v in ("slash", "dollar", "bare")
                             for v in doctor.COMMAND_SYNTAX.values()))
 
 
@@ -199,6 +189,10 @@ class ThePanelCarriesTheSameTable(unittest.TestCase):
         slash = {k for k, v in doctor.COMMAND_SYNTAX.items() if v == "slash"}
         self.assertEqual(ts_names("SLASH_TOOLS"), slash,
                          "面板的斜杠档名单与 COMMAND_SYNTAX 的 slash 格对不上")
+
+    def test_the_skill_reference_list_matches_the_table(self):
+        dollar = {k for k, v in doctor.COMMAND_SYNTAX.items() if v == "dollar"}
+        self.assertEqual(ts_names("DOLLAR_TOOLS"), dollar)
 
     def test_nobody_re_derives_the_answer_from_one_vendor_name(self):
         src = TS_CTX.read_text(encoding="utf-8")
