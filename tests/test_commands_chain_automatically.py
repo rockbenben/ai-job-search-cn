@@ -397,9 +397,13 @@ class EveryStateWriterRefreshesThePanel(unittest.TestCase):
     @classmethod
     def _promised(cls, doc: str = "README.md") -> list:
         text = (ROOT / doc).read_text(encoding="utf-8")
-        line = next((ln for ln in text.splitlines() if cls.PROMISE in ln), "")
-        # 只取承诺**之前**的那一段，别把同一行后半句里的别的命令名也算进来
-        head = line.split(cls.PROMISE)[0]
+        # README 用段落，SETUP 用用途表；两者只取刷新说明对应的命令。
+        marker = re.compile(r"收尾刷新面板数据|完成后刷新总览数据")
+        line = next((ln for ln in text.splitlines() if marker.search(ln)), "")
+        if line.lstrip().startswith("|"):
+            head = line.split("|")[1]
+        else:
+            head = marker.split(line)[0]
         seg = head.rsplit("以及", 1)[-1]
         return sorted(set(re.findall(r"/(job-[a-z-]+)", seg)))
 

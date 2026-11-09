@@ -25,6 +25,15 @@ ENTRY_DOCS = ("README.md", "SETUP.md")
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 import _entries  # noqa: E402  两族目录与手写壳名单的正本在派生器里，这里不另抄一份
 
+
+def python_section(text: str) -> str:
+    """按标题边界读取 Python 说明，允许标题带用途等补充文字。"""
+    match = re.search(r"^### Python(?:[^\n]*)\n(.*?)(?=^#{1,3} |\Z)",
+                      text, re.M | re.S)
+    if match is None:
+        raise AssertionError("SETUP.md 缺少 Python 说明小节")
+    return match.group(1)
+
 #: 共享框架文件：不按活动用户解析，必须真实存在于仓库根。
 SHARED_PATHS = (
     "resume/template.typ",
@@ -233,9 +242,7 @@ class TheFrontendBuildPrerequisiteIsStatedEverywhere(unittest.TestCase):
 
     def test_setup_doc_says_it(self):
         text = (REPO_ROOT / "SETUP.md").read_text(encoding="utf-8")
-        m = re.search(r"### Python\n(.{0,900})", text, re.S)
-        self.assertIsNotNone(m, "SETUP.md 缺少 ### Python 一节")
-        self.assertIn(self.BUILD_CMD, m.group(1),
+        self.assertIn(self.BUILD_CMD, python_section(text),
                       "SETUP.md 没说总览页还要构建一次前端")
 
     def test_every_place_that_asks_you_to_build_says_the_whole_command(self):
@@ -290,9 +297,7 @@ class DependencyAttributionTests(unittest.TestCase):
     def test_python_is_attributed_to_dashboard(self):
         """Python 的真实用途是 /job-dashboard（外加仓库自带检查脚本），不能只写 CI。"""
         text = (REPO_ROOT / "SETUP.md").read_text(encoding="utf-8")
-        m = re.search(r"### Python\n(.{0,300})", text, re.S)
-        self.assertIsNotNone(m, "SETUP.md 缺少 ### Python 一节")
-        self.assertIn("dashboard", m.group(1),
+        self.assertIn("/job-dashboard", python_section(text),
                       "SETUP.md 的 Python 一节没说明它是 /job-dashboard 需要的")
 
     def test_dashboard_really_needs_python(self):
