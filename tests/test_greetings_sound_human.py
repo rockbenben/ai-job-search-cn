@@ -170,6 +170,13 @@ def _sent_urls() -> set:
     """
     f = ROOT / "web" / "public" / "data.json"
     if not f.is_file():
+        ptr = ROOT / ".active_user"
+        if ptr.is_file():
+            user = ptr.read_text(encoding="utf-8").strip()
+            dash_f = ROOT / "users" / user / "job_scraper" / "dashboard" / "data.json"
+            if dash_f.is_file():
+                f = dash_f
+    if not f.is_file():
         return set()
     import json
     d = json.loads(f.read_text(encoding="utf-8"))
