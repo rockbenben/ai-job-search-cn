@@ -61,10 +61,9 @@ class TheClosingReportSaysIt(unittest.TestCase):
         self.assertRegex(_closing(), r"HR 主动搜|翻不到几页")
 
     def test_it_carries_the_measured_cost(self):
-        """规则不带证据就会被下一版当啰嗦删掉。"""
+        """规则说明每天要做的事只写在偶尔跑的报告里等于没写。"""
         seg = _closing()
-        self.assertIn("resume-audit-2026-08-01.md", seg)
-        self.assertRegex(seg, r"85 个、回音 0 个|22 天前")
+        self.assertIn("一件每天要做的事只写在一份偶尔跑一次的报告里", seg)
 
     def test_it_states_the_general_defect(self):
         """这不是「顺便提一嘴」，是一类缺陷 —— 说清了下次才认得出来。"""

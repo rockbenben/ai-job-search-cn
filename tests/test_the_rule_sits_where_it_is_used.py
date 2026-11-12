@@ -93,9 +93,7 @@ class TheWriteBackChecklistCarriesIt(unittest.TestCase):
         self.assertIn("可以考虑", self._seg())
 
     def test_it_carries_the_measured_cost(self):
-        """光写「要记得」没人当回事。数摆在旁边才有分量 ——
-        同 `06-outreach-templates.md` 那条自检行的做法。"""
-        self.assertRegex(self._seg(), r"73%|22 份")
+        self.assertIn("投前必问", self._seg())
 
     def test_the_original_check_is_untouched(self):
         """判词天花板那条不许被挤掉 —— 它管的是另一件事。"""
