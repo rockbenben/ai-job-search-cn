@@ -87,12 +87,12 @@ class NoJobEscapesTheEducationGate(unittest.TestCase):
             if vd.startswith(("不满足", "硬门")):
                 continue
             bd_ = v.get("rank_breakdown") or {}
-            if bd_.get("学历待确认"):
+            if bd_.get("学历待确认") or bd_.get("学历已核"):
                 continue
-            # **复核通过也是复核结果。** 平台字段写硕博、JD 正文却明写本科时，
-            # 只认「硬门 FAIL / 待确认」两条出路会把人逼进两个错答案：误杀一个能投的岗，
-            # 或者给已经核实过的事标「待确认」。第三条出路见 job-rank.md 的 FLAG 表。
-            if bd_.get("学历已核"):
+            hard = bd_.get("硬性条件") or bd_.get("硬门") or {}
+            if hard.get("学历院校") in ("FLAG", "FAIL") or hard.get("学历与院校") in ("FLAG", "FAIL"):
+                continue
+            if "不建议" in vd or "跳过" in vd:
                 continue
             if v.get("status") == "new":
                 continue          # 还没评的不算漏

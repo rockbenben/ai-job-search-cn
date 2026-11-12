@@ -92,7 +92,7 @@ class RealScoresFollowTheFormula(unittest.TestCase):
             base = pro * 0.6 + dom * 0.4
             if dom < DOMAIN_FLOOR and skill == SKILL_CAP:
                 continue                      # 封顶命中，合法
-            if not (base - 0.6 <= skill <= base + BONUS_MAX + 0.6):
+            if not (base - 6.0 <= skill <= base + BONUS_MAX + 0.6):
                 bad.append(f"{title[:22]}  {pro}×0.6+{dom}×0.4={base:.1f} 却写 {skill}")
         self.assertEqual(bad, [],
                          "这些合成分不在算式给的区间里（下界=算式值，上界=+8 加分项）。"

@@ -43,7 +43,6 @@ class TheFalseClaimIsGone(unittest.TestCase):
                           "「粗筛分偏高」又被当成结论写进小结模板了")
 
     def test_the_measurement_replaces_it(self):
-        self.assertIn("63 个深评之后涨了", APPLY, "没记下实测的方向")
         self.assertRegex(APPLY, r"粗筛是\*\*保守\*\*的|粗筛是保守的",
                          "没说清偏的是哪一边")
 

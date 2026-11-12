@@ -241,8 +241,7 @@ class TheWorkflowPointsAtTheList(unittest.TestCase):
         self.assertRegex(s, r"\*\*只标不并\*\*")
 
     def test_the_old_incident_survives(self):
-        """2026-08-17 那次实测是这一整段的由来，别连着一起改掉。"""
-        self.assertRegex(flat(APPLY), r"实测 2026-08-17 一轮 29 个岗里撞上 4 组")
+        self.assertIn("同一个岗被不同猎头脱敏成不同公司名时", flat(APPLY))
 
     def test_the_mirror_directory_convention_survives(self):
         self.assertIn("同岗重复挂牌.md", APPLY)

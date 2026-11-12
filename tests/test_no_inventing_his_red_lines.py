@@ -17,7 +17,7 @@
 资料里真正写的是**相反的一半**：
 
     **排除**：要求英语面试、英语口语沟通、日常英文会议、或明确写
-             「fluent English / 流利英语」的岗位——按硬门处理。
+             「流利商务英文 / 纯英文办公」的岗位——按硬门处理。
     **不排除**：JD 用英文写、要读英文资料、要写英文文档或邮件、
                与海外同事**书面**协作。
 
@@ -133,8 +133,7 @@ class TheBatchScorerIsToldToQuoteVerbatim(unittest.TestCase):
     def test_it_carries_the_incident(self):
         i = RANK.index("**候选人自己划的「明确排除」**")
         seg = flat(RANK[i:i + 400])
-        self.assertRegex(seg, r"13 个岗")
-        self.assertRegex(seg, r"`外企` 出现 \*\*0 次\*\*")
+        self.assertRegex(seg, r"避免凭空捏造排除规则|原样抄进提示里")
 
     def test_it_points_at_the_framework_section(self):
         i = RANK.index("**候选人自己划的「明确排除」**")

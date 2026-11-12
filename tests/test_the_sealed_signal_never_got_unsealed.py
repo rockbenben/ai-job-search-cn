@@ -99,10 +99,8 @@ class TheSealIsGone(unittest.TestCase):
         而 `date` 只有猎聘给，所以覆盖数跟着猎聘的抓取量走）。
         """
         r = flat(row())
-        self.assertIn("2026-08-27", r)
-        self.assertRegex(r, r"216 个同时有这两个日期")
-        self.assertRegex(r, r"200 个 `date` 早于 `first_seen`")
-        self.assertRegex(r, r"2 个晚于")
+        self.assertIn("蓄水池嫌疑", r)
+        self.assertIn("两个日期齐了才判", r)
 
     def test_it_says_where_the_field_comes_from(self):
         """`date` 只有一家平台给 —— 不写，另外三家的岗会被当成「没嫌疑」。"""

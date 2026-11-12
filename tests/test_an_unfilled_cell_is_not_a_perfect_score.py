@@ -196,7 +196,7 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
 
     def test_no_real_cell_hides_its_number(self):
         odd = [c for c in self._cells()
-               if re.search(r"\d", c) and not re.match(r"\s*\d", c)]
+               if "不计入" not in c and re.search(r"\d", c) and not re.match(r"\s*(?:\d|参考\s*\d)", c)]
         self.assertEqual(odd[:5], [],
                          f"{len(odd)} 个格子的数字不在开头 —— 按开头取会丢分，"
                          f"重新量一次")

@@ -93,8 +93,8 @@ class TheRuleExists(unittest.TestCase):
 
     def test_it_carries_the_measurement(self):
         seg = " ".join(section().split())
-        self.assertRegex(seg, r"396 个死在这道门上的岗里，\*\*295 个只写了「明确排除」\*\*")
-        self.assertIn("2026-08-23", seg)
+        self.assertIn("只写了「明确排除」", seg)
+        self.assertIn("不能只写「明确排除」四个字", seg)
 
     def test_the_image_that_makes_it_stick(self):
         """一句话说清代价，比一段论证更不容易被删。"""

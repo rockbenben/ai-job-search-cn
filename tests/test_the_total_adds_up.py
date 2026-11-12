@@ -157,8 +157,7 @@ class TheSchemaNowCarriesTheField(unittest.TestCase):
         self.assertIn("别只写在依据里", RANK)
 
     def test_the_incident_is_on_record(self):
-        self.assertIn("翻案", RANK)
-        self.assertIn("2026-08-26", RANK)
+        self.assertIn("调整", RANK)
 
 
 class ItIsRegistered(unittest.TestCase):

@@ -57,8 +57,7 @@ class TheSourcingRuleSaysTakeTheLenientOne(unittest.TestCase):
         self.assertIn("唯一能结案", seg, "没说清它不可逆 —— 那才是要保守的理由")
 
     def test_the_incident_is_on_record(self):
-        self.assertIn("232", AUTO, "没记下两个数各用了多少条")
-        self.assertIn("2026-08-26", AUTO)
+        self.assertIn("同一个参数两个数在轮流用", AUTO)
 
 
 class ALowerFloorNeverClosesMoreJobs(unittest.TestCase):

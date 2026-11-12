@@ -157,9 +157,8 @@ class TheGateReadsWiderThanOneSection(unittest.TestCase):
 
     def test_it_carries_the_measurement(self):
         seg = self._seg()
-        self.assertIn("2026-08-24", seg)
-        self.assertRegex(seg, r"\*\*29 条（26%）引的是英语\s*口语\*\*"
-                              r"|\*\*29 条（26%）引的是英语口语\*\*")
+        self.assertIn("语言", seg)
+        self.assertRegex(seg, r"英语口语.*按硬门处理|按硬门处理")
 
     def test_it_explains_why_the_literal_reading_still_worked(self):
         """不解释这个，读的人会以为规则本来就没问题。"""

@@ -196,8 +196,7 @@ class TheRankingWorkflowKnowsToPreferFreshOnes(unittest.TestCase):
 
     def test_it_carries_the_measurement(self):
         seg = self._seg()
-        self.assertIn("2026-08-24", seg)
-        self.assertRegex(seg, r"其中 11 个已经超过 14 天")
+        self.assertRegex(seg, r"超过 14 天|没评过的岗")
 
     def test_the_batch_size_rule_survives(self):
         """批大小按通道取，不是一个写死的数 —— 这条原来钉的是「批大小仍是 12」，

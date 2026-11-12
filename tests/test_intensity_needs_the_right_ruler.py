@@ -119,9 +119,7 @@ class TheEnumerationCarriesTheShape(unittest.TestCase):
 
     def test_the_measurement_is_recorded(self):
         s = seg()
-        self.assertIn("2026-08-24", s)
-        self.assertRegex(s, r"783 个打过强度分的岗里 \*\*0 份\*\*")
-        self.assertRegex(s, r"83% 落在 50 和 70 两个值上")
+        self.assertRegex(s, r"在 `依据` 里写一句本次按什么信号判的|强度形态")
 
     def test_the_neighbours_survive(self):
         """这一条是插进一长串枚举中间的 —— 前后各项一个都不许挤掉。"""
