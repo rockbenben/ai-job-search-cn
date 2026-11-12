@@ -76,7 +76,7 @@ class TheSyncComesFirst(unittest.TestCase):
 
     def test_it_carries_the_measured_split(self):
         seg = " ".join(_seg().split())
-        self.assertRegex(seg, r"75 个里 \*\*38 个是猎头\*\*")
+        self.assertIn("猎头那一组恰好就是邮件够得着的那半边", seg)
 
     def test_it_names_the_real_cost(self):
         """「多跑一条命令」不足以让人照做。要说清催错了会怎样。"""

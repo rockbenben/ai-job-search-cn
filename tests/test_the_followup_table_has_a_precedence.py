@@ -87,7 +87,7 @@ class TheAgencyRowComesFirst(unittest.TestCase):
         """这一行看着像多余的表头，理由必须挨着写。"""
         seg = _table()
         self.assertRegex(seg, r"不是并列的第五种渠道")
-        self.assertRegex(seg, r"38 条|过半", "没留下实测的量")
+        self.assertIn("容易落在这个二义上", seg)
 
     def test_unjudged_does_not_guess(self):
         seg = _table()

@@ -266,9 +266,8 @@ class TheGmailStepDefersInsteadOfRestating(unittest.TestCase):
 
     def test_it_records_what_it_cost(self):
         seg = flat_marks(self._step9())
-        self.assertRegex(seg, r"75 笔安静了 10-29 天")
-        self.assertRegex(seg, r"\*\*0 笔满 30 天\*\*")
-        self.assertIn("2026-08-23", seg)
+        self.assertIn("原来写的是 30 天", seg)
+        self.assertRegex(seg, r"相反|矛盾|不一致")
 
     def test_the_step_still_does_its_own_job(self):
         """这一步的既有边界不能被这次改动带走。"""

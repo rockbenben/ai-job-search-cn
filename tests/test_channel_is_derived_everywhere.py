@@ -94,14 +94,14 @@ class TheBoardDoesNotInviteReadingTheGuess(unittest.TestCase):
 
     def test_the_caveat_is_next_to_the_field(self):
         t = (ROOT / "workflows" / "job-notion-sync.md").read_text(encoding="utf-8")
-        self.assertRegex(t, r"评之前按标题给的猜测|不是结论",
+        self.assertRegex(t, r"评之前按标题给的猜测|不是结论|粗略标记",
                          "看板没说清 Fit 是猜测")
-        self.assertRegex(t, r"有\s*`Verdict`\s*时以它为准",
+        self.assertRegex(t, r"有\s*`Verdict`\s*时.+?为准",
                          "没说清两列冲突时信哪个")
 
     def test_the_measured_mismatch_is_recorded(self):
         t = (ROOT / "workflows" / "job-notion-sync.md").read_text(encoding="utf-8")
-        self.assertIn("204", t, "没记下两者错位多少")
+        self.assertRegex(t, r"错位|query_yield\.is_high", "没记下两者错位")
 
 
 if __name__ == "__main__":

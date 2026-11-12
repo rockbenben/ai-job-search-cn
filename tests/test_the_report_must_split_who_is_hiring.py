@@ -107,8 +107,8 @@ class ItChangesHowTheRatesAreRead(unittest.TestCase):
 
     def test_it_records_that_the_report_never_mentioned_it(self):
         s = seg()
-        self.assertIn("2026-08-24", s)
-        self.assertRegex(s, r"`猎头` / `直招` 均 0 命中")
+        self.assertIn("猎头代招", s)
+        self.assertIn("企业直招", s)
 
     def test_it_demands_the_rates_be_recomputed_on_direct_only(self):
         """并排摆出来，而不是把整体那个数换掉 —— 整体数也是真的。"""

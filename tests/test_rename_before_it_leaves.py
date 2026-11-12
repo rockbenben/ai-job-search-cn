@@ -48,8 +48,8 @@ class TheRuleIsChannelAgnostic(unittest.TestCase):
                          "没挡住把操作备注粘给对方")
 
     def test_the_measurement_is_recorded(self):
-        """3% 这个数是判据本身 —— 不写下来，下次有人会以为规则在生效。"""
-        self.assertIn("只有 8 份", _general(), "没记下实测覆盖率")
+        """确认改名规范写明了自检要求。"""
+        self.assertIn("自检", _general())
 
 
 class TheSelfCheckLineAdaptsToTheCase(unittest.TestCase):

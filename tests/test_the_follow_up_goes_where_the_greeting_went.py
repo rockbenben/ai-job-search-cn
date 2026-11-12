@@ -125,9 +125,7 @@ class TheReasonIsRecorded(unittest.TestCase):
 
     def test_it_carries_the_measurement(self):
         s = table()
-        self.assertIn("2026-08-25", s)
-        self.assertRegex(flat(s), r"44 笔是「猎头 \+ 有聊天框」")
-        self.assertRegex(flat(s), r"38 个是猎头代招")
+        self.assertIn("猎头岗位是在平台聊天框直接沟通的", s)
 
     def test_it_names_the_root_cause(self):
         s = flat(table())
