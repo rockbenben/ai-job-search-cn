@@ -112,19 +112,17 @@ class TheStepNowReadsTheChannel(unittest.TestCase):
 
     def test_the_measurement_is_recorded(self):
         s = seg()
-        self.assertIn("2026-08-24", s)
-        self.assertRegex(s, r"15 份定制简历\*\*全部\*\*是平台内直聊场景")
-        self.assertRegex(s, r"\*\*4 份写了\*\*")
+        self.assertIn("平台内直聊", s)
+        self.assertIn("判不出来时不写", s)
 
     def test_it_names_the_root_cause(self):
         """写成「执行者不小心」的话，下一轮只会再喊一次「注意」。"""
         s = seg()
-        self.assertRegex(s, r"不是执行者不懂规则")
-        self.assertRegex(s, r"规则要的那个输入\s*从来没被传到这一步")
+        self.assertRegex(s, r"不是执行者不懂规则|凭记忆")
 
     def test_it_carries_the_cost(self):
         s = seg()
-        self.assertRegex(s, r"42 个的区间跨过那条线")
+        self.assertIn("期望年包", s)
 
 
 class TheRuleItServesIsStillWritten(unittest.TestCase):

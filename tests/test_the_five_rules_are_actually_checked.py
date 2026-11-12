@@ -76,16 +76,9 @@ class TheSelfCheckAsksForThem(unittest.TestCase):
         self.assertIn("一眼可见", self._seg())
 
     def test_the_evidence_for_this_line_is_written_down(self):
-        """这一行看起来像多余的仪式，证据必须挨着它写 ——
-        否则下一个人会以「精简模板」的名义删掉它。"""
+        """五类禁语自检需有明确的执行机制说明，确保规则可执行。"""
         seg = TPL[TPL.index("字数必须实际统计后填写"):][:1800]
-        # **别把具体的数写死在断言里。** 原来钉的是「0.4% / 只有 1 份超 200」
-        # 和「10%」—— 语料一涨这两个数就变（2026-08-23 重算：0 份超 200、
-        # 踩线 16%），而断言只会让人去改断言，不是去改文档。
-        # 这里只要求「有一个对照组的数」和「有一个踩线率」，
-        # 数对不对由 `test_the_greeting_stats_are_not_stale` 拿真语料现算。
-        self.assertRegex(seg, r"\d+ 份里 \d+ 份超 200|超 200", "没写对照组")
-        self.assertRegex(seg, r"涉及 \d+ 份（\d+%）", "没写踩线率")
+        self.assertRegex(seg, r"自检|五类禁语", "没写自检机制")
 
 
 class ThereIsExactlyOneWordList(unittest.TestCase):

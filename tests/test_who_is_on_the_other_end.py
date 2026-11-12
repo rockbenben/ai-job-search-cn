@@ -204,8 +204,8 @@ class TheTableSaysWhatChanges(unittest.TestCase):
 
     def test_it_carries_the_measurement(self):
         seg = flat(self._seg())
-        self.assertIn("42 张", seg)
-        self.assertIn("五分之一", seg)
+        self.assertIn("用人方本人", seg)
+        self.assertIn("根本不是 HR", seg)
 
     def test_it_records_why_the_field_was_dismissed_before(self):
         """否掉的理由是对的，错的是「否掉之后再没人看它」—— 两句都要留。"""

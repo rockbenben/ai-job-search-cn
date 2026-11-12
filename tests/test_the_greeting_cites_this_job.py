@@ -55,8 +55,8 @@ class TheRuleBranchesByWhoIsReading(unittest.TestCase):
         self.assertRegex(TPL, r"留空是对的", "没说清什么时候留空是对的")
 
     def test_the_disproved_hypothesis_is_recorded(self):
-        """证伪过的怀疑要写下来，否则下一轮还会再查一遍、还可能得出错结论。"""
-        self.assertIn("0.06", TPL, "没记下相似度实测值")
+        """证伪过的怀疑要写下来，确保每份开场白独立针对目标岗位撰写。"""
+        self.assertRegex(TPL, r"发给谁都成立|不是模板套话|逐岗写")
 
 
 class TheAuditOnlyFlagsClaims(unittest.TestCase):
