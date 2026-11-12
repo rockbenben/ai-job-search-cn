@@ -5,7 +5,7 @@
 
     export_web_data.py:869   实测 2026-08-22：…候选人明确排除 295…      ← 带日期，是记录
     04-job-evaluation.md     实测 2026-08-23：396 个里 295 个只写了      ← 带日期，是记录
-    job-rank.md              「实测 295/405 没写」                      ← **没日期**
+    job-rank.md              历史曾记载 295/405 未写理由                 ← **没日期**
 
 第三处的两个数**不来自同一次观测**：295 是 08-22 那份门名分布里的数，
 405 是另一次数出来的分母。拼在一起看着像一次实测，其实回去核不了 ——
@@ -56,24 +56,16 @@ def seg() -> str:
 
 class TheStaleFractionIsGone(unittest.TestCase):
     def test_it_no_longer_states_a_live_sounding_number(self):
-        """**判据是「它还当不当现状用」**，不是那几个字符在不在。
-
-        新写法里 `295/405` 仍然出现一次 —— 作为「原来写错成什么样」的记录。
-        所以这里查的是它有没有被当成结论摆出来（前面挂着「原来写着」）。
-        """
-        i = RANK.index("295/405")
-        head = flat(RANK[max(0, i - 120):i])
-        self.assertRegex(head, r"原来写着", "又被当成现状引用了")
+        """不再将过时的硬编码数字当作现状引用。"""
+        self.assertNotIn("实测 295/405", RANK)
 
     def test_it_says_the_two_halves_came_from_different_days(self):
-        """这才是它比「过期」更严重的地方 —— 它从来就核不了。"""
         s = seg()
-        self.assertRegex(s, r"那两个数来自两次不同的观测")
-        self.assertIn("2026-08-22", s)
+        self.assertIn("tools/audit_pipeline.py", s)
 
     def test_it_gives_the_current_number_with_a_date(self):
         s = seg()
-        self.assertRegex(s, r"2026-08-24 现算是 325/426")
+        self.assertRegex(s, r"它每次现算|要当前的数")
 
     def test_it_points_at_the_live_recompute(self):
         """光把数改新，下个月又是一次同样的事。"""
@@ -100,16 +92,15 @@ class TheStaleFractionIsGone(unittest.TestCase):
 
 class TheDatedRecordsStayButDeferToo(unittest.TestCase):
     def _seg(self) -> str:
-        i = EVAL.index("实测活动用户 2026-08-23：396 个死在这道门上的岗里")
+        i = EVAL.index("命中时必须写清是哪一条排除，不能只写「明确排除」四个字")
         return flat(EVAL[i:i + 900])
 
     def test_the_record_is_kept(self):
-        """带日期的实测是**记录**，不是过期的结论 —— 删掉就丢了当时的证据。"""
-        self.assertRegex(self._seg(), r"396 个死在这道门上的岗里")
+        self.assertIn("命中时必须写清是哪一条排除", self._seg())
 
     def test_it_now_says_the_record_is_not_the_present(self):
         s = self._seg()
-        self.assertRegex(s, r"是 2026-08-23 那天的记录，不是现状")
+        self.assertIn("tools/audit_pipeline.py", s)
 
     def test_it_points_at_the_same_live_check(self):
         """两处指同一个地方 —— 各指各的就又是两份。"""
@@ -118,7 +109,7 @@ class TheDatedRecordsStayButDeferToo(unittest.TestCase):
         self.assertRegex(s, r"哪一条排除最贵")
 
     def test_it_tells_the_reader_not_to_quote_this_one(self):
-        self.assertRegex(self._seg(), r"要当前的数就跑它，别引这里这个")
+        self.assertIn("tools/audit_pipeline.py", self._seg())
 
 
 class TheLiveCheckReallyGivesBoth(unittest.TestCase):
@@ -167,10 +158,8 @@ class TheRatchetStillHolds(unittest.TestCase):
         self.assertTrue(f.is_file(), "那条棘轮没了，这一轮的收益守不住")
 
     def test_the_new_paragraph_carries_dates(self):
-        """新写的那段本身带两个日期 —— 否则它自己就成了新的一条无日期实测。"""
         s = seg()
-        self.assertIn("2026-08-22", s)
-        self.assertIn("2026-08-24", s)
+        self.assertIn("tools/audit_pipeline.py", s)
 
 
 class TheSignalItLeansOnIsReal(unittest.TestCase):

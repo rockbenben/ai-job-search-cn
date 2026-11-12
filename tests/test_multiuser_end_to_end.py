@@ -40,10 +40,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
+sys.path.insert(0, str(ROOT / "tools"))
 from _live import keep_panel_snapshot  # noqa: E402
-DATA = ROOT / "web" / "public" / "data.json"
-AU = ROOT / ".active_user"
+import _cli  # noqa: E402
 TEMP_USER = "_多用户隔离测试"
+DATA = _cli.dashboard_dir(TEMP_USER, ROOT) / "data.json"
+AU = ROOT / ".active_user"
 MARK = "测试公司甲"          # 只可能出现在临时用户的数据里
 
 

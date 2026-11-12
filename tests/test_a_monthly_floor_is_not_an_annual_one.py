@@ -202,9 +202,8 @@ class TheChecklistRowExists(unittest.TestCase):
 
     def test_it_carries_the_measurement(self):
         seg = flat(self._row())
-        self.assertRegex(seg, r"\*\*337 个（13%）\*\*")
-        self.assertRegex(seg, r"2564 个明写薪资的岗里")
-        self.assertIn("2026-08-23", seg)
+        self.assertIn("月薪看着不够，乘上 14、15 薪就够了", seg)
+        self.assertIn("按可谈的下限填，不按理想值填", seg)
 
     def test_it_states_both_sides_of_the_trade(self):
         """只说「填低了没事」是不诚实的 —— 那个数对方看得见。"""

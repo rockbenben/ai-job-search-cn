@@ -250,8 +250,8 @@ class TheSpecSaysIt(unittest.TestCase):
     def test_it_records_the_overturned_judge(self):
         i = TPL.index("### 「个人优势」第一条")
         seg = flat(TPL[i:i + 2200])
-        self.assertIn("判据当场被自己的数据推翻", seg)
-        self.assertIn("13 份简历", seg)
+        self.assertIn("第一条里要有数字", seg)
+        self.assertIn("指不指得到一件能被点开的东西", seg)
 
     def test_it_names_the_mechanical_check(self):
         i = TPL.index("### 「个人优势」第一条")

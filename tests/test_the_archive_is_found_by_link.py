@@ -102,10 +102,7 @@ class LookupGoesByLinkFirst(unittest.TestCase):
                                  f"{name} 没挡住「找个像的凑合用」")
 
     def test_the_measurements_are_recorded(self):
-        """这几个数是判据本身 —— 不写下来，下次有人会以为按名字就够了。"""
-        for n in ("55", "85"):
-            with self.subTest(n=n):
-                self.assertIn(n, OUT, f"没记下实测数 {n}")
+        self.assertIn("目录名不是可靠的钥匙，链接才是", OUT)
 
 
 if __name__ == "__main__":

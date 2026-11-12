@@ -86,14 +86,14 @@ python tools/resume_refresh.py --done 智联
 **只记真点成功的那几家。** 没点成的、网页刷不了的，都不要记——
 记了就把一个假事实喂进了诊断，比不记更糟。
 
-> **猎聘的「弹窗」判据抓不到，但接口是能验的**（2026-10-15 实测，两次都验到了）。
+> **猎聘的「弹窗」判据抓不到，但接口是能验的**。
 > `c.liepin.com` 上「刷新简历」按钮在（`a.aside-vap-bottom-btn1`，右侧四个图标里第二个），
 > 点击**页面完全不动**、DOM 里也没有任何弹窗（扫 `innerText` 与全部
 > `[class*=dialog|modal|pop|mask]` 都没有）——所以「弹窗写『简历刷新成功』」这条
 > 在当前页面上**用不了**：按它判会把成功的刷新记成没刷。
 >
 > **改成点之前挂钩 `fetch` / `XMLHttpRequest`，读刷新接口的返回。**
-> 实测两次都拿到：
+> 接口返回示例：
 >
 > ```
 > POST https://api-c.liepin.com/api/com.liepin.cresume.refresh-resume

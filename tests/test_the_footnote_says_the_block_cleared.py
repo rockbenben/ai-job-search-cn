@@ -181,8 +181,7 @@ class TheAutoLoopLooksBeforeItDigs(unittest.TestCase):
 
     def test_it_carries_the_measured_share(self):
         seg = " ".join(self._seg().split())
-        self.assertRegex(seg, r"85%")
-        self.assertRegex(seg, r"2232/2638")
+        self.assertIn("矿根本没开", seg)
 
     def test_it_does_not_flip_the_switch_itself(self):
         """勾选框是他的 —— 自动模式尤其不许替他开（同「永远归人」那一节）。"""

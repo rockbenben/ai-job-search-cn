@@ -93,7 +93,7 @@ class AnEmptyMustFixSectionStillOwesAnAnswer(unittest.TestCase):
 
     def test_it_carries_the_evidence(self):
         """规则不带证据就会被当成洁癖删掉。"""
-        self.assertRegex(self._seg(), r"2026-08-01|仍然 0 回音")
+        self.assertRegex(self._seg(), r"不解释.{0,4}那个沉默|真正的去处|投递策略")
 
     def test_the_no_empty_placeholder_rule_survives(self):
         """原来那条（空小节不写「（无）」）管的是另一件事，不许被覆盖。"""

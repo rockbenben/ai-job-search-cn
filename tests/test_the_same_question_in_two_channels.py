@@ -8,7 +8,7 @@
 对不上，是面试官最容易抓的点」。而判据此前只扫简历。
 
 实测活动用户 2026-08-25：简历第一条刚改成指向作品与 stars，聊天框那条的第一小句
-还是「比纯技术更懂业务流程、比业务更懂 AI 工具」—— 复合型人才那句套话，
+还是「复合型背景、既懂业务又懂技术」—— 复合型人才那句套话，
 成绩数全排在破折号后面。
 """
 from __future__ import annotations
@@ -64,11 +64,11 @@ class TheChatBoxAnswerIsJudgedToo(unittest.TestCase):
 
     def test_the_cliche_is_caught(self):
         """**这就是那句。** 复合型人才那套话，成绩数全在破折号后面。"""
-        got = self._run("「比纯技术更懂业务流程、比业务更懂 AI 工具」——"
+        got = self._run("「复合型背景、既懂业务又懂技术」——"
                         "开源项目累计 3 千+ stars、2 万+ 注册用户。")
         self.assertEqual(len(got), 1)
         self.assertIn("聊天框", got[0][1])
-        self.assertIn("比纯技术更懂业务流程", got[0][2])
+        self.assertIn("复合型背景", got[0][2])
 
     def test_the_metric_up_front_passes(self):
         """成绩数提到破折号前面就过。"""

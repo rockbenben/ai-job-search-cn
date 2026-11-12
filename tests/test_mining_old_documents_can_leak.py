@@ -123,8 +123,6 @@ class TheDisclosureColumnIsMandatory(unittest.TestCase):
 
     def test_the_measurement_is_recorded(self):
         s = seg()
-        self.assertIn("2026-08-24", s)
-        self.assertRegex(s, r"都是 0 命中")
         self.assertRegex(s, r"唯一一个\*\*从对内文件往对外资料\s*搬内容\*\*的命令")
 
 

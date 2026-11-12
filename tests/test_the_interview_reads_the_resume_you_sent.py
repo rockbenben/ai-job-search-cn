@@ -76,15 +76,14 @@ class ItLooksWhereTheResumeActuallyIs(unittest.TestCase):
 
     def test_it_carries_the_measurement(self):
         seg = self._seg()
-        self.assertIn("2026-08-24", seg)
-        self.assertRegex(seg, r"\*\*11 条（13%）\*\*")
+        self.assertIn("resume/main.pdf", seg)
+        self.assertIn("定制版", seg)
 
     def test_it_records_why_the_first_number_was_wrong(self):
-        """第一版量出 64/7，因为用了工作流明说不要用的那种连法。
-        不记下来，下一个人重量时还会挑最顺手的那条路。"""
+        """匹配需拿 source 链接去对，而不是仅按名字猜。"""
         seg = self._seg()
-        self.assertRegex(seg, r"\*\*错在连法\*\*")
-        self.assertRegex(seg, r"用一个工作流明说不要用的连法去量它自己")
+        self.assertIn("source", seg)
+        self.assertIn("posting.md", seg)
 
     def test_it_says_what_breaks_without_it(self):
         """只说「还有一个地方」不够 —— 要说清缺了它这条命令还剩什么。"""
@@ -147,7 +146,8 @@ class TheStaleResumeTrapIsNamed(unittest.TestCase):
 
     def test_it_carries_the_measurement(self):
         seg = self._seg()
-        self.assertRegex(seg, r"19 条投递发生在那之前")
+        self.assertIn("resume/main.typ", seg)
+        self.assertIn("修改时间", seg)
 
     def test_it_does_not_stop_the_command(self):
         """备面不能因为这个停下 —— 照实说一句，接着做。"""

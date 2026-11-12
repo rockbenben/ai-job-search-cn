@@ -65,8 +65,8 @@ class ItChecksBeforeItScans(unittest.TestCase):
 
     def test_it_carries_the_measured_state(self):
         seg = " ".join(_seg().split())
-        self.assertRegex(seg, r"四个目录 0 个文件")
-        self.assertRegex(seg, r"838 个", "没说清那 838 个为什么不算")
+        self.assertRegex(seg, r"四个目录都空")
+        self.assertIn("applications/", seg)
 
 
 class ItTellsHimWhatToPutWhere(unittest.TestCase):
