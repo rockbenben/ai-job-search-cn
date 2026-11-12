@@ -21,8 +21,7 @@
   **只列有 `.agents/skills/*/cli/src/cli.ts` 的那几个。** 同一层还放着命令的技能壳
   （`job-application-assistant` 那份手写的路由壳，加上 `tools/gen_entries.py`
   按这张索引生成的那一批），它们不是渠道 ——
-  没有 CLI、也没有 `url-reference.md`，列出来就是一堆空表格（2026-08-31 实测时
-  是三份）。
+  没有 CLI、也没有 `url-reference.md`，若不加过滤列出来就会是一堆空表格。
 - 如果用户输入包含一个 URL：把它当作平台 URL，直接进入 Step 1。
 - 否则：从 Step 1 开始交互式提问。
 
@@ -84,7 +83,7 @@
      而不是「这个平台接不了」——后者会让用户以为没辙，而仓库里恰好有现成的路。
    - **撞反爬或 WAF 挑战页（阿里云盾、极验、返回风控码）→ 同样落到第 2 层，
      绝不绕过挑战。** 禁令的正本在 `AGENTS.md`「取数渠道的顺位」（**这三家没有
-     可用的免登录 API，绕过 WAF 或反爬挑战不做**），逐家实测记录在
+     可用的免登录 API，绕过 WAF 或反爬挑战不做**），逐家接入记录在
      `workflows/reference/cdp-portals.md`「顺位的逐家实测」：BOSS 返回 `code:37`、
      前程撞阿里云 WAF、智联端点 404。为了凑「有 API」这一层去破解反爬，
      换来的是封号和一条随时会碎的链路。
@@ -252,7 +251,7 @@ search、detail、测试三项都通过之前，不要进入 Step 5。
 > |---|---|---|
 > | `workflows/reference/cdp-portals.md` 的「各渠道入口」 | 这家的搜索 URL 规律、卡片上哪几个字段在哪、薪资怎么解、登录态怎么查 | 那一节现有的三家 |
 > | `tools/query_yield.py` 的 `PORTALS` 与 `PORTAL_ALIAS` | 平台显示名 + 它所有驱动方式的别名（`xxx-browser` / `xxx-cdp` 都归同一列） | 表里现有的写法 |
-> | `tools/export_web_data.py` 的平台元信息 | `how`（「浏览器读页面」）、`needsLogin: True`、`jd`、一句实测得来的 `note` | `"BOSS"` 那一行 |
+> | `tools/export_web_data.py` 的平台元信息 | `how`（「浏览器读页面」）、`needsLogin: True`、`jd`、一句验证得来的 `note` | `"BOSS"` 那一行 |
 > | `workflows/reference/search-queries.md` | `site:` 兜底查询（同下面第 2 条）| 文件里已有的写法 |
 >
 > **`PORTALS` 那一处漏了最难查**：`portal_budget` 从它 import，

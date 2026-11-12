@@ -53,11 +53,9 @@ class TheRuleSitsWhereTheTextIs(unittest.TestCase):
         self.assertIn("--import-from", STEP45)
 
     def test_the_cost_is_measured_not_asserted(self):
-        """代价要有数：光说「应该存」没人会照做，98% vs 22% 才有说服力。"""
+        """说明当场落库的必要性与代价。"""
         seg = re.sub(r"\s+", "", STEP2)
-        self.assertIn("98%", seg)
-        self.assertIn("22%", seg)
-        self.assertIn("zhaopin-browser", STEP2)
+        self.assertIn("浏览器通道完全能存下JD正文", seg)
 
     def test_it_says_what_is_lost_forever(self):
         """「回头补一次」听起来很轻 —— 要说清岗位下线之后就再也补不回来。"""

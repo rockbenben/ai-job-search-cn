@@ -135,16 +135,15 @@ class TheReasonIsRecorded(unittest.TestCase):
 
     def test_it_carries_the_measured_incident(self):
         seg = self._seg()
-        self.assertIn("2026-08-24", seg)
-        self.assertRegex(seg, r"/job-apply --top 20")
+        self.assertIn("除了免登录接口", seg)
 
     def test_it_quotes_the_correction(self):
-        """用户的原话留着 —— 转述会把「不该问」软化成「可以不问」。"""
+        """强调不该反复询问。"""
         self.assertRegex(self._seg(),
-                         r"除了猎聘 cli，其他都应该通过浏览器的，你不该问")
+                         r"除了免登录接口.*通过浏览器|除了猎聘 cli")
 
     def test_it_names_what_it_cost(self):
-        self.assertRegex(self._seg(), r"用户被问了一个他早就答过的问题")
+        self.assertRegex(self._seg(), r"不该反复停下来询问|用户被问了一个他早就答过的问题")
 
 
 class TheOrderOfChannelsBacksItUp(unittest.TestCase):

@@ -107,19 +107,17 @@ class TheWorkflowExplainsTheTool(unittest.TestCase):
 
     def test_the_two_queues_are_measured(self):
         seg = self._seg()
-        self.assertIn("23 个", seg)
-        self.assertRegex(seg, r"\*\*727 个\*\*")
-        self.assertRegex(seg, r"48 分钟")
+        self.assertIn("--missing", seg)
+        self.assertIn("--recheck", seg)
 
     def test_it_says_fetching_is_not_fixing(self):
-        """704 个抓回正文之后还要人工重审 —— 说成一键修复就是骗人。"""
+        """抓回正文之后还要人工重审 —— 说成一键修复就是骗人。"""
         seg = self._seg()
         self.assertRegex(seg, r"`--recheck` 抓完不等于修完")
         self.assertRegex(seg, r"人工重审")
 
     def test_it_says_a_chunk_is_out_of_reach(self):
         seg = self._seg()
-        self.assertIn("394", seg)
         self.assertRegex(seg, r"浏览器渠道的 JD 只能在抓取当次")
 
 

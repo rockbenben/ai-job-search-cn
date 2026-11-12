@@ -106,6 +106,7 @@ class TheTwoSilentOnesReallyFire(unittest.TestCase):
             tmp = pathlib.Path(d)
             (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True, exist_ok=True)
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
+                    unittest.mock.patch.object(ap, "_USER", ["u"]), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
                 out = ap.check_no_jd_but_sellable(seen, {})
@@ -121,6 +122,7 @@ class TheTwoSilentOnesReallyFire(unittest.TestCase):
             tmp = pathlib.Path(d)
             (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True, exist_ok=True)
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
+                    unittest.mock.patch.object(ap, "_USER", ["u"]), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
                 self.assertEqual(ap.check_no_jd_but_sellable(seen, {}), [])
@@ -148,6 +150,7 @@ class TheSameQuestionOnManyJobsIsReported(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             tmp = self._apps(d, files)
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
+                    unittest.mock.patch.object(ap, "_USER", ["u"]), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
                 return ap.check_greeting_questions_are_about_this_job({}, {})
@@ -238,6 +241,7 @@ class AnUnclosedQuoteMeansItWasCutOff(unittest.TestCase):
                 json.dumps({"activeUser": "u", "jobs": jobs},
                            ensure_ascii=False), encoding="utf-8")
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
+                    unittest.mock.patch.object(ap, "_USER", ["u"]), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
                 return ap.check_panel_text_is_not_cut_off({}, {})
@@ -284,6 +288,7 @@ class TheGateColumnAlsoUsesTheSevenNames(unittest.TestCase):
             ev.mkdir(parents=True, exist_ok=True)
             (ev / "evaluation.md").write_text(table, encoding="utf-8")
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
+                    unittest.mock.patch.object(ap, "_USER", ["u"]), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
                 return ap.check_gate_table_names_are_one_of_the_seven({}, {})
@@ -314,6 +319,7 @@ class ASnapshotWithoutTheJdSaysSo(unittest.TestCase):
             ev.mkdir(parents=True, exist_ok=True)
             (ev / "posting.md").write_text(text, encoding="utf-8")
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
+                    unittest.mock.patch.object(ap, "_USER", ["u"]), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
                 return ap.check_posting_snapshots_are_self_contained({}, {})
@@ -390,6 +396,7 @@ class ClaimingToHaveReadTheJdMeansItIsStored(unittest.TestCase):
             tmp = pathlib.Path(d)
             (tmp / "users" / "u" / "job_scraper" / "details").mkdir(parents=True, exist_ok=True)
             with unittest.mock.patch.object(ap, "ROOT", tmp), \
+                    unittest.mock.patch.object(ap, "_USER", ["u"]), \
                     unittest.mock.patch.object(ap._cli, "pick_user",
                                                lambda *a, **k: "u"):
                 return ap.check_jd_read_but_not_stored(seen, {})

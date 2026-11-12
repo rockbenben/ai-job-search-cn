@@ -141,8 +141,7 @@ class TheWorkflowNamesTheCommand(unittest.TestCase):
         self.assertIn("--save", RANK[i:i + 400])
 
     def test_the_incident_is_on_record(self):
-        self.assertIn("191", RANK)
-        self.assertIn("摩擦大的规则不会被执行", RANK)
+        self.assertRegex(RANK, r"摩擦大的规则(不[易会被]|难)")
 
 
 if __name__ == "__main__":

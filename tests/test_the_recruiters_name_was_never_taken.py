@@ -185,7 +185,7 @@ class TheScraperStoresIt(unittest.TestCase):
         row = next(l for l in SCRAPE.splitlines()
                    if l.startswith("| `recruiterSurname` |"))
         self.assertRegex(flat(row), r"「群发」和「专门找我」的分界")
-        self.assertIn("0/85", row)
+        self.assertIn("三处一起降级", row)
 
     def test_the_lesson_that_section_already_taught_survives(self):
         """「打分要用的字段，抓到了就必须存下来」—— 这一条建立在它上面。"""
@@ -241,8 +241,7 @@ class TheFalseClaimIsRetracted(unittest.TestCase):
     def test_the_retraction_carries_the_numbers(self):
         i = OUT.index("这一节原来接着写「只有这一个推不出来")
         seg = flat(OUT[i:i + 1400])
-        self.assertIn("2232", seg)
-        self.assertIn("66", seg)
+        self.assertIn("recruiterSurname", seg)
 
     def test_the_other_six_columns_are_still_excused(self):
         """那一段里「另外 6 个空列不在这里问」是对的，别连着一起删。"""

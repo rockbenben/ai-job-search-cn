@@ -31,7 +31,7 @@
 
 - **猎聘** — **CLI**（`liepin-search` 技能）。有可用的免登录 JSON API，覆盖大陆主要城市。
 - **BOSS 直聘** / **智联招聘** / **前程无忧** — **走浏览器，够不着才退 `site:` 兜底**。
-  这三家**没有可用的免登录 API**（具体实测见 `workflows/reference/cdp-portals.md`），
+  这三家**没有可用的免登录 API**（具体分析见 `workflows/reference/cdp-portals.md`），
   所以**不建 CLI**（假 CLI 只会静默返回 0 结果）。浏览器按**三层顺位**取，
   **不要搞反**（完整说明见 `AGENTS.md`「取数渠道的顺位」与 `job-scrape.md` 1b.5）：
 
