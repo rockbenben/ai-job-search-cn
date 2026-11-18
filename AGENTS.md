@@ -39,10 +39,12 @@
   对应命令就会把数据落在仓库根，多人共用一份 clone 时互相可见并互相覆盖
   （`tests/test_multiuser_paths.py` 会检查枚举完整性）。
 - 例外——**共享框架文件**留在仓库根，不按活动用户解析：`resume/template.typ`、
-  `resume/example.typ`、`cover_letter/template.typ`、`documents/README.md`、
-  共享模板库 `templates/cv/`、`templates/cover_letters/` 与 `templates/README.md`。
-- `users/<活动用户>/resume/main.typ` 与 `cover_letter/main.typ` 是**自包含**的
-  （分别内联了各自目录的 `template.typ`），不跨目录 import 共享模板。
+  `resume/example.typ`、`cover_letter/template.typ`、`cover_letter/example.typ`、
+  `documents/README.md`、共享模板库 `templates/cv/`、`templates/cover_letters/`
+  （这两个库由 `/job-add-template` 注册后创建）与 `templates/README.md`。
+- `users/<活动用户>/resume/main.typ` 是**自包含**的（`/job-setup` 生成时把仓库根的
+  `resume/template.typ` 内联进去），不跨目录 import。`cover_letter/main.typ` **不存在**
+  ——求职信按岗现写，骨架用共享的 `cover_letter/template.typ`。
 - **命名空间隔离，非加密**：同一操作系统账号下各用户明文数据互相可读；要真正保密请用
   不同操作系统账号或各自 clone。切换用户见 `/job-user`。
 
@@ -146,8 +148,7 @@ python tools/doctor.py
 凡是从文件正文流向界面的字段，显示层都要先剥掉 `**` 和反引号
 （`export_web_data.plain()`）。
 
-> 这三类（判定码、算式、markdown）为什么单列，以及 `plain()` 接上前后
-> 实测条数的变化，见 `docs/why/wording.md`。
+> 这三类为什么单列、`plain()` 前后实测条数的变化，见 `docs/why/wording.md`。
 
 排版上跟着一条：**等宽字体加大字距只适用于拉丁文**。中文套上去会被拉成散字，中英
 混排还会在接缝处炸出大间隙。等宽只留给纯数字（计数、分数、序号、版本号）。
@@ -166,15 +167,12 @@ python tools/doctor.py
 - 终端与文件里原样写 `/job-rank --all` 这种完整形态，包括参数。**文档正本
   （本文件与 `workflows/`）里的命令一律保留开头的斜杠**——那是标准形式；
   按工具改写只发生在给用户看的最终渲染层（见下一条）。
-- **命令形式按当前工具给，只给一种**：逐家实测，多数家吃开头的斜杠（`/job-auto`）；
-  **Codex 各端默认用 `$job-auto` 引用技能**（桌面 `/` 菜单与 CLI `/skills` 也可用），**未识别时也默认给斜杠**（以实测为主，例外单列）。
-  别并列两种写法让他自己挑——那等于把「你的工具是哪一家」这道
-  判断退回给他。探测是自动的：`tools/_cli.py` 的 `detect_code_tool` 负责判定，
-  `doctor.py` 输出与面板 `<Cmd>` 都跟着适配；识别错了用 `JOBS_CODE_TOOL` 手工指定
-  （可选值自检末尾会印），面板上「能敲哪些命令」里也有一个开关。
-  ⚠️ **探测信号只许用实测过的**，别写「看着像」的变量名——
-  上一版那批在对应工具里根本不存在，真 Claude Code 会话被认成了 generic。
-  哪几家在哪一档、逐家的信号、实测出处与怎么复核，全在 `docs/tool-entries.md`。
+- **命令形式按当前工具给，只给一种**：多数家吃开头的斜杠（`/job-auto`）；**Codex 各端默认
+  用 `$job-auto` 引用技能**（桌面 `/` 菜单与 CLI `/skills` 也可用），**未识别时也默认给斜杠**。
+  别并列两种写法让他自己挑。探测是自动的：`tools/_cli.py` 的 `detect_code_tool` 判定，
+  `doctor.py` 与面板 `<Cmd>` 跟着适配；识别错了用 `JOBS_CODE_TOOL` 指定，面板「能敲哪些
+  命令」里也有开关。
+  ⚠️ **探测信号只许用实测过的**；逐家的信号与怎么复核见 `docs/tool-entries.md`。
   > OpenCode GUI 用 `/job-auto`；OpenCode CLI 按用户实测用「请读取并执行 workflows/job-auto.md」。
 - 一条引导对应**一条**命令。给两条以上，用户就要先做一次选择——那正是引导要替他
   省掉的那一步。真有分支就写清「哪种情况敲哪条」。
@@ -260,7 +258,7 @@ python tools/doctor.py
 新用户不知道该敲什么，单文件那条路点了按钮还写不回盘上。没权限就开口要授权。
 详见 `workflows/job-dashboard.md`。
 
-总览页每个岗的「下一步」里有状态按钮，点一下写进投递记录、可撤销；按**当前状态**给下一步，
+总览页展开一个岗位时，那条逐岗「这个岗」一栏里有状态按钮，点一下写进投递记录、可撤销；按**当前状态**给下一步，
 不是八选一的下拉框。那条路只改一个字段、**不接大模型**（`serve.py` 的边界）；
 要写清楚经过（归档、跟进话术、面试复盘）仍然走 `/job-outcome`。
 用户问「怎么记一笔」时两条路都要说。
@@ -296,8 +294,12 @@ API，绕过 WAF 或反爬挑战不做，直接进第 2 层；逐家实测记录
 判断放在哪一层的依据是**平台给了什么**，不是「哪个工具顺手」。写一份新渠道接入时
 （`/job-add-portal`）先花一次力气确认第 1 层有没有——有就一劳永逸，没有再往下走。
 
-对应地：**「浏览器能力」不是这个仓库要你装的东西**，它由你所在的 AI 工具提供——别把
-「要装什么」列成缺失项去催用户；`tools/doctor.py` 也不把它算进「还差几项」。
+对应地：**「浏览器能力」不是这个仓库要你装的东西**——别列成缺失项催用户，
+`tools/doctor.py` 也不算它。
+
+**只读复核「这个岗还在不在」不在这四层里。** `tools/check_links.py` 只回答链接活不活，不碰
+登录态、不占抓取额度、不抓 JD；拿不到权限时的通用落地页不是下线，判不了就留复核入口、
+不许据此改状态。见 `docs/why/link-check.md`。
 
 ### 并行分派出去的时候
 
@@ -306,8 +308,7 @@ API，绕过 WAF 或反爬挑战不做，直接进第 2 层；逐家实测记录
 3. **worker 会撞目录名**：派活写明动笔前 `Test-Path`，绝不覆盖已有文件。
 4. **共享文件只由主会话写**：worker 不许碰 `seen_jobs.json` 与投递记录。
 
-**一次别派太多**——报 succeeded 不等于活干完了，自己核对目录。
-经过见 `docs/why/parallel-dispatch.md`。
+**一次别派太多**——报 succeeded 不等于活干完了，自己核对目录（见 `docs/why/parallel-dispatch.md`）。
 
 ### 浏览器不设任何自定的闸门（2026-08-27 用户裁定）
 

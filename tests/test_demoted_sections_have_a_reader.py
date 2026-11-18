@@ -35,6 +35,7 @@ DEMOTED = {
     "跟进裁定说过两次的记录": "docs/why/followup.md",
     "浏览器判据表关掉三家那一轮的经过": "docs/why/browser-gate.md",
     "并行分派那四条各自真发生过的事": "docs/why/parallel-dispatch.md",
+    "链接复核那次误标的经过（没权限不是下线）": "docs/why/link-check.md",
 }
 
 #: 每个落点在 `AGENTS.md` 里**实测到的指针条数**，判据是「不少于这条下限」。
@@ -61,6 +62,7 @@ POINTER_FLOOR = {
     "docs/why/followup.md": 1,
     "docs/why/browser-gate.md": 1,
     "docs/why/parallel-dispatch.md": 1,
+    "docs/why/link-check.md": 1,
 }
 
 
