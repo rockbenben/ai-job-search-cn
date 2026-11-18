@@ -367,7 +367,7 @@ class TheEnvProbeIsCachedOnDisk(unittest.TestCase):
         self.assertTrue(hasattr(ex, "_env_cache_file"), "没有磁盘缓存")
         f = ex._env_cache_file()
         self.assertNotIn(str(ROOT), str(f),
-                         "缓存落在了仓库里——它是派生数据，而且 web/public 是静态服务的根")
+                         "缓存落在了仓库里——它是派生数据，而且面板快照目录是静态服务的根")
 
     def test_a_second_probe_does_not_respawn_subprocesses(self):
         import export_web_data as ex

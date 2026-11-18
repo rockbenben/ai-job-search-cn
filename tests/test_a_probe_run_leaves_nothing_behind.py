@@ -3,9 +3,11 @@
 
 ## 实测代价（2026-09-03，发布前）
 
-`export_web_data` 不管传哪个 `--user`，都写同一份 `web/public/data.json`。
-两个模块要拿探针用户真跑它（`test_one_bad_row_does_not_crash_everything`、
-`test_the_file_he_saved_in_excel`），两个都记得「跑完把快照写回去」——
+历史上 `export_web_data` 不管传哪个 `--user`，都写同一份
+`web/public/data.json`（2026-11-09 起改为各写各的 `job_scraper/dashboard/`，
+`_live.PANEL_SNAPSHOT` 跟着改成按活动用户解析）。两个模块要拿探针用户真跑它
+（`test_one_bad_row_does_not_crash_everything`、`test_the_file_he_saved_in_excel`），
+两个都记得「跑完把快照写回去」——
 **两个都漏了同一半：干净 clone 上原来就没有快照，于是什么也没写回，
 探针那份 1 个岗、却标着 `isRealData: true` 的假快照留在了盘上。**
 
@@ -15,7 +17,7 @@
     干净 clone，第一遍   Ran 7340, OK (skipped=406)
     同一棵树，第二遍     FAILED (failures=8, errors=12)
 
-而 `web/public/` 是 gitignore 的 —— 「本来没有」和「留下一个假的」
+而 快照目录在 `users/` 下（整目录 gitignore）—— 「本来没有」和「留下一个假的」
 在 `git status` 里长得一模一样。**只有再跑一遍才看得见。**
 
 ## 为什么判据钉在「谁能碰那份快照」上

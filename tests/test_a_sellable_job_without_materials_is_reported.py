@@ -16,8 +16,9 @@
 （`dupOf`，材料在主贴那边），而 `dupOf` 是导出时才算的（公司 + JD 正文哈希 +
 手写的「同岗重复挂牌.md」），职位库里根本没有这个字段。
 
-`job-apply.md` 第 0 步早就写着「从 `web/public/data.json` 挑，不要照着
-`seen_jobs.json` 自己再筛一遍」。所以这个文件同时钉两件事：
+`job-apply.md` 第 0 步早就写着「选岗优先读面板那份快照
+`users/<活动用户>/job_scraper/dashboard/data.json`，不要照着 `seen_jobs.json`
+自己再筛一遍」。所以这个文件同时钉两件事：
 **它报得出漏网的**，以及**它是从快照按七条选的**。
 """
 import json

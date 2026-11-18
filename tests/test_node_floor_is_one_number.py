@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import doctor  # noqa: E402
 
-#: 会对用户说出版本号的地方。生成物（web/dist、web/public）不算。
+#: 会对用户说出版本号的地方。生成物（web/dist）不算。
 DOCS = [ROOT / "README.md", ROOT / "SETUP.md",
         ROOT / "workflows" / "job-scrape.md",
         ROOT / ".agents" / "skills" / "liepin-search" / "cli" / "README.md"]

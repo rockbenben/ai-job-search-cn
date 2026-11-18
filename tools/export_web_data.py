@@ -1986,8 +1986,8 @@ def mark_restale(user: str, jobs: list) -> int:
     判据整个在 `tools/stale_materials.py` 里，这里**只贴标不重算**。
 
     已投 / 不投 / 已下线那批从**手上这份 `jobs`** 里现算，不让它回头去读
-    `web/public/data.json`：那份文件正是这个函数所在的导出器要写的，
-    读它等于拿上一轮的结果算这一轮，而且成环。
+    面板快照（`users/<活动用户>/job_scraper/dashboard/data.json`）：那份文件正是
+    这个函数所在的导出器要写的，读它等于拿上一轮的结果算这一轮，而且成环。
 
     算不出来就一个都不打（面板据此不渲染那一句）——
     一个附加字段不值得让整份导出失败。
@@ -2124,8 +2124,8 @@ _ENV_TTL = 300.0
 def _env_cache_file():
     """缓存放系统临时目录，按仓库路径分桶。
 
-    **不放仓库里**：它是派生数据，放进去要么污染工作区、要么被 `web/public/`
-    连带端给浏览器（那目录是静态服务的根）。按 ROOT 哈希分桶，多个 clone 各用各的。
+    **不放仓库里**：它是派生数据，放进去要么污染工作区、要么被面板快照目录
+    连带端给浏览器（`dashboard/` 是静态服务的根）。按 ROOT 哈希分桶，多个 clone 各用各的。
     """
     import hashlib
     import tempfile
@@ -4700,7 +4700,7 @@ def main(argv=None, *, show_next_step=True) -> int:
              # **可选与否必须带过去。** 原来这一行没有，于是网页版只能按
              # `ok === false` 数「缺几项」——一台没装 Bun 的机器上它会说
              # 「还差 Bun（可选）」并每次默认展开，催人装一个不需要的东西。
-             # 判断走 `build_dashboard.is_optional`，与单页版**同一个函数**。
+             # 判断走 `build_dashboard.is_optional`（单页版已删，现在只有这一个消费方）。
              "optional": is_optional(e),
              # **会静默失败的那一项要单独标出来。** 中文字体是唯一「缺了不报错、
              # PDF 照样出、ATS 校验也过、但渲染是豆腐块」的依赖——只和别的项并排
@@ -4711,7 +4711,8 @@ def main(argv=None, *, show_next_step=True) -> int:
              "fix": e.get("fix") or ""}
             for e in _probe_env_safe()
         ],
-        # 全部命令。面板只露过 18 个工作流里的 7 个——`/job-outcome`（投完记录结果）、
+        # 全部命令。2026-08 实测面板只露过当时 18 个工作流里的 7 个（现在 21 条全进）；
+        # `/job-outcome`（投完记录结果）、
         # `/job-offer`、`/job-upskill` 连提都没提过。而这个仓库的判断力全在命令行侧，
         # 面板不说出命令，用户就只能靠翻文档才知道自己还能做什么。
         # 从 workflows/INDEX.md 的索引解析，不在前端写死（写死必然跟索引飘）。
@@ -4773,10 +4774,11 @@ def main(argv=None, *, show_next_step=True) -> int:
         # **给的是不带参数的形式。** 三条原来写成 `/job-apply <职位链接>`、
         # `/job-outcome <公司>`、`/job-interview <公司>`，两个代价：
         #
-        # 1. **那串放不进格子。** 五格并排时每格约 195px，扣掉内边距只剩 165px，
-        #    而带参数那串要 ~160px 加复制图标 —— 1000-1180px 宽的屏幕上它折行，
-        #    屏幕上是「/job-apply <职位链接」换行「> ⧉」。命令是这一页唯一
-        #    要原样带走的东西，断开就等于让人怀疑自己看漏了。
+        # 1. **那串放不进格子。** 上一版五格并排时每格约 195px、扣掉内边距只剩
+        #    165px，带参数那串要 ~160px 加复制图标 —— 1000-1180px 宽的屏幕上它
+        #    就折行（屏幕上是「/job-apply <职位链接」换行「> ⧉」）。现在格子挪到
+        #    侧栏竖排，但命令仍是这一页唯一要原样带走的东西：断开就等于让人
+        #    怀疑自己看漏了。
         # 2. **它不能直接粘。** 用户站在总览页上，手里没有职位链接；
         #    复制走还得先把尖括号改掉。而这三条**不给参数都是有意义的**
         #    （见 workflows/INDEX.md 工作流索引第四列：apply 给「可以投」那档全部出材料、
@@ -4842,7 +4844,8 @@ def main(argv=None, *, show_next_step=True) -> int:
         }
         pdf = ud / "resume" / "main.pdf"
         if pdf.is_file():
-            # 复制到 web/public 下才打得开：file:// 与 http:// 两种模式都要能取到
+            # 复制到 dashboard 目录下才打得开：`serve.py` 的 /pdf/ 路由从那里取，
+            # 而 dist/ 里那份是构建时的快照（见 serve.py 里 /pdf/ 那段的说明）。
             name = publish_pdf(pdf, pdf_dir)
             base["pdf"] = f"pdf/{pdf_user}/{name}"
             base["pdfLocal"] = "../resume/main.pdf"

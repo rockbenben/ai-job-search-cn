@@ -89,7 +89,8 @@ class FilePathsResolve(unittest.TestCase):
         的那批文件，不放 `users/`、不放 `.active_user`）跑一遍，这条第一个红：
 
             SETUP.md            → `.claude/settings.local.json`
-            job-apply/auto/user → `web/public/data.json`
+            job-apply/auto/user → `web/public/data.json`（当时面板快照还在那儿；
+            2026-11-09 起改为 `users/<活动用户>/job_scraper/dashboard/data.json`）
 
         四处引用**全是对的**——文档正该告诉用户这两个文件是什么。它们只是
         「跑起来才会有」：一个是本机设置，一个是导出器的产物，两个都在

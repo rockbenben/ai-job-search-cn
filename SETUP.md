@@ -19,7 +19,8 @@
 > `.active_user` 文件里，由 `/job-setup` 首次创建、`/job-user` 切换。
 >
 > **例外**：`resume/template.typ`、`cover_letter/template.typ`、`resume/example.typ`、
-> `templates/README.md`、共享模板库 `templates/cv/` 与 `templates/cover_letters/`、
+> `cover_letter/example.typ`、`templates/README.md`、共享模板库 `templates/cv/` 与
+> `templates/cover_letters/`（这两个库由 `/job-add-template` 注册后创建）、
 > `documents/README.md`——这几个是**全用户共享的框架文件**，就在仓库根，不按用户解析。
 > （这条枚举的**正本在 `AGENTS.md`「活动用户与多用户」**。这里是抄给读本文的人看的，
 > 要加新的共享条目，先加到正本。）
@@ -39,7 +40,7 @@
 | | 装什么 | 解锁 |
 |---|---|---|
 | **① 必装** | **一个能读 `AGENTS.md` 并执行工作流的 AI 编码工具** + **Node 22.18+**（见下方「运行时」一节） | 填资料 `/job-setup`、**搜职位 `/job-scrape`**、**打分排序 `/job-rank`**、面试准备 `/job-interview`、记投递 `/job-outcome`、学习计划 `/job-upskill`、切换用户 `/job-user` |
-| **② 要出简历 PDF 就装** | Typst（中文字体一般已自带） | `/job-cv` 编译定制简历、`/job-resume` 校验（不装只给 `.typ` 源文件）。**`/job-apply` 不出简历**——它发主简历，定制走 `/job-cv` |
+| **② 要出简历 PDF 就装** | Typst（中文字体一般已自带） | `/job-cv` 编译定制简历（不装则交付 `.typ` 源文件）、`/job-resume` 用它验页数（不装就跳过页数这项并说明）。**`/job-apply` 不出简历**——它发主简历，定制走 `/job-cv` |
 | **③ 强烈建议装** | Python 3.10+（流水线全程只用标准库） | 总览页和搜索记录、预筛、刷新数据等辅助步骤，详见 [Python 用途](#python-用途) |
 | ④ 可选 | poppler（提供 `pdftotext` 与 `pdftoppm`） | 简历 PDF 的文本层校验与视觉检查（不装则跳过并说明；两个都在 poppler 里，一条安装命令带齐） |
 | ⑤ 可选·进阶 | 能开浏览器的 AI 工具（Claude Code 装 Claude 浏览器扩展；WorkBuddy 用自带的 `agent-browser`） | BOSS 直聘 / 智联 / 前程无忧（没有则退 `site:` 兜底）。见 3.1 |
@@ -62,8 +63,8 @@
 > 几格都是 `slash`，`/job-auto` 那种敲法在这些家里就是它的原生形态。
 > **Codex 各端默认使用 `$job-…` 引用技能**；桌面版可从 `/` 菜单选择，CLI / IDE 可用
 > `/skills`。不能把旧版 CLI 对未知斜杠项的报错解释成 Codex 不支持 `/`。
-> Codex 现在用 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` 自动识别（2026-11-09 实测），
-> 按本项目实测，默认推荐 `/job-*`，未识别工具也先保留斜杠。
+> Codex 现在用 `CODEX_THREAD_ID` / `CODEX_SESSION_ID` 自动识别（2026-11-09 实测）：
+> 识别到 Codex 就给 `$job-…`，**未识别的工具一律先给斜杠**。
 > OpenCode GUI 使用斜杠；OpenCode CLI 按用户实测用完整自然语言请求。认错了手工指定：
 > `JOBS_CODE_TOOL=workbuddy|claude|cursor|dsh|opencode_gui|opencode_cli|antigravity|mimo|mavis|qoder|qwen|generic|codex`。
 
@@ -106,7 +107,7 @@ npm install -g @anthropic-ai/claude-code
 | `/job-add-template` | 检查模板撞名 | 由助手检查现有模板名称 |
 | `/job-refresh` | 保存刷新记录 | 当次刷新继续，历史刷新记录不自动更新 |
 | `/job-outcome` | 计算用户主动查询的跟进情况 | 用户自己判断是否跟进 |
-| `/job-rank`、`/job-outcome`、`/job-gmail-sync`、`/job-interview`、`/job-user`、`/job-cv`、`/job-reset`、`/job-scrape --no-rank` | 完成后刷新总览数据 | 已生成材料仍可查看，总览数据不自动刷新 |
+| `/job-rank`、`/job-outcome`、`/job-gmail-sync`、`/job-interview`、`/job-user`、`/job-cv`、`/job-reset` | 完成后刷新总览数据 | 已生成材料仍可查看，总览数据不自动刷新 |
 
 检查：
 
@@ -117,6 +118,9 @@ npm install -g @anthropic-ai/claude-code
 > **构建末尾那段黄字不是报错**：Vite 提醒「有的代码块超过 500 kB」——那条提醒是给
 > 要走网络下发的网站看的，而这一页只在你自己电脑上跑（`127.0.0.1`），不经网络。
 > 看到 `✓ built in …` 就是成功了。
+>
+> **`/job-scrape --no-rank` 是例外**：它不接评分，刷新也就没了——收完要自己跑一次
+> `python tools/export_web_data.py` 刷新总览，否则看到的是抓之前的状态。
 >
 > 这一条以前不需要：总览页曾经由一个纯 Python 脚本直接吐 HTML，与 React 那套并存。
 > 两套各有一份布局与文案，「同一条规则只修一侧」反复发生，所以合并成了一套。
@@ -140,7 +144,8 @@ node .agents/skills/liepin-search/cli/src/cli.ts search -q "后端开发" -l "�
 ```
 
 **多半你已经装了 Node**——但各家 AI 工具的装法不一样（有的走 npm、有的是原生可执行
-文件），从手上那个工具反推不出「机器上有没有 Node」。确认一下版本够：
+文件），从手上那个工具反推不出「机器上有没有 Node」。没有 Node 也能跑（猎聘 CLI 用不了，
+会退到浏览器与 `site:` 搜索，结果少一些），但那样每轮都要降级，建议装上。确认版本够：
 
 ```bash
 node --version    # 需要 v22.18 或更高
@@ -158,7 +163,8 @@ CLI 的测试用 `bun:test` 写，所以开发时需要 Bun；**日常使用完�
 - Windows PowerShell：`powershell -ExecutionPolicy Bypass -c "irm https://bun.sh/install.ps1 | iex"`
   （或 `winget install Oven-sh.Bun`）
 
-装了之后 `bun run …` 与 `node …` 两种方式都能跑 CLI，行为一致，两者都在 CI 里验证。
+装了之后 `bun run …` 与 `node …` 两种方式都能跑 CLI，行为一致；CI 跑的是 Bun 那条
+（typecheck + 测试），Node 那条由 `tests/test_cli_runtime_portability.py` 的静态检查守着。
 
 </details>
 
@@ -174,9 +180,9 @@ CLI 的测试用 `bun:test` 写，所以开发时需要 Bun；**日常使用完�
   Windows Terminal 默认已经是 UTF-8，通常不需要这一步；老式 `cmd.exe` 窗口更容易碰到。
 - **终端字体**：确认终端字体支持中文字符（Windows Terminal、iTerm2、大多数 Linux
   终端默认都支持）。
-- **Git 中文文件名**：如果你的资料目录（`documents/`）里有中文文件名，执行一次
-  `git config core.quotepath false`，避免 `git status` 把中文文件名转义成八进制转义
-  序列。
+- **Git 中文文件名**：个人材料在 `users/` 下，整目录 gitignore，不会进 `git status`；
+  但如果你要提交带中文名的**框架文件**（例如 `templates/cv/<模板名>/`），先执行一次
+  `git config core.quotepath false`，免得 `git status` 把中文文件名转义成八进制序列。
 
 ### Typst（用于编译简历）
 
@@ -323,15 +329,15 @@ Pop-Location
 
 三者都由工具提供，**不是本仓库要你装的东西**；别把「要装什么」列成缺失去催用户。
 
-你要做的只有一件事：**在 BOSS 直聘和智联招聘各登录一次**（前程无忧不用登录也能读）。
+你最少要做的一件事：**在 BOSS 直聘和智联招聘各登录一次**（前程无忧不用登录也能读）。
 登录后顺手在站内把「求职期望」设准——`/job-scrape` 会先读你的站内期望，搜出来的岗明显更对口。
 
 #### 顺位 2（没有扩展时）：装一个 CDP skill
 
 1. **一个能驱动登录态 Chrome 的 CDP skill —— ⚠️ 本项目不附带，需你自己装一次。**
 
-   仓库里只有各族 `skills/` 下那几个自带技能（清单见 `tools/_entries.py` 的
-   `SHELL_FAMILIES`）。CDP 那一层
+   仓库里只有各族 `skills/` 下那几个自带技能（族名见 `tools/_entries.py` 的
+   `SHELL_FAMILIES`，技能清单见 `workflows/INDEX.md`）。CDP 那一层
    （连上你日常 Chrome、取 DOM、开关后台 tab）是**独立的第三方 skill**，装在你的用户
    全局目录（`~/.claude/skills/`），不在本仓库里。
 
@@ -365,8 +371,9 @@ Pop-Location
    这个已登录会话，天然带着你的登录态；没有登录态浏览器，或 `web-access` 的前置检查
    （`check-deps`）没通过，这三家就退到 `site:` 兜底（网络搜索检索公开索引页）。
 3. **在 BOSS / 智联站内设好你的「求职期望」**（岗位 + 城市，智联还能设到区）。
-   实测这两家登录后，**裸搜索页返回的就已经是按你的期望过滤好的结果**——`/job-scrape`
-   优先直接用它，不再自己拼查询参数。期望设得越准，这两个渠道的结果就越对口。
+   实测**智联**登录后裸搜索页已按期望过滤好（20/20 命中）；**BOSS 的裸页不行**（2/15），
+   必须带关键词查询——所以 `/job-scrape` 对这两家分开处理。站内期望仍值得设准
+   （它影响两家的推荐流），但它不是 BOSS 这一轮的替代方案。
    **前程无忧看登录态**：登录后同样完全个性化（裸入口的页面标题直接变成你的期望岗位
    与城市），未登录才退回关键词搜索——那时裸入口给的是本地泛招聘。2026-08-19 实测，
    逐家记录见 cdp-portals.md。
@@ -479,7 +486,7 @@ Claude 会：
 1. 按你的资料评估匹配度（国内硬性条件 + 技能·薪资·强度·发展四项评分 + 待核实的信息），同时判定本次投递是否命中
    求职信触发场景（校招网申系统要求上传求职信、体制内、外企、传统行业等；直聊
    HR/猎头等默认场景不触发）
-2. 判定**投递路径**（平台直聊 / 网申·报名·公共邮箱）与**对话方**（猎头 / HR 直招）；结论是「强匹配 / 值得投」就直接往下走，更弱的档才停下来问你
+2. 判定**投递路径**（平台直聊 / 网申·报名·公共邮箱）与**对话方**（猎头 / HR 直招）；「强匹配 / 值得投 / 可以考虑」都直接往下走，「不建议 / 跳过 / 不满足硬性条件」只留评估、不出材料。**只有资料里没有的事实才会来问你。**
 3. 起草该出的那几个渠道的话术（直聊出打招呼开场白；网申与公共邮箱出网申自评或邮件正文）；命中场景时额外起草一份正式求职信。
    **简历发你的主简历，本命令不做定制**——要针对某个岗定制走 `/job-cv`
 4. 派一个独立的**审稿者**子代理调研公司、核实事实、批评草稿
@@ -492,7 +499,7 @@ Claude 会：
 **投出去之后**这一段同样有工具接着：
 
 ```
-/job-outcome <公司>        投完记一笔（后面的催进度、备面、框架校准全靠它）
+/job-outcome <公司>        投完记一笔（后面的记录结果、备面、框架校准都从这一笔长出来；催不催由你自己定）
 /job-outcome followup      十来天没动静时，算清哪些该催并起草跟进话术
 /job-interview <公司>      阶段化面试准备包 + 可选模拟面；问答会记下来，总览页能回看
 /job-offer <公司>          拿到 offer：可守区间、背调红线自查、多 offer 比较、离职过渡清单
@@ -640,9 +647,10 @@ CLI 直接起不来（装了 Bun 的话可以改用 `bun run …` 绕过）。�
 
 ### 跑 `/job-auto` 时它反复问「要不要跑 `python tools/…`」
 
-**那是预期行为，不是坏了。** 下面那份共享清单只预批了四条（两个运行时的 CLI、
-`pdftotext`、那个自动触发技能），**不含 `python`**。而 `/job-auto` 一轮要跑好几个
-`python tools/*.py`（自检、额度闸门、导出面板……），所以第一次跑会被问上几次 ——
+**那是预期行为，不是坏了。** 共享清单由 `tools/gen_entries.py` 按各工作流实际要跑的命令
+派生（当前 34 条：23 个 `python tools/*.py` 前缀、typst、node 与 bun 跑 CLI、`pdftotext`、
+`agent-browser`、技能入口与读写网页那几项）。仍有个别没进清单
+（如 `python tools/auto_progress.py`），所以第一次跑可能被问上一两次 ——
 它承诺的「中途不用你盯着」说的是**不用你做判断**，不是「不会向你要授权」。
 
 三种做法，选一个：
@@ -662,7 +670,7 @@ CLI 直接起不来（装了 Bun 的话可以改用 `bun run …` 绕过）。�
 > Python 命令也一并放行了，见下一节。
 
 ### 旧 clone 遗留的 `.claude/settings.local.json`
-共享的 Claude Code 权限现在放在 `.claude/settings.json`（允许 `node …/cli.ts`、`bun run …/cli.ts`、`pdftotext` 与 `job-application-assistant` 技能——**两个运行时各一条**，所以 Node 用户不会被权限拦住）。本仓库早期版本曾提交过一份更宽的
+共享的 Claude Code 权限现在放在 `.claude/settings.json`（34 条，由生成器按各工作流的命令派生：`python tools/*.py` 前缀、`node`/`bun` 跑 CLI、`pdftotext`、技能入口等）。本仓库早期版本曾提交过一份更宽的
 `.claude/settings.local.json`，预授权了 `Bash(curl:*)`、`Bash(python:*)`、`Bash(bun:*)`。
 如果你在那次改动之前 clone 过，git 会把旧文件留在你的工作副本里，其权限仍会叠加在
 `settings.json` 之上。删掉它（或裁剪成你自己的个人覆盖项）：

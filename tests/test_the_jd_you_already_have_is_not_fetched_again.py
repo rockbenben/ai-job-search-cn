@@ -12,7 +12,8 @@
 
 修法只能是**读文件**，不能是敲工具：`/job-apply` 对外承诺不依赖 Python
 （README 与 SETUP 都这么写，`test_materials_gap_nudge` 盯着）。好在不需要——
-批量本来就在读 `web/public/data.json`，而那里每个岗的 `id` **就是**详情库的
+批量本来就在读面板快照（`users/<活动用户>/job_scraper/dashboard/data.json`），
+而那里每个岗的 `id` **就是**详情库的
 文件名（两边同一个 `stable_id(url, title)`），`cat` 一下就够了。
 
 第一版在这里加了个 `jd_store.py --get`，当场被那条测试拦下。拦对了：

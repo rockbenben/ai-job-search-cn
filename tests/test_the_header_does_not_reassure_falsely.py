@@ -131,7 +131,7 @@ class ThePortalHeaderNamesWhatIsOff(unittest.TestCase):
         self.assertRegex(seg[i:i + 900], r"pct >= 10", "没有「小到不必说」的门槛")
 
     def test_the_word_order_matches_the_sibling_chips(self):
-        """旁边两枚是「猎聘 被拦住了」「猎聘 在限流冷却」——名字在前、动词在后。
+        """旁边两枚是「猎聘 被拦住了」「猎聘 被限流了，换个网络再试」——名字在前、动词在后。
         价格挂最后，不许插在名字和动词之间。"""
         seg = _portal_header()[_portal_header().index('tone: "off"'):][:900]
         # **两支都要验。** 三元的另一支（占比不足 10% 时）也拼这句话，

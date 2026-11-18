@@ -3,7 +3,7 @@
 ## 为什么要钉住
 
 面板读的不是 `seen_jobs.json`，而是 `export_web_data.py` 生成的派生快照
-`web/public/data.json`。而改上游的是**另一批人**：`/job-apply` 深评写回分数、`/job-rank`
+（`users/<活动用户>/job_scraper/dashboard/data.json`）。而改上游的是**另一批人**：`/job-apply` 深评写回分数、`/job-rank`
 批量打分、`/job-outcome` 记投递、`/job-scrape` 新增职位——十几个工作流，没有一个天然知道
 自己还得去刷新一份派生文件。
 

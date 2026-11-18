@@ -4828,8 +4828,9 @@ def check_sellable_without_materials(seen, details) -> list:
     它是**重复挂牌**（`dupOf`），材料在主贴那边。而 `dupOf` 是导出时算的
     （公司 + JD 正文哈希 + 手写的「同岗重复挂牌.md」），`seen_jobs.json` 里根本没有。
 
-    `job-apply.md` 第 0 步早就写着「**从 `web/public/data.json` 挑，不要照着
-    `seen_jobs.json` 自己再筛一遍**」，而我在写这条检查时犯的正是它拦的那个错。
+    `job-apply.md` 第 0 步早就写着「**选岗优先读面板那份快照
+    `users/<活动用户>/job_scraper/dashboard/data.json`，不要照着 `seen_jobs.json`
+    自己再筛一遍**」，而我在写这条检查时犯的正是它拦的那个错。
     同一段还记着 08-25 的一次实测代价：执行者拿公司名前缀去匹配材料目录名，
     两次报出「有 16 个 / 4 个可投的岗没材料」，真值是 **0**。
 

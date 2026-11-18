@@ -145,7 +145,8 @@ def _band(verdict: str) -> str:
 def plan(user: str, out_urls: set | None = None) -> tuple[list, dict]:
     """`out_urls` 给的是「已投 / 不投 / 已下线」那批的规范化链接。
 
-    不给就自己去 `web/public/data.json` 里读 —— 命令行单跑时那是最省事的来源。
+    不给就自己去面板快照 `users/<活动用户>/job_scraper/dashboard/data.json` 里读 ——
+    命令行单跑时那是最省事的来源。
     **但导出器不能走那条**：它自己就是写这份文件的人，读它等于拿上一轮的结果
     算这一轮，而且成环。所以它把手里那份现算的集合传进来。
     """

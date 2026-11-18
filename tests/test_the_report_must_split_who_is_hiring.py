@@ -7,7 +7,8 @@
 
 ## 这条教训总览页已经付过一次
 
-`build_dashboard.no_reply_advice` 的说明逐字写着：
+`export_web_data` 里算零回音那段（判据见 `build_dashboard.NO_REPLY_ALARM`）
+逐字写着：
 
 > 「投了 N 个 0 回音，去审简历」这句话的分量，完全取决于 N 里有多少是猎头代招。
 > 简历投给猎头是先进他的库，推不推、什么时候推由他定，岗位可能早就关了 ——

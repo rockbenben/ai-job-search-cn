@@ -52,6 +52,7 @@ WorkBuddy 的浏览器与日常浏览器独立，需要在里面登录招聘站�
 ### 1. 下载仓库，用你的 AI 工具打开
 
 ```bash
+# 想保留自己的改动就先 fork 再克隆你那份（见 SETUP.md「获取代码」）
 git clone https://github.com/rockbenben/ai-job-search-cn.git
 cd ai-job-search-cn
 ```
@@ -91,7 +92,7 @@ cd ai-job-search-cn
 
 Python 还支持搜索记录、评分预筛、写回和刷新数据等辅助步骤。没装也能搜岗、评分和出话术，各命令受影响的功能见 [Python 用途与降级说明](SETUP.md#python-用途)。已有 Python 时，在终端运行 `python tools/doctor.py`，它会检查当前环境与进度，并给出一条下一步命令。
 
-贡献者运行的四个检查脚本中，只有 `tools/lint_skills.py` 需要额外安装 `pyyaml`：先运行 `pip install pyyaml`；日常求职无需安装这个包，检查命令见 [贡献指南](CONTRIBUTING.md)。
+贡献者要跑的检查（`python tools/gen_entries.py --check`、`python tools/lint_skills.py`、`python tools/security_guards.py` 与整套 unittest）里，只有 `tools/lint_skills.py` 需要额外安装 `pyyaml`：先运行 `pip install pyyaml`；日常求职无需安装这个包，检查命令见 [贡献指南](CONTRIBUTING.md)。
 
 ## 按场景使用
 
@@ -107,7 +108,7 @@ Python 还支持搜索记录、评分预筛、写回和刷新数据等辅助步�
 
 总览页可以直接点按钮改投递状态；要补充面试经过、拒绝原因或复盘，用 `/job-outcome <公司>`。投过的公司会在其它岗位上标记「这家投过」，是否继续投由你决定。
 
-`/job-rank`、`/job-outcome`、`/job-gmail-sync`、`/job-interview`、`/job-user`、`/job-cv`、`/job-reset`、`/job-scrape --no-rank` 收尾刷新面板数据，无需手工导出。
+`/job-rank`、`/job-outcome`、`/job-gmail-sync`、`/job-interview`、`/job-user`、`/job-cv`、`/job-reset` 收尾刷新面板数据，无需手工导出。`/job-scrape --no-rank` 是例外：它不收尾，跑完要自己执行一次 `python tools/export_web_data.py`。
 
 还有简历刷新、经历补充、模板切换等功能，见 [全部命令与参数](workflows/INDEX.md)。
 

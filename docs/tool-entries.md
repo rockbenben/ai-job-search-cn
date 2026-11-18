@@ -13,13 +13,15 @@
 >
 > **这道闸现在管不到我们，而「管不到」是算出来的不是感觉的**：本仓库给 agy 的常驻规则
 > 只有 `AGENTS.md` 一份（它不读 `CLAUDE.md`——二进制里那个字面量 0 命中，正对照是
-> `AGENTS.md` 52 次、`GEMINI.md` 46 次），而 23,500 B 那道字节闸在任何文种构成下都
-> 换算不到 20,000 token（整篇汉字约 1.2 万，整篇 ASCII 约 6 千）。**所以不为它另设闸门**。
+> `AGENTS.md` 52 次、`GEMINI.md` 46 次），而 `AGENTS.md` 现在 23,485 B（2026-11-18 量），
+> 离 24,000 B 那道闸只剩约 0.5 KB；不论整篇是汉字还是 ASCII，都换算不到 20,000 token
+> （整篇汉字约 1.2 万 token，整篇 ASCII 约 6 千 token）。**所以不为它另设闸门**。
 > 但**再加第二份常驻规则文件之前回来重算这条**——那时占预算的就不止一份了。
 
 **本文件是「哪家工具怎么进来」的正本**：逐家的接入面（读哪个规则文件、扫哪个技能
 目录、吃不吃斜杠、有没有探测信号）都在下面那几张表里，`AGENTS.md` 只留指针。
-每一格都是**逐家取证**的，取证日期写在格子旁边；改判据之前先按文末「复核入口」
+每一格都有**逐家取证**或官方文档作依据，取证日期写在有实测记录的行或脚注里；
+改判据之前先按文末「复核入口」
 再量一次 —— 表会过期，量法不会。
 
 ## 逐家的接入面
@@ -54,7 +56,8 @@
 >   第 250 行「跟进归用户」处 `[...too long, omitted...]`，后半段（能力对照表、
 >   取数顺位、并行分派、工具特化）没进常驻上下文。截断在 IDE 注入层，不是它读文件
 >   那一层 —— 与上面 agy 24,000 B / Codex 32 KiB 是同类题，别记成同一处。
-> - 扫 `.agents/skills/` ❌：本会话技能清单里 23 份 job-* 壳一份都没加载；
+> - 扫 `.agents/skills/` ❌：本会话技能清单里那份 job-* 壳（每族 22 份：
+>   21 条命令 + 1 份路由壳）一份都没加载；
 >   项目级 `.codebuddy/`、`.workbuddy/skills/` 原本都不存在。bundle 里
 >   `.agents/skills` 只出现一次，形如 `~/.agents/skills/`（用户级），且落在
 >   `DEFAULT_TOOLCHAIN_ALLOW_WRITE_DIRS` 那串写权限白名单里，**不是**扫描路径。
@@ -157,13 +160,14 @@
 - **自动触发**：Claude Code 侧的说明见 `CLAUDE.md`；其余各家读的是同一批壳里那行
   「触发词：…」，说一句「找职位」照样开跑。
 
-**`.claude/` 里没有任何正文。** 那底下只有 `SKILL.md` 壳：每条命令一份，由
+**`.claude/skills/` 下没有任何正文。** 那底下只有 `SKILL.md` 壳：每条命令一份，由
 `tools/gen_entries.py` 从 `workflows/INDEX.md` 与 `tools/_entries.py` 生成，外加一份
 手写的路由壳 `job-application-assistant`（`/job-scrape` 与 `/job-upskill` 也一样，
 没有特例）。壳就干两件事：什么时候自动触发、跑起来手里有哪些工具；正文全在
 `workflows/`，别的工具照索引读那一份就行，不会少任何东西。原来那批
 `.claude/commands/` 薄 stub 已整体删除：斜杠命令这一层壳各族都给，那个目录里
-再长出文件，`tools/lint_skills.py` 就报。
+再长出文件，`tools/lint_skills.py` 就报（`.claude/` 另有权限文件 `settings.json`，
+它不是正文）。
 
 对应地，**工作流正文里不许出现 `.claude/` 路径，也不许自称「本技能 / this skill」**。
 实测代价（2026-08-18）：`job-scrape.md` 里留着一句「框架自己的 `search-queries.md`
@@ -238,8 +242,8 @@ AI 工具无关。
 >
 > 守卫钉着这条边界：`.claude/commands/` 里再长出任何文件（命令 stub 已删，入口只由
 > 生成器落到各族技能壳）、某条工作流在某族缺壳、或各族的壳集合对不上、工作流正文里
-> 出现 `.claude/` 路径或自称「本技能」、`CLAUDE.md` 复述 `AGENTS.md` 已有的流程——
-> `tools/lint_skills.py` 都会报。
+> 出现 `.claude/` 路径或自称「本技能」、`CLAUDE.md` 复述 `AGENTS.md` 已有流程里的
+> 同一条要跑的命令——`tools/lint_skills.py` 都会报。
 
 ### 当前 Codex 调用方式（2026-11-09 复核）
 
@@ -339,7 +343,7 @@ DeepSeek Harness 与表中的 Deep Code 分开记录，不把两个产品的接�
 |---|---|---|
 | WorkBuddy | `CLIENT_INFO_IDE_TYPE=WorkBuddy`（另有 `WORKBUDDY_PRODUCT_NAME` / `WORKBUDDY_APP_VERSION=5.9.3` / `CODEBUDDY_HOST=workbuddy-desktop`） | 2026-11-09 在真 5.9.3 桌面会话里 `env` 逐个量；取最贴「跑在哪个 agent 里」的那个，产品名兜底。⚠️ 它也注入 `CLAUDE_PROJECT_DIR` / `CLAUDE_SESSION_ID`，但 `CLAUDECODE` 实测不在，所以排在各家之前 |
 | Claude Code | `CLAUDECODE=1`（另有 `CLAUDE_CODE_ENTRYPOINT`） | 对它注入给子进程的环境取证 |
-| agy | `ANTIGRAVITY_AGENT=1`（另有 AGENTAPI_EXE / LS_VERSION） | agy.exe 里的字面量 |
+| agy | `ANTIGRAVITY_AGENT=1`（另有 `ANTIGRAVITY_AGENTAPI_EXE` / `ANTIGRAVITY_LS_VERSION`） | agy.exe 里的字面量 |
 | Qoder | `QODERCN_CLI=1`（另有 `QODER_AGENT_SDK_ENTRYPOINT=sdk-ts`） | 2026-09-29 在真 Qoder CN 会话里 `env \| grep -i qoder` |
 | Qwen Code | `QWEN_CODE=1` | 它的 ShellExecutionService 给自己起的每个子 shell 注入（`cli.js` 里两处 `cpSpawn` 的 `env:` 块，2026-09-30 核） |
 | MiMo Code | `MIMOCODE=1` | 主进程里 `process.env.MIMOCODE = "1"`（`MiMo：packages/opencode/src/index.ts`，紧邻 `AGENT=1`），子进程继承。它是 opencode 的分支，但**不设** `OPENCODE`，所以这个变量能唯一认出它 |
@@ -361,7 +365,8 @@ Qoder 会话里存在」，看不到它们是不是桌面端也注入。这不�
 用于上面的命令形式表，而 Qoder 那一格是量出来的（它的 harness 自己写着技能
 可按 `/<名>` 请求），所以「命中 Qoder 但那其实是别的界面」最坏是自检里那行工具名
 不准；真敲不动的时候还有触发词，把要办的事说出来照样接得住。国际版那个
-`QODER_CLI=1`（计划文档 §6 记着）在这个真会话里**复现不出来**，只有 `-cn` 那份，
+`QODER_CLI=1`（上一版方案里记过，那份文档没有入库）在这个真会话里**复现不出来**，
+只有 `-cn` 那份，
 所以没用它——将来测到了再加，不为凑一家去猜；认不出来就落 `generic`，
 当前默认推荐**斜杠**（见上面的命令形式说明）。手工纠正：
 `JOBS_CODE_TOOL=workbuddy|claude|cursor|dsh|opencode_gui|opencode_cli|antigravity|mimo|mavis|qoder|qwen|generic|codex`

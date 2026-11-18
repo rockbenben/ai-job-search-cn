@@ -89,7 +89,13 @@ class NoJobEscapesTheEducationGate(unittest.TestCase):
             bd_ = v.get("rank_breakdown") or {}
             if bd_.get("学历待确认") or bd_.get("学历已核"):
                 continue
+            # **字段可能是非字典。** 实测 2026-11-18：某个岗的
+            # `rank_breakdown["硬性条件"]` 是一句话（不是门表），于是这里的
+            # `.get()` 直接把整条守卫崩掉 —— 它该报的是「有没有漏判」，
+            # 不该因为形状不标准而 error。形状不标准的行另有守卫管。
             hard = bd_.get("硬性条件") or bd_.get("硬门") or {}
+            if not isinstance(hard, dict):
+                hard = {}
             if hard.get("学历院校") in ("FLAG", "FAIL") or hard.get("学历与院校") in ("FLAG", "FAIL"):
                 continue
             if "不建议" in vd or "跳过" in vd:

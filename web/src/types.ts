@@ -241,7 +241,7 @@ export interface BaseResume {
    * 而「未提供」是真写下去的值，长得像内容，一路放行。
    */
   gateInputsMissing?: { field: string; gate: string }[];
-  /** 编译出的 PDF（`web/public/` 下的拷贝，供 http:// 模式） */
+  /** 编译出的 PDF（面板快照目录下的拷贝，由 `serve.py` 的 `/pdf/` 路由提供） */
   pdf?: string;
   /** 指向真实目录的相对路径，供单文件/静态模式 */
   pdfLocal?: string;
@@ -492,7 +492,7 @@ export interface Job {
   advice?: string;
   /** 这个岗的判断该重跑一遍，值就是理由（「翻档」/「当时没读全，得先抓 JD」）。
    *  判据在 `tools/stale_materials.py`，导出时贴成这一个字段。
-   *  顶上那句「N 个岗的判断该重跑一遍」数的就是有这个字段的岗。 */
+   *  侧栏提醒里那句「N 个岗的判断该重跑一遍」数的就是有这个字段的岗。 */
   restale?: string;
   /**
    * 这个岗**多久没刷新**了（天）。只有超过阈值（`STALE_POSTING_DAYS`）时才有值，

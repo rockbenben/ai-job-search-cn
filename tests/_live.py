@@ -104,8 +104,31 @@ def live_store_or_skip(test=None):
     return user, seen, details
 
 
-#: 面板快照。**它不按用户分** —— 谁跑 `export_web_data` 都写这一份。
-PANEL_SNAPSHOT = ROOT / "web" / "public" / "data.json"
+def panel_snapshot_path():
+    """面板快照：活动用户的 `job_scraper/dashboard/data.json`；没有活动用户就 None。
+
+    **按用户分**（2026-11-09 起）。此前它是全用户共用的一份
+    `web/public/data.json` —— 谁跑 `export_web_data` 都写同一份，下面的
+    `keep_panel_snapshot` 就是为它写的。迁到按用户存之后，「拿探针用户跑一遍」
+    不再碰活动用户那份；这个辅助留着，因为仍有调用方会为**活动用户**重导快照。
+    """
+    name = active_user_name()
+    if not name:
+        return None
+    return ROOT / "users" / name / "job_scraper" / "dashboard" / "data.json"
+
+
+def _panel_snapshot():
+    """盘上那份快照的路径。没有活动用户时给一个不存在的临时路径 ——
+    读它的判据照旧 skip，而不是在仓库里凭空造一个目录。"""
+    import tempfile
+    p = panel_snapshot_path()
+    if p is not None:
+        return p
+    return Path(tempfile.gettempdir()) / "ai-job-search-no-panel-snapshot.json"
+
+
+PANEL_SNAPSHOT = _panel_snapshot()
 
 
 def keep_panel_snapshot():
@@ -116,9 +139,10 @@ def keep_panel_snapshot():
 
     ## 为什么要有它
 
-    `export_web_data` 不管传哪个 `--user` 都写同一份 `web/public/data.json`。
-    拿探针用户跑一遍，那份快照就变成「1 个岗、`isRealData: true`」——
-    后面所有读真实快照的判据集体失真。
+    历史上 `export_web_data` 不管传哪个 `--user` 都写同一份
+    `web/public/data.json`（2026-11-09 起改为写各自的
+    `job_scraper/dashboard/data.json`）。那份共享快照被探针用户覆盖之后，
+    后面所有读真实快照的判据集体失真 —— 这一段记的是那次事故的形状。
 
     **两种机器要分开处理，而这正是原来漏掉的那一半：**
 
@@ -134,7 +158,7 @@ def keep_panel_snapshot():
     `failures=6, errors=12` —— **另一份（`test_the_file_he_saved_in_excel`）
     照样漏**。所以收在这里，不在两个模块里各写一遍。
 
-    `web/public/` 是 gitignore 的，所以「本来没有」和「留下一个假的」
+    快照目录在 `users/` 下（整目录 gitignore），所以「本来没有」和「留下一个假的」
     在 `git status` 里长得一模一样，只有再跑一遍才看得见。
     """
     saved = PANEL_SNAPSHOT.read_bytes() if PANEL_SNAPSHOT.is_file() else None

@@ -12,7 +12,8 @@
     export_web_data.py         ← 刷新面板数据
 
 而 `--actionable` 那一档里的 `check_sellable_without_materials`（「可投档却
-没材料」）读的是 `web/public/data.json`。上面四条 `--apply` 刚改过职位库，
+没材料」）读的是面板快照（`users/<活动用户>/job_scraper/dashboard/data.json`）。
+上面四条 `--apply` 刚改过职位库，
 **它判的是 `writeback` 补账之前的档位** —— 刚被补账升上「值得投」的岗它
 看不见，刚被降下去的它照旧点名，而这一条给的处置是「去出材料」。
 
@@ -44,7 +45,7 @@ def _bodies() -> dict:
 
     ⚠️ 连 docstring 一起看的话，「读了 data.json」会被说明文字骗过去：
     `check_sellable_without_materials` 的说明里引着
-    「从 `web/public/data.json` 挑，不要照着…」——把代码里那一行改掉，
+    「选岗优先读面板那份快照…」——把代码里那一行改掉，
     判据照样认为它在读面板数据（变异当场照出来）。
     """
     tree = ast.parse(SRC)
@@ -87,7 +88,7 @@ class ThePremiseIsStillTrue(unittest.TestCase):
         """判据自检：说明文字不算「读了它」。
 
         `check_sellable_without_materials` 的说明里引着
-        「从 `web/public/data.json` 挑，不要照着…」—— 连 docstring 一起看的话，
+        「选岗优先读面板那份快照…」—— 连 docstring 一起看的话，
         把代码里那一行删掉，这条守卫照样认为它在读面板数据。
         变异「那条检查不再读面板数据」第一次就是这么溜过去的。
         """

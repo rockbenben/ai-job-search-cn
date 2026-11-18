@@ -1373,7 +1373,7 @@ def is_optional(item: dict) -> bool:
     可选项不能算进「缺 N 项」：pdftotext / Bun / 浏览器取数不装完全能用，
     把它们算进去会让新用户以为出了大问题，然后去装一堆不需要的东西。
 
-    **两个面板共用这一个判断。** 原来它是单页版里的一个内嵌函数，而导出给网页版的
+    **导出器也从这里 import 这一个判断。** 原来它是单页版里的一个内嵌函数，而导出给网页版的
     `envItems` 干脆把 `optional` 字段丢了——于是一台没装 Bun 的机器上，网页版会说
     「还差 Bun（可选）」并每次默认展开，催人去装一个他不需要的东西。
 
@@ -1910,7 +1910,7 @@ def build_model(seen: dict, apps: list, tracker: list, profile_ok: bool,
         })
     counts = {
         "scraped": len(jobs),
-        # 与网页版**共用同一个实现**（就在本文件里，那边 import 过去）。
+        # 导出器**从本文件 import 同一个实现**（单页版已删，现在只有一个消费方）。
         # 曾经两边各写各的：这里数 `status == "ranked"`，那边数「有分数或已结案」，
         # 于是同一份数据两个面板显示 193 和 195。差额正是用户手动标「不投」的那 2 个
         # ——它们当然处理过了。而 `test_pipeline_counts.py` 里那个类叫
@@ -1918,7 +1918,7 @@ def build_model(seen: dict, apps: list, tracker: list, profile_ok: bool,
         # 名字承诺的比它做的多。同一个量只留一个实现，才谈得上一致。
         "ranked": n_processed(seen),
         # 与网页版同口径：标了「不投」的岗不算待办。那边的格子可以点开筛选，
-        # 数字必须等于点开看到的；两个面板的同一个格子更不能给出不同的数。
+        # 数字必须等于点开看到的；导出器与面板同一个格子更不能给出不同的数。
         #
         # 判的是**盘上的 `status`**，不是 `stage`——`derive_stage` 里压根没有
         # `skipped` 这个取值（手动标的不投在那套阶段划分里没被表达），

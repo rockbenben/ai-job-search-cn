@@ -91,8 +91,9 @@ _restore = None
 def setUpModule():
     """把面板快照护住。
 
-    ⚠️ **`export_web_data` 不管你传哪个 `--user`，都写同一份
-    `web/public/data.json`。** 这份测试要跑它（它正是崩得最狠的那个：
+    ⚠️ **`export_web_data` 会把快照写进你传的那个 `--user` 的
+    `job_scraper/dashboard/data.json`（2026-11-09 起按用户分，此前是全用户
+    共用一份）。** 这份测试要跑它（它正是崩得最狠的那个：
     一条坏记录 = 面板整个出不来），跑完那份快照就变成探针用户的 1 个岗 ——
     于是所有读真实快照的测试（那一堆 `TheSignalItLeansOnIsReal`）
     集体失真：实测这一脚 9 红 + 跳过从 28 涨到 81。

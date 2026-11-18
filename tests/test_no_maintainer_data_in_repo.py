@@ -73,8 +73,9 @@ _STRIP = "。，,、；;：:（）()【】[]|*` "
 #: **截图能装下这些守卫禁止的一切，而没有任何一条读得懂它。**
 #: `README.md` 的头图 `docs/images/dashboard.webp` 就是一张面板截图——
 #: 对着真实数据截一张，公司名、分数、薪资、判词会一次全部印在仓库首页上。
-#: 判据只能靠人：**面板截图一律对着演示数据截**（`web/public/data.json`
-#: 挪开，面板自己会退回 `sample.ts`，页头还会挂「演示数据（虚构）」的标）。
+#: 判据只能靠人：**面板截图一律对着演示数据截**（把
+#: `users/<活动用户>/job_scraper/dashboard/data.json` 挪开，面板自己会退回
+#: `sample.ts`，页头还会挂「演示数据（虚构）」的标）。
 SKIP_SUFFIX = {".png", ".jpg", ".jpeg", ".pdf", ".ico", ".woff", ".woff2",
                ".lock", ".webp", ".avif", ".gif"}
 

@@ -729,8 +729,8 @@ def count_ready(udir, seen: dict) -> tuple[int, int | None, int | None]:
     自检 101 / 面板 107，改成 URL 精确匹配变成 132 / 107，**两版都不对，
     而且错的方向还相反**；差的 25 个正是 18 个重复挂牌加 7 个已下线。
 
-    所以：**面板快照在就用它**（`web/public/data.json` 只是个 JSON 文件，
-    读它不违反「本文件不 import 仓库模块」那条——那条防的是循环依赖）。
+    所以：**面板快照在就用它**（`users/<活动用户>/job_scraper/dashboard/data.json`
+    只是个 JSON 文件，读它不违反「本文件不 import 仓库模块」那条——那条防的是循环依赖）。
     ⚠️ **兜底那支比正本松**：`nextStep.ready` 由 `export_web_data.funnels_of`
     算出来，它还排掉「判词说出局」的岗和三类搁置；这里的 `ready_rows`
     只看几个布尔字段，所以偏大。差别是有意的，但要写在脸上 ——

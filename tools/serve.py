@@ -974,8 +974,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, raw, "application/json; charset=utf-8")
             return self._serve_file(f)
         if path.startswith("/pdf/"):
-            # PDF 与 data.json 同理，从 web/public 取——导出器每次把最新 PDF 写到
-            # 那里，而 dist/ 里的是**上次 npm run build 时**拷的快照。从 dist 取的
+            # PDF 与 data.json 同理，从活动用户的 dashboard 目录取——导出器每次把
+            # 最新 PDF 写到那里，而 dist/ 里的是**上次 npm run build 时**拷的快照。从 dist 取的
             # 后果实测两种都发生了：新导出的 PDF 404（dist 里没有）、重编过的 PDF
             # 端出旧字节（dist 里是旧版，且 pdfStale 检测不到服务层这份旧）。
             import hashlib

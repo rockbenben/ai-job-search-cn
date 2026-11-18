@@ -571,7 +571,7 @@ class EnglishProseOnlyShrinks(unittest.TestCase):
         这正是本文件一直在治的那个病的**元层**：判据自己漏，报出来的数偏小，
         而**少报比没有判据更坏**——它让人以为已经清干净了。
         所以这里钉一个下限：`workflows/` 下的 md 文件不该少于 20 个
-        （实测 27 个：20 条命令 + 7 份 reference）。
+        （实测 29 个：21 条命令 + INDEX + 7 份 reference）。
         """
         found = list(WF.rglob("*.md"))
         self.assertGreaterEqual(

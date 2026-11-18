@@ -11,8 +11,8 @@ import {
 } from "./sample";
 
 /**
- * 数据来源：优先读 `public/data.json`（`python tools/export_web_data.py` 导出的**真实**
- * 数据），读不到才回退 `sample.ts` 的虚构演示数据。
+ * 数据来源：读 `serve.py` 提供的 `data.json`（`python tools/export_web_data.py`
+ * 导出的**真实**数据），读不到才回退 `sample.ts` 的虚构演示数据。
  *
  * `isRealData` 必须一路传到界面上并显示出来。第一版没有这个标记，于是虚构数据
  * 长得跟真的一样——职位链接点了打不开、简历 PDF 指向不存在的文件，按钮看着能用其实
@@ -60,7 +60,8 @@ export interface Snapshot {
   /** 「挂了」时可以点的原因，来自 `tracker.REASONS`，前端不写死。 */
   outcomeReasons?: { value: string; label: string }[];
   nextStep: NextStep;
-  /** 自动探测到的宿主 AI 编码工具，正本见 _cli.detect_code_tool：antigravity / claude / mimo / qoder / qwen / generic（或 JOBS_CODE_TOOL 覆盖值） */
+  /** 自动探测到的宿主 AI 编码工具。正本见 `_cli.detect_code_tool`：可选值以自检末尾
+   *  印出的那串为准（不要在这里抄一份枚举，抄了就会跟正本漂），可被 `JOBS_CODE_TOOL` 覆盖。 */
   detectedTool?: string;
   /** 市场怎么读这份简历。评估不足时导出器不给这个字段，面板整块不显示。 */
   resumeInsight?: ResumeInsight;
@@ -117,8 +118,8 @@ let everLoadedReal = false;
  * **`try/catch` 抓不到这种「悬着」** —— 它不是异常，是没结束。
  * 所以那道闸门必须是一个真的会响的东西：超时主动 abort。
  *
- * 取 20 秒：这份数据现在 2.4 MB，本机实测直连取回 0.2 秒、浏览器里渲染
- * 约 7 秒。20 秒给慢机器留了三倍余量，又不至于让人以为页面死了。
+ * 取 20 秒：实测（2026-10-12）那时这份数据 2.4 MB，本机直连取回 0.2 秒、
+ * 浏览器里渲染约 7 秒。20 秒给慢机器留了三倍余量，又不至于让人以为页面死了。
  */
 const LOAD_TIMEOUT_MS = 20000;
 
