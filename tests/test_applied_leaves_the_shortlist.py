@@ -38,6 +38,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from jsx import POSITION_VIEW  # noqa: E402
 
 APP = ROOT / "web" / "src" / "App.tsx"
 
@@ -81,24 +82,22 @@ class AppliedJobsDropOutOfTheShortlist(unittest.TestCase):
         i = text.find("const recommended = useMemo(")
         self.assertNotEqual(i, -1, "找不到 recommended —— 改名了？")
         seg = text[i:i + 600]
-        self.assertIn("shortlist", seg,
+        self.assertIn("visible.reduce", seg,
                       "推荐不是从 shortlist 派生的 —— 可能会推荐一个已经投过的岗")
 
 
 class TheHiddenOnesAreAccountedFor(unittest.TestCase):
     """收起来了要说一声，并且点得回去。"""
 
+
     def test_the_count_is_computed(self):
-        self.assertIn("hiddenApplied", src(),
-                      "没有统计被收起来的已投岗 —— 一行凭空消失，用户会以为数据丢了")
+        self.assertIn('{ id: "applied", label: "已投递", count: funnelCounts.applied }', src())
+
 
     def test_there_is_a_way_back_to_them(self):
         text = src()
-        i = text.find("hiddenApplied > 0")
-        self.assertNotEqual(i, -1, "没有「还剩几个已投的」那处提示")
-        seg = text[i:i + 700]
-        self.assertIn('setFunnel("applied")', seg,
-                      "提示不可点 —— 说了有 N 个却没给回去看的路")
+        i = text.index('className="position-views"')
+        self.assertIn(POSITION_VIEW, text[i:i + 550])
 
 
 class TheDataSideAlreadyHoldsUpItsEnd(unittest.TestCase):

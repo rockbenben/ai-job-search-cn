@@ -18,7 +18,7 @@ colors:
   lock: "#e86259"
   lock-deep: &lock-deep "#803631"
 
-  # 下面八个不是新配色，是上面八个语义色在 antd `ThemeConfig` 里的角色名（见 tokens.ts
+  # 下面八个不是新配色，是上面语义色在 antd `ThemeConfig` 里的角色名（7 个色、8 个角色；见 tokens.ts
   # 的 colorBgBase / colorText / colorPrimary…）。值用 YAML 锚点引用，一处字面量。
   # 加 `antd-` 前缀是故意的：这些**不是 CSS 变量**，代码里只认 `--bay` 那一组。
   antd-colorBgBase: *bay
@@ -216,7 +216,7 @@ states:
       - shortlist-row
       - chip-meta
       - button-default
-    requirement: cockpit.css 有 19 条 hover 规则；antd 表格行由 tokens.ts 的 rowHoverBg 接管。
+    requirement: cockpit.css 有 24 条 hover 规则（2026-11-18 重数）；antd 表格行由 tokens.ts 的 rowHoverBg 接管。
   focus-visible:
     components:
       - rail-cell
@@ -234,7 +234,7 @@ states:
     components:
       - chip-meta
       - button-default
-    requirement: 12 条规则；文案侧由 test_web_copy 的 ADisabledControlPromisesNothing 盯住「禁用态不许承诺还没发生的事」。
+    requirement: 14 条规则（2026-11-18 重数）；文案侧由 test_web_copy 的 ADisabledControlPromisesNothing 盯住「禁用态不许承诺还没发生的事」。
   loading:
     components:
       - button-default
@@ -253,7 +253,7 @@ rules:
   - 零圆角。borderRadius 一路压到 2（tokens.ts），判定类界面不许出现药丸形；3px 属于漂移。
   - 等宽字体只给纯数字与拉丁文，且不加字距——0.17em 摊在数字上会把一个数拆成几个。中文进 mono 类由 test_css_and_cjk_text 拦。
   - 汉字不许小于 12px（FLOOR=12.0），由 test_cjk_never_goes_below_the_floor 拦静态字面量；数据驱动的文案它测不到。
-  - 颜色只用 :root 的 12 个语义变量，不在应用代码里写 hex 或 rgba。语义名而非色名。
+  - 颜色只用 :root 的 13 个语义变量（8 个中性档 + 5 个语义色），不在应用代码里写 hex 或 rgba。语义名而非色名。
   - 要半透明底纹就从语义色派生（color-mix(in srgb, var(--data) 8%, transparent)），不另写字面量。
   - 压暗用的黑色 alpha（方章斜纹、浮层投影）不算配色，不受上一条约束；除此之外不许出现 rgba。
   - 覆盖 antd 组件与本层控件的定点样式，作用域必须从 body 起，不能挂 .cockpit：面板（Modal）与 Tooltip 是 portal 到 body 的，挂在 .cockpit 底下的一条都进不去。钉在 test_css_and_cjk_text 的作用域判据上。
@@ -306,14 +306,14 @@ frontmatter 里 `fontFamily` 只写三个短名，不写字面量——它们是
 ```
 sans   antd fontFamily 令牌 = tokens.ts 的 FONT_SANS
        "Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif
-mono   cockpit.css:22 --mono（tokens.ts 的 fontFamilyCode 是同族另一份字面量）
-serif  cockpit.css:23 --serif，只给方章的印文用
+mono   cockpit.css:29 --mono（tokens.ts 的 fontFamilyCode 是同族另一份字面量）
+serif  cockpit.css:30 --serif，只给方章的印文用
 ```
 
 `mono` / `serif` 有 CSS 变量可直接 `var(--mono)`；`sans` 没有（页面从 `body` 继承），
 所以本文用 `sans` 这个名字指代它，不复制那串。
 
-其中 `{typography.meta-md}` 12.5px 是**全页用量最大的档**（cockpit.css 出现 75 次），
+其中 `{typography.meta-md}` 12.5px 是**全页用量最大的档**（`var(--fs-meta)` 在 cockpit.css 出现 77 次，2026-11-18 重数），
 `{typography.meta-sm}` 12px 是中文的地板。
 `{typography.number-sm}` 11px 只许进纯数字与拉丁文（`.mono-label`、`.rail-step`）。
 数字展示档 `number-md` … `display-score` 是给分数和流水线读数用的等宽大字，
@@ -329,7 +329,7 @@ serif  cockpit.css:23 --serif，只给方章的印文用
 
 ## Layout
 
-`.cockpit` 居中，`max-width: 1180px`，外边距 `{spacing.gutter}`（`clamp(16px, 2.5vw, 34px)`）。
+`.cockpit` 居中，`max-width: 1480px`，两侧留出 `{spacing.gutter}`（`clamp(16px, 2.5vw, 34px)`）。主栏依次显示下一步、投递进度切换、搜索和岗位表。侧栏集中显示五步进度、可复制命令、工具入口和可展开的提醒。
 ## Spacing
 
 组件内距从 `{spacing.xxs}` 到 `{spacing.xxl}` 取；`{spacing.section}` 用于区块之间。
@@ -355,7 +355,8 @@ serif  cockpit.css:23 --serif，只给方章的印文用
 
 ## Components
 
-实现层与本文的对应关系（详见 `web/src/components/`）：
+实现层与本文的对应关系（详见 `web/src/components/`）。**族名是设计契约词汇，不是 CSS 类名**
+（例如 `stamp-*` 在代码里是 `.stamp[data-state]`）——按名字 grep 不到是正常的，对应关系看下面：
 
 - `GateStamp.tsx` → 四态方章 `stamp-pass` / `stamp-fail` / `stamp-unknown` / `stamp-na`，
   30px 见方、宋体单字。`data-size="sm"` 是 17px 无字版。
@@ -363,7 +364,7 @@ serif  cockpit.css:23 --serif，只给方章的印文用
 - `JobReadout.tsx` → 行内详情，复用方章与 `InterviewLog`。
 - `Cmd.tsx` → `chip-meta` 形态的命令复制片。
 - `Portals.tsx` / `HidePrefs.tsx` / `HrAnswers.tsx` → 渠道行与全原生 button 的偏好面板。
-- `App.tsx` 的 `nav.rail` → `rail-cell`（5 格流水线）；`nav.deskbar` + `Modal` → 7 个 desk。
+- `App.tsx` 的 `nav.rail` → `rail-cell`（5 格流水线）；`aside.workspace-aside` 里的 `nav.deskbar` + `Modal` → 8 个 desk（`desks` 的定义见 `App.tsx`）。
 
 每个族自带哪些状态，frontmatter 的 `components.*.states` 逐项列了，这里是判读口径：
 可点的族（`rail-cell` / `shortlist-row` / `chip-meta` / `button-default` / `input-search`）
@@ -383,7 +384,7 @@ aria 关联。
 （实测 3.4-4.2 秒），那几秒用乐观更新吸收；`tests/test_every_write_button_answers_immediately.py`
 明写「把控件转起来或变灰」不算反馈，那正是用户报过四次「点了没反应」的东西。
 所以这一页不引 spinner，写操作一律**点下去立刻变 + 失败回滚**。
-键盘可达性上 `tabIndex` 全仓只有 1 处（表格行），其余交互件都是原生 `<button>`，
+键盘可达性上：交互件里只有表格行 1 处 `tabIndex`（键盘展开）；另有 2 处 `tabIndex={-1}` 是跳转锚点的落点（`#positions`、`#workspace-tools`）。其余交互件都是原生 `<button>`，
 浮层有 Esc 与外点出口。
 
 ## Accessibility
@@ -435,7 +436,7 @@ antd 侧由 `colorPrimaryBorder` 显式钉成同一个色。
 
 ## Do's and Don'ts
 
-Do：只用 12 个语义色变量；新间距优先取已命名档；焦点环统一 `{colors.data}`；
+Do：只用 13 个语义变量；新间距优先取已命名档；焦点环统一 `{colors.data}`；
 中文标签走 `.kicker`，等宽只给数字；给用户看的下一步必须是一条可照敲的命令。
 
 Don't：不要在应用代码里写 hex 或 `rgba()`；不要写 `border-radius: 3px`；
@@ -448,7 +449,7 @@ Don't：不要在应用代码里写 hex 或 `rgba()`；不要写 `border-radius:
 四个宽度断点：900 / 720 / 620 / 560（`max-width`），集中在 cockpit.css 的一节里，
 由 `BreakpointsStayTogether` 盯住不许散落。媒体查询选择器必须比被覆盖规则多一层特异性
 （`test_media_queries_actually_win`）。
-**已知不足**：没有 ≥1180 的宽屏档，`.cockpit` 在宽屏上只是两侧留白变宽。
+宽度超过 900px 时，岗位和工具并排。窄屏按阅读顺序先显示岗位，再显示进度和工具，页头提供跳转入口。
 窄屏的塌缩规则原来有 9 条挂在 `.cockpit` 下、进不了面板（含 `.portal-row`、`.cmdbook-row`
 那批），2026-09-30 改到 `body` 作用域后 390px 实测：`.portal-row` 两列、`.cmdbook-row` 一列。
 同一次实测还量到面板内容 2px 的假溢出（313>311）——与 cockpit.css 里那条
@@ -458,9 +459,8 @@ Don't：不要在应用代码里写 hex 或 `rgba()`；不要写 `border-radius:
 
 以下按 `needs-design-decision` 登记，不在文档里悄悄定策：
 
-- needs-design-decision: `loading` 反馈用 spinner、骨架，还是沿用「只改按钮文案」这一家做法。
+- 已裁定（见 States）：`loading` **不用** spinner、也不用骨架——写操作一律乐观更新 + 失败回滚。
 - needs-design-decision: `edge-strong` 作为可控件边界不达标时，是加边框宽度还是抬亮。
-- needs-design-decision: 宽屏（≥1180）要不要用多列而非留白。
 - 已裁定（2026-10-02，用户原话「不用改存量」）：**存量评估正文不改。**
   那批字里仍以第三人称写着使用者本人（「他的产品一直是一个人用 AI 跑完」），
   夹着「硬门槛」「权重」这类框架词；另有 8 条职位记录的 `location` 字段存着

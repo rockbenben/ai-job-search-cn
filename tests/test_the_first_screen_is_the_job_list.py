@@ -194,10 +194,9 @@ class TheDeskbarOnlyShoutsWhenItMatters(unittest.TestCase):
         seg = flat(APP[max(0, i - 700):i])
         self.assertRegex(seg, r"点开\s*弹窗里一个字都没少")
 
-    def test_the_bar_still_sits_above_the_list(self):
-        """告警靠它露头 —— 这条是既有的，别被这一轮挪没了。"""
-        self.assertLess(APP.index('className="deskbar"'),
-                        APP.index('key: "shelf"'))
+
+    def test_the_job_list_comes_before_the_tools_in_reading_order(self):
+        self.assertLess(APP.index('id="positions"'), APP.index('className="deskbar"'))
 
 
 class TheNewUserScreenIsNotAWallOfDeadLinks(unittest.TestCase):
@@ -266,10 +265,11 @@ class NothingWasQuietlyDeleted(unittest.TestCase):
         self.assertIn(FIRSTRUN, APP)
         self.assertIn("<CommandBook", APP[APP.index(FIRSTRUN):][:1200])
 
-    def test_the_job_list_is_still_the_last_block(self):
-        """比**最后**那一块 `mat-gap`（有两块，`index()` 只会给第一块）。"""
-        self.assertLess(APP.rindex('className="mat-gap"'),
-                        APP.index('<h2>可以投的岗位</h2>'))
+
+    def test_material_reminders_are_outside_the_job_list(self):
+        start = APP.index('<details className="workspace-side-panel workspace-notices"')
+        end = APP.index("</details>", start)
+        self.assertEqual(APP[start:end].count('className="mat-gap"'), 2)
 
 
 if __name__ == "__main__":

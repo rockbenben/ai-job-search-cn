@@ -17,16 +17,17 @@
     「有回音 0%」 vs 「还没有」       `?? 0` 会把「还没到时候」印成 0%
     「记状态在这一页点就行」          页脚那句「只显示」早就不是真的了
 
-换成按钮不能把它们丢掉，否则这一排就是七个没有信息的词。
+换成按钮不能把它们丢掉，否则这一排就是八个没有信息的词。
 
-## 不能丢的第二件：招聘网站那三枚标记
+## 不能丢的第二件：招聘网站那几枚标记
 
 它们是 2026-08-21 那次事故的修法（猎聘 CLI 封了 9 小时，面板上一个字看不到）。
-三枚三种意思，**不能并成一句**：
+几种意思**不能并成一句**：
 
-    被拦住了     要你去做点什么
-    在限流冷却   等它自己好
-    你关着       你自己的决定 —— 不是待办，是让那个决定看得见代价
+    被拦住了                   要你去做点什么
+    被限流了，换个网络再试     也是要你动手（2026-08-26 起「等它自己好」那一档撤了，
+                               封控不再自动到期）
+    你关着                     你自己的决定 —— 不是待办，是让那个决定看得见代价
 
 ## 不能丢的第三件：还没建过档的人看得到命令表
 
@@ -41,7 +42,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from _srcscan import strip_comments  # noqa: E402
-from jsx import FIRSTRUN, desk_entry  # noqa: E402
+from jsx import DESKBAR, FIRSTRUN, desk_entry  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
@@ -327,10 +328,12 @@ class ThePageGotShorter(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertIn(key, APP)
 
-    def test_the_bar_sits_above_the_lists(self):
-        """按钮那一排要在名单之前 —— 告警靠它露头。"""
-        self.assertLess(APP.index('className="deskbar"'),
-                        APP.index('key: "shelf"'))
+
+    def test_tools_are_grouped_in_the_sidebar(self):
+        start = APP.index('<aside className="workspace-aside"')
+        end = APP.index("</aside>", start)
+        self.assertIn(DESKBAR, APP[start:end])
+        self.assertIn('href="#workspace-tools"', APP)
 
 
 if __name__ == "__main__":

@@ -56,11 +56,11 @@ class ItCannotSilentlyEatTheList(unittest.TestCase):
         # 锚在**变量名**上，不锚在当时的写法上：`hide(shortlist)` 2026-08-13
         # 改成了 useMemo（裸函数调用让 1200 个岗每次渲染都重过一遍全部关键词，
         # 关键词加到 50 多个时渲染进程直接无响应）。守的规矩——先滤再切档——没变。
-        i_vis = APP.index("const visible = ")
+        i_vis = APP.index("const available = ")
         i_cut = APP.index("const worth = visible")
         self.assertLess(i_vis, i_cut, "屏蔽发生在切档之后，两档的数会对不上")
         seg = APP[i_vis:i_cut]
-        self.assertIn("isHidden", seg, "visible 不是靠 isHidden 算的？")
+        self.assertIn("isHidden", seg, "关键词筛选前的名单应先应用屏蔽规则")
         self.assertIn("useMemo", seg, "屏蔽没进 useMemo——每次渲染都会重算整表")
 
 

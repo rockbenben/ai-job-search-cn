@@ -105,7 +105,7 @@ class ExpiredJobsStayOutOfEveryList(unittest.TestCase):
             return seg
 
         for anchor in ("const sellable = useMemo", "const shortlist = useMemo",
-                       "const hiddenApplied = useMemo"):
+                       "const funnelCounts = useMemo"):
             with self.subTest(list=anchor):
                 self.assertIn("!j.expired", window(anchor),
                               f"{anchor} 没排除已下线的岗")

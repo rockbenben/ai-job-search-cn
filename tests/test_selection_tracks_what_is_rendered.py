@@ -12,8 +12,7 @@ App 里过滤分两层：
 （或把它公司加进屏蔽词）→ 那一行从名单里消失，`selectedId` 还指着它，
 展开态没人收。等他把那一类打开，那一行**已经是展开的**——他没点过。
 
-`Shortlist` 内部那道收起闸只认自己的搜索框（`kw`/`channel`），看不见 App
-这一层的屏蔽，**两层各管各的那一半**，谁也管不到对方。
+关键词与网站筛选也在 App 里应用，之后才切分显示的名单。
 
 推荐同理：被屏蔽的岗照样能当选，而它那一行不渲染，于是整页一个「先投这个」
 的标记都没有——用户分不清是没推荐还是标记坏了。
@@ -61,17 +60,11 @@ class BothTrackTheRenderedList(unittest.TestCase):
                                    f"{name} 排在 visible 前面——tsc 会报"
                                    "「used before its declaration」")
 
-    def test_the_two_layers_stay_separate(self):
-        """`Shortlist` 那道闸只认自己的搜索框，别把它改成认 jobsIn。
 
-        改成 `jobsIn` 的话，每次数据刷新（serve.py 每写一次盘就重导出）
-        都会把用户正读着的岗收起来——上一轮专门为此钉过。
-        """
-        s = (ROOT / "web" / "src" / "components" / "Shortlist.tsx").read_text(
-            encoding="utf-8")
-        self.assertIn("}, [kw, channel]);", s,
-                      "Shortlist 的收起闸依赖变了——它只该认自己的筛选，"
-                      "App 那一层的屏蔽由 effectiveId 管")
+    def test_search_runs_before_the_tiers_are_split(self):
+        start = self.code.index("const visible = useMemo(")
+        end = self.code.index("const worth = visible", start)
+        self.assertIn("available.filter((j) => matchesJobSearch(j, kw, channel))", self.code[start:end])
 
 
 class TheFunnelCellsStillMatchTheirRows(unittest.TestCase):

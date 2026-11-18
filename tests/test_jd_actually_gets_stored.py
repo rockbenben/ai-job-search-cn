@@ -19,8 +19,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import export_web_data as ex  # noqa: E402
+from jsx import DESKBAR  # noqa: E402
 
 
 class TheRuleIsWrittenDown(unittest.TestCase):
@@ -295,14 +297,14 @@ class TheBlockBannerLinksToTheFix(unittest.TestCase):
         app = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
         # **2026-08-24：容器换了第三次，守的事没变。**
         # 折叠时代靠 `defaultActiveKey` 自动展开；抽屉时代靠一颗固定按钮；
-        # 现在是那一排文字按钮里的「招聘网站」—— 它就在「下一步」下面，
-        # 本来就在首屏，所以**不需要自动展开任何东西**，也不该弹窗打断人。
+        # 现在是侧栏「工具与设置」里那一排文字按钮的「招聘网站」—— 宽屏首屏
+        # 就能看到，所以**不需要自动展开任何东西**，也不该弹窗打断人。
         # 判据从「会不会自动展开」换成「不点开看不看得见」。
         i = app.index('key: "portals"')
         seg = app[i:i + 4200]
         self.assertIn("被拦住了", seg, "按钮上没有任何被拦住的信号")
         self.assertIn("blockNeedsYou", seg, "那枚标记跟被拦住无关")
-        self.assertIn('className="deskbar"', app,
+        self.assertIn(DESKBAR, app,
                       "那一排按钮没了 —— 告警又要靠点开才看得见")
         css = (ROOT / "web" / "src" / "theme" / "cockpit.css").read_text(
             encoding="utf-8")

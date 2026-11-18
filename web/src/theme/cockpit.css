@@ -58,7 +58,10 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.cockpit { max-width: 1180px; margin: 0 auto; padding: var(--gutter); }
+.cockpit {
+  max-width: 1480px; margin: 0 auto; padding: 0 var(--gutter) var(--gutter);
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
 
 /* 等宽小标签**只给数字和拉丁文用**：加大字距 + uppercase 是拉丁排版的做法，
    套在中文上会拉成散架的一串。中文小标签一律走下面的 .kicker。
@@ -88,10 +91,25 @@ body {
 
 /* ---------- 舱顶 ---------- */
 .mast {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  padding-bottom: 15px; border-bottom: 1px solid var(--edge);
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 18px 0; margin-bottom: 24px; border-bottom: 1px solid var(--edge);
 }
-.mast-word { font-size: 19px; font-weight: 700; letter-spacing: 0.04em; }
+.mast-word {
+  margin: 0; display: inline-flex; align-items: center; gap: 12px;
+  font-size: 23px; font-weight: 700; line-height: 1.3;
+}
+.mast-word::before {
+  content: ""; width: 32px; height: 32px;
+  border: 1px solid var(--data-deep); border-radius: 2px;
+  background:
+    linear-gradient(var(--data), var(--data)) 8px 9px / 14px 2px no-repeat,
+    linear-gradient(var(--data), var(--data)) 8px 15px / 10px 2px no-repeat,
+    linear-gradient(var(--data), var(--data)) 8px 21px / 6px 2px no-repeat,
+    var(--panel);
+}
+.mast-local { color: var(--faint); font-size: var(--fs-small); }
+.mast .demo-flag { order: 1; flex-basis: 100%; }
+.tools-jump { display: none; }
 /* 演示数据标记：显眼但不喧哗——它的作用是让人一眼知道"这些不是我的数据" */
 .demo-flag {
   font-size: var(--fs-meta); color: var(--caution); line-height: 1.5;
@@ -102,6 +120,72 @@ body {
 
 .mast-user { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .mast-user b { font-size: var(--fs-body); font-weight: 600; }
+
+.workspace {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(256px, 21%);
+  gap: 24px; align-items: start;
+}
+.workspace-main, .workspace-aside { min-width: 0; }
+.workspace-aside { display: grid; gap: 16px; scroll-margin: 16px; }
+.workspace-side-panel {
+  padding: 16px; border: 1px solid var(--edge); background: var(--panel);
+}
+.workspace-side-panel h2 {
+  margin: 0 0 12px; font-size: var(--fs-body); line-height: 1.4;
+}
+.workspace-notices > summary {
+  cursor: pointer; color: var(--dim); font-size: var(--fs-content); line-height: 1.6;
+}
+.workspace-notices[open] > summary { margin-bottom: 12px; color: var(--lit); }
+.workspace-notices .parked-note, .workspace-notices .mat-gap {
+  margin: 0; padding: 12px 0; border: 0; border-top: 1px solid var(--edge);
+  background: transparent; overflow-wrap: anywhere;
+}
+.workspace-notices .mat-gap { gap: 8px; }
+.workspace-notices .mat-gap > span { flex-basis: 100%; }
+
+.workspace-aside .rail { display: block; margin: 0; border: 0; background: transparent; }
+.workspace-aside .rail-cell {
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  padding: 9px 0; gap: 4px; border-top: 1px solid var(--edge);
+  box-shadow: none; background: transparent;
+}
+.workspace-aside .rail-cell[data-filter="on"] { background: var(--panel-raised); }
+.workspace-aside .rail-cell::after, .workspace-aside .rail-cell::before { display: none; }
+.workspace-aside .rail-hit {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+  gap: 8px; min-height: 28px; padding: 0 4px; border-radius: 2px;
+}
+.workspace-aside .rail-hit:not(:disabled):hover { background: var(--panel-raised); }
+.workspace-aside .rail-step {
+  grid-column: 1; grid-row: 1; min-width: 0; padding: 0; border: 0; color: var(--faint);
+}
+.workspace-aside .rail-v {
+  grid-column: 3; grid-row: 1; margin: 0; color: var(--lit); font-size: 18px; letter-spacing: 0;
+}
+.workspace-aside .rail-n {
+  grid-column: 2; grid-row: 1; color: var(--dim); font-size: var(--fs-small);
+}
+.workspace-aside .rail-hit:not(:disabled) .rail-n {
+  text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--edge-strong);
+}
+.workspace-aside .rail-cell .rail-guide {
+  grid-column: 1; margin: 0; padding: 0 0 0 18px; border: 0;
+}
+.workspace-aside .rail-guide > .ant-typography { margin-top: 0; }
+.workspace-aside .rail-filtered { margin: 0 4px 0 18px; }
+
+.workspace-aside .deskbar { display: grid; gap: 0; margin: 0; }
+.workspace-aside .deskbtn {
+  position: relative; display: flex; min-width: 0; gap: 2px 8px;
+  padding: 8px 20px 8px 2px; min-height: 38px;
+  background: transparent; border: 0; border-top: 1px solid var(--edge);
+}
+.workspace-aside .deskbtn:hover { background: var(--panel-raised); }
+.workspace-aside .deskbtn::after {
+  content: "›"; position: absolute; right: 3px; top: 8px; color: var(--faint);
+}
+.workspace-aside .deskbtn-note { flex-basis: 100%; }
 
 /* ---------- 流水线读数 ---------- */
 .rail {
@@ -128,7 +212,7 @@ body {
    「不想看什么」和「另有 N 个已投出去」拿到的是浏览器默认的
    `rgb(16,16,16) auto 1px`——**深色底上那圈近黑的 1px 等于没有**。
    **作用域必须是 `body`，不能是 `.cockpit`。** 面板（antd Modal）与 Tooltip 走的是
-   portal，挂在 `document.body` 上，写在 `.cockpit` 底下的一切**都到不了那七个面板里**。
+   portal，挂在 `document.body` 上，写在 `.cockpit` 底下的一切**都到不了那八个面板里**。
    2026-09-30 递归扫样式表（含 @media 里面的）：24 条 `.cockpit` 作用域的选择器里，9 条匹配不到任何面板内节点，窄屏塌缩那几条全在这一批里。判据不靠人记——
    `tests/test_css_and_cjk_text.py::test_chip_rules_are_scoped_to_body_not_the_cockpit_root` 见到 `.cockpit .cmdbook-row` 就红。
    兜底挂在 `.cockpit` 上，等于给面板里的元素留了个「看着有、其实没有」的假象。
@@ -192,14 +276,16 @@ body .chan > summary:active {
 
 /* ---------- 下一步：全页唯一的实色强调块 ---------- */
 .nextstep {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  border: 1px solid var(--data-deep); background: color-mix(in srgb, var(--data) 7.5%, transparent);
-  padding: 13px 16px; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap;
+  border: 1px solid var(--data-deep); border-left: 3px solid var(--data);
+  background: color-mix(in srgb, var(--data) 7%, var(--panel));
+  padding: 16px 20px; margin: 0;
 }
-.nextstep-text { font-size: var(--fs-body); font-weight: 600; flex: 1; min-width: 220px; }
-/* 「下一步」那一横排的眉标：青色是这一排的签名色（原来用 inline style 挂，
-   于是同一条颜色在 JSX 里抄了一份，CSS 这半边看不见它）。 */
-.nextstep .kicker { color: var(--data); flex-shrink: 0; }
+.nextstep-panel { margin-bottom: 26px; }
+.nextstep-label { flex: 0 0 100%; color: var(--data); font-size: var(--fs-small); font-weight: 600; }
+.nextstep-text { flex: 0 0 100%; font-size: 17px; font-weight: 600; line-height: 1.5; }
+.nextstep .nextstep-action { color: var(--bay); font-weight: 700; }
+.nextstep .nextstep-action:hover { color: var(--bay); }
 /* 「发完记一笔」是对旁边那条命令的**说明**，不是第二个动作：
    字重和颜色都退到旁注，命令本身仍是这一排唯一要敲的东西。 */
 .nextstep-cmd { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -232,11 +318,58 @@ body .chan > summary:active {
 .nextstep-why {
   border: 1px solid var(--edge); border-top: 0;
   background: color-mix(in srgb, var(--data) 3%, transparent);
-  margin: -12px 0 12px; padding: 11px 16px;
+  margin: 0; padding: 12px 20px;
   font-size: var(--fs-label); line-height: 1.75; color: var(--dim);
 }
 
 /* ---------- 段标题 ---------- */
+.positions { scroll-margin: 16px; }
+.positions > .sec-head { margin-bottom: 12px; align-items: center; }
+.positions > .sec-head h2 { font-size: 23px; font-weight: 700; letter-spacing: 0; }
+.positions > .sec-head .sec-count { color: var(--dim); font-size: var(--fs-small); }
+.position-views {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px;
+  border-bottom: 1px solid var(--edge); margin-bottom: 12px;
+}
+.position-view {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 43px; min-width: 0; padding: 5px 8px; border: 0;
+  border-bottom: 2px solid transparent; background: transparent; color: var(--dim);
+  font: inherit; font-size: var(--fs-content); font-weight: 600; cursor: pointer;
+}
+.position-view span { color: var(--faint); font-family: var(--mono); font-size: var(--fs-micro); }
+.position-view:hover { background: var(--panel); color: var(--lit); }
+.position-view[aria-pressed="true"] {
+  background: var(--panel); color: var(--data); border-bottom-color: var(--data);
+}
+.position-view[aria-pressed="true"] span { color: var(--data); }
+.positions .sl-searchbar { gap: 8px; margin: 0 0 12px; }
+.positions .sl-search { flex: 1 1 230px; max-width: none; min-width: 0; }
+.positions .sl-filter { min-width: 128px; }
+.positions .sl-search-n { flex-basis: 100%; }
+.positions .hide-toggle { min-height: 34px; padding-inline: 10px; background: var(--panel); }
+.search-icon {
+  display: block; position: relative; width: 11px; height: 11px; margin: 0 6px 2px 0;
+  color: var(--faint); border: 1px solid currentColor; border-radius: 50%;
+}
+.search-icon::after {
+  content: ""; position: absolute; left: 8px; top: 8px; width: 5px;
+  border-top: 1px solid currentColor; transform: rotate(45deg); transform-origin: left;
+}
+.positions .shortlist .ant-table { border: 1px solid var(--edge); background: var(--panel); }
+.positions .shortlist .ant-table-thead > tr > th {
+  background: var(--panel-raised); letter-spacing: 0; font-weight: 600;
+  white-space: nowrap;
+}
+.positions .shortlist .ant-table-tbody > tr:last-child > td { border-bottom: 0; }
+.positions .job-title { font-size: 16px; line-height: 1.45; overflow-wrap: anywhere; }
+.positions .position-cell { position: relative; padding-right: 32px; }
+.positions td.position-cell::after {
+  content: ""; position: absolute; right: 15px; top: calc(50% - 2px);
+  width: 6px; height: 6px; border: solid var(--faint); border-width: 0 1px 1px 0;
+  transform: rotate(45deg);
+}
+.positions tr[data-selected="true"] td.position-cell::after { transform: rotate(225deg); }
 /* **宁可换行，不许挤压。** 这一行原来只有 `display:flex`，没有 `flex-wrap`：
    默认 nowrap 下 flex 项会**各自收缩**而不是换行，于是内容一多就出现
    「可以投的岗 / 位」「不想看什 / 么」「藏 / 了 / 1」这种**从词中间断开**的排版
@@ -974,6 +1107,11 @@ body .ant-typography .ant-typography-copy {   /* (0,2,1)：既出面板又压得
    治因不治果：流水线上的命令改成不带参数的形式（`/job-apply`，
    见 `export_web_data.py` 里那段说明），到 900px 都放得下，这里就不必提前折。 */
 @media (max-width: 900px) {
+  .workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .tools-jump {
+    display: inline-flex; align-items: center; min-height: 30px;
+    color: var(--dim); font-size: var(--fs-small); text-underline-offset: 3px;
+  }
   .two-col { grid-template-columns: 1fr; }
   .rail { grid-template-columns: repeat(2, 1fr); }
   /* **格子从这里就开始横过来。** 断点原来只写在 620px，而 768px 上两列 × 三行
@@ -1048,6 +1186,19 @@ body .ant-typography .ant-typography-copy {   /* (0,2,1)：既出面板又压得
    （`test_css_and_cjk_text.BreakpointsStayTogether` 盯着，我加「不想看什么」时
    就在文件尾部另起了一套，当场被它抓住）。 */
 @media (max-width: 620px) {
+  .mast { margin-bottom: 16px; padding: 12px 0; gap: 8px 12px; }
+  .mast-word { font-size: 20px; }
+  .mast-local, .mast-user > .kicker { display: none; }
+  .mast .mast-user { gap: 6px; }
+  .mast .tools-jump { flex-basis: 100%; }
+  .nextstep-panel { margin-bottom: 18px; }
+  .nextstep { padding: 12px; }
+  .nextstep-text { font-size: 16px; }
+  .positions > .sec-head h2 { font-size: 20px; }
+  .positions .sec-note { display: none; }
+  .position-view { flex-direction: column; gap: 0; min-height: 49px; }
+  .positions .sl-search { flex-basis: 100%; }
+  .positions .sl-filter { flex: 1; }
   /* ── 流水线到这里收成一列 ──
      两列在 390px 上每格只有 ~160px，而每格底下挂着一条要复制走的命令：
      `/job-apply <职位链接>` 放不下，chip 被折成**两个各自带边框的盒子**
@@ -2028,7 +2179,7 @@ body .readout .ant-typography code::-webkit-scrollbar { display: none; }
 }
 
 /* ── 设置 / 统计 / 说明：一排文字按钮 ──────────────────────────
-   这七块原来是正文里的七段折叠，收起来也各占一行加外边距。中间试过侧边抽屉，
+   这些块原来是正文里的折叠段，收起来也各占一行加外边距。中间试过侧边抽屉，
    用户 2026-08-24 否掉了；现在是文字按钮 + Modal。
 
    **按钮上必须放得下那句结论**（「上次审于 X，之后改过没再审」这种），
@@ -2104,7 +2255,7 @@ body .readout .ant-typography code::-webkit-scrollbar { display: none; }
    你自己关的（中性 —— 它不是待办，是让那个决定看得见代价）。
    **都不加 `margin-left: auto`**：它们要排成一排，不许有谁自己贴到最右边
    （这条规矩是从上一版那三枚标记继承下来的）。 */
-.deskbtn-alarm { color: var(--lock); font-weight: 600; }
+.deskbtn-alarm { color: var(--lock); font-weight: 600; flex-basis: 100%; }
 /* 这里原来还有 `[data-tone="wait"]`（「等它自己好」，琥珀）。2026-08-26 裁定
    封控不再自动到期之后没有东西是等的了 —— 两种封控都要人动手，差别由文案
    承担。色和类型里那个成员一起撤了（见 App.tsx 那份 `chips` 的注释）。 */

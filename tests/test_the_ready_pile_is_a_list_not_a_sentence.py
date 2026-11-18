@@ -11,7 +11,7 @@
 点开给一份 56% 已完成的清单，等于没给。
 
 所以给 `funnels` 加一个 `ready` 键（有材料 且 未投），那句话里的数字变成入口：
-点一下只看这批，再点取消，上面那枚 `funnel-chip` 说「只看备好还没发的 ×」。
+点「材料已备」那一档只看这批，再点一次取消。
 
 **数和行由同一份 `funnels` 出，按构造相等** —— 这一页反复栽过的
 「格子上的数 ≠ 点开看到的行数」在这里不可能发生（那三次的教训写在
@@ -25,7 +25,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 import export_web_data as X  # noqa: E402
+from jsx import POSITION_VIEW  # noqa: E402
 
 APP = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
 CSS = (ROOT / "web" / "src" / "theme" / "cockpit.css").read_text(encoding="utf-8")
@@ -76,7 +78,7 @@ class TheNumberIsTheEntryPoint(unittest.TestCase):
 
     def test_it_toggles_that_filter(self):
         seg = self._seg()
-        self.assertRegex(seg, r'setFunnel\(funnel === "ready" \? "" : "ready"\)',
+        self.assertRegex(seg, r'changeFunnel\(funnel === "ready" \? "" : "ready", true\)',
                          "点第二下不取消，用户会以为卡住了")
 
     def test_it_reports_its_own_state(self):
@@ -84,12 +86,10 @@ class TheNumberIsTheEntryPoint(unittest.TestCase):
         self.assertIn('aria-pressed={funnel === "ready"}', self._seg())
         self.assertIn('.have-jump[aria-pressed="true"]', CSS, "按下没有视觉反馈")
 
-    def test_the_filter_chip_names_it(self):
-        """`funnel-chip` 是唯一的回头路。它认不出这个值就会印成「面试中的」。"""
-        # `funnel-chip` 这个 class 有两枚在用（筛选那枚 + 「另有 85 个已投出去」
-        # 那枚），锚它取的是第一处。锚筛选那枚独有的 aria-label。
-        i = APP.index('aria-label="取消筛选')
-        self.assertIn('funnel === "ready" ? "备好还没发的"', APP[i:i + 700])
+
+    def test_the_ready_view_has_a_named_control(self):
+        self.assertIn('{ id: "ready", label: "材料已备", count: funnelCounts.ready }', APP)
+        self.assertIn(POSITION_VIEW, APP)
 
     def test_the_filter_counter_knows_it(self):
         """`funnelCounts` 少一个键，格子上的数会在这个筛选下算错。"""

@@ -269,9 +269,10 @@ class TheJobTypeSwitchActuallyFilters(unittest.TestCase):
         sl = (ROOT / "web" / "src" / "components" / "Shortlist.tsx").read_text(encoding="utf-8")
         i = sl.index("emptyText:")
         head = sl[i:i + 400]
-        self.assertIn("kw || channel", head,
+        self.assertIn("emptyText: searching ?", head,
                       "空表文案没有「搜索没搜到」那一支——用户会被指去 /job-scrape，"
                       "而库里两千多个岗好好躺着")
+        self.assertIn("没有符合搜索条件的岗位", head)
 
 
 class TheFourthLinkIsNotJustAComment(unittest.TestCase):

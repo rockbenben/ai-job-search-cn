@@ -154,7 +154,7 @@ class WhatTheWebPanelMustStillSay(unittest.TestCase):
         src = re.sub(r"\{/\*.*?\*/\}", "", src, flags=re.S)
         cls.code = re.sub(r"^\s*//.*$", "", src, flags=re.M)
         i = cls.code.index('key: "env"')
-        cls.block = cls.code[i:cls.code.index("defaultActiveKey", i)]
+        cls.block = cls.code[i:cls.code.index("</Modal>", i)]
 
     def test_missing_required_items_are_named(self):
         self.assertIn("还差", self.block, "缺必需项时不点名是哪几个")

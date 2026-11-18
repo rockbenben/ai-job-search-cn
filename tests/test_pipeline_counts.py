@@ -380,15 +380,14 @@ class CountsAgreeAcrossEntryPoints(unittest.TestCase):
         name = au.read_text(encoding="utf-8").strip()
         u = ROOT / "users" / name
         sj = u / "job_scraper" / "seen_jobs.json"
-        data = ROOT / "web" / "public" / "data.json"
+        data = u / "job_scraper" / "dashboard" / "data.json"
         if not sj.is_file() or not data.is_file():
             self.skipTest("还没有职位数据或还没导出")
         payload = json.loads(data.read_text(encoding="utf-8"))
-        # `web/public/data.json` 是**全用户共用的一个文件**，而 `seen_jobs.json`
-        # 每人一份。多人共用一份 clone 时（AGENTS.md 明确支持），切了用户但没重导，
-        # 这两份就属于不同的人——拿 A 的盘上数据去比 B 的导出，下面每条断言都会
-        # 报出无意义的失败，还会被误读成计数口径有问题（实测跨 5 个模拟用户走查时
-        # 就这么绊了一次）。
+        # 快照 2026-11-09 起按用户存（此前是全用户共用一份 `web/public/data.json`），
+        # 可面板服务是异步重导的：刚切过用户、还没重导时，盘上那份仍可能属于上一个人。
+        # 拿 A 的盘上数据去比 B 的导出，下面每条断言都会报出无意义的失败，还会被
+        # 误读成计数口径有问题（实测跨 5 个模拟用户走查时就这么绊了一次）。
         #
         # 所以先核对身份：不一致就是**快照过期**，跳过而不是失败。真正的一致性
         # 由 serve.py 的自愈保证（`.active_user` 也计入 mtime，切用户会触发重导）。
@@ -521,28 +520,13 @@ class FunnelCellsAreClickableSoCountsMustMatch(unittest.TestCase):
         self.assertEqual(ex.funnels_of({**applied, "verdict": "值得投"}),
                          ["applied"], "正常岗反而不算了——排除面拉太宽")
 
-    def test_the_collapsed_band_opens_under_a_filter(self):
-        """点开格子要能**一次**看齐所有行，包括「可以考虑」那一档。
 
-        契约是「格子上的数 = 点开看到的行数」。名单按判词切成主表 +
-        「可以考虑」折叠区，默认收起是对的（给长名单一个停止点），但筛选开着时
-        收起就意味着要再点一次才数得齐——实测点「材料就绪 19」，标题只写 16。
-
-        **`key` 是这条的要害。** `defaultActiveKey` 只在挂载时读一次，而切筛选时
-        这个组件早就挂着了：只改 `defaultActiveKey` 能过类型检查、能构建、
-        在页面上一点效果都没有（实测如此，靠真点一遍才发现）。所以这里两样都验。
-        """
+    def test_the_filtered_view_shows_both_tiers_in_one_list(self):
+        """筛选后，两档岗位都应直接出现在结果中。"""
         src = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
-        i = src.find('key: "maybe"')
-        self.assertNotEqual(i, -1, "找不到「可以考虑」那个折叠区了")
-        block = src[max(0, i - 1400):i]
-        self.assertRegex(
-            block, r"defaultActiveKey=\{funnel\s*\?",
-            "「可以考虑」折叠区没有跟着筛选展开 —— 点开格子数不齐")
-        self.assertRegex(
-            block, r"key=\{funnel",
-            "只写了 defaultActiveKey 没写 key —— 组件不会重挂载，"
-            "这个默认值在切筛选时根本不生效（改了等于没改）")
+        self.assertRegex(src, r"const cut = [^;]+&& !searching && !funnel;")
+        self.assertIn("const mainList = cut ? worth : visible;", src)
+        self.assertIn("const restList = cut ? visible.filter(maybeOnly) : [];", src)
 
     def test_applied_pinned_on_a_duplicate_moves_to_the_primary(self):
         """台账行钉在重复挂法上时，投递状态必须移交主条目。
@@ -699,8 +683,8 @@ class FunnelCellsAreClickableSoCountsMustMatch(unittest.TestCase):
 
         用户问「可以投的不多了，怎么让你继续抓取」时，流程就在他眼前——五格
         标着搜到职位/打过分/材料就绪/已投递/面试中——但**每一格该敲什么从来
-        没写在格子上**。页面上唯一说过这件事的地方是最底下那个折叠的命令表，
-        它按任务类型分组，与顶上五格对不上号。
+        没写在格子上**。页面上唯一说过这件事的地方是「能敲哪些命令」那颗按钮
+        打开的弹窗，它按任务类型分组，与侧栏那五格对不上号。
         """
         src = (ROOT / "tools" / "export_web_data.py").read_text(encoding="utf-8")
         for cmd in ("/job-scrape", "/job-rank", "/job-apply", "/job-outcome", "/job-interview"):
@@ -819,7 +803,7 @@ class FunnelBoxesFollowTheLiveFilters(unittest.TestCase):
         src = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
         self.assertIn("funnelCounts", src, "格子还在直接用导出的 s.count")
         seg = src.split("const funnelCounts")[1].split("}, [")[0]
-        for f in ("passesPrefs", "isHidden", "excluded"):
+        for f in ("passesPrefs", "isHidden", "inPlay"):
             self.assertIn(f, seg, f"格子计数没过 {f} 这一层，会和列表飘")
 
     def test_no_raw_count_reaches_the_screen(self):

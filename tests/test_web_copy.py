@@ -1197,32 +1197,20 @@ class ADisabledControlPromisesNothing(unittest.TestCase):
 
 
 class FilteringCollapsesAnOffscreenSelection(unittest.TestCase):
-    """搜索把展开的那一行筛掉时要收起它。
+    """展开岗位后用搜索筛掉它，再清空搜索时岗位应保持收起。"""
 
-    `App` 的 `effectiveId` 只挡住「这个岗离开了可投名单」（记了状态、标了不投），
-    **挡不住 `Shortlist` 内部的搜索筛选**——那发生在 `jobsIn` 上，App 看不见。
+    def test_search_clears_selection_when_filtered_out(self):
+        app = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
+        i = app.index("const updateSearch =")
+        search = app[i:app.index("\n  };", i)]
+        self.assertIn("available.find((j) => j.id === selectedId)", search)
+        self.assertIn("if (selected && !matchesJobSearch", search)
+        self.assertIn('setSelectedId("")', search)
 
-    于是：展开一个岗 → 搜一个搜不到它的词 → 行没了、展开态还在，
-    滚动效果的 `querySelector` 找不到那一行，静默返回（不崩）。
-    清掉搜索之后会看到一个自己没再点过的岗还开着，而用户无从知道它是哪一步留下的。
-    """
-
-    def test_shortlist_clears_selection_when_filtered_out(self):
-        src = (ROOT / "web" / "src" / "components" / "Shortlist.tsx").read_text(encoding="utf-8")
-        self.assertIn("jobsIn.some((j) => j.id === selectedId)", src,
-                      "筛选变化时没有检查展开的那一行还在不在")
-        self.assertIn('onSelect("")', src, "筛掉之后没有收起")
-
-    def test_the_effect_keys_on_filters_not_on_data(self):
-        """依赖 jobsIn 会让每次数据刷新都重跑，把用户正看着的岗收起来。"""
-        import re
-        src = (ROOT / "web" / "src" / "components" / "Shortlist.tsx").read_text(encoding="utf-8")
-        seg = src.split("jobsIn.some((j) => j.id === selectedId)")[1][:300]
-        m = re.search(r"\}, \[([^\]]*)\]", seg)
-        self.assertIsNotNone(m, "找不到这个 effect 的依赖数组")
-        deps = {d.strip() for d in m.group(1).split(",") if d.strip()}
-        self.assertEqual(deps, {"kw", "channel"},
-                         f"依赖应当只有筛选条件，实际是 {deps}")
+    def test_keyword_and_source_changes_use_the_same_selection_check(self):
+        app = (ROOT / "web" / "src" / "App.tsx").read_text(encoding="utf-8")
+        self.assertIn("updateSearch(e.target.value, channel)", app)
+        self.assertIn('updateSearch(query, value ?? "")', app)
 
     def test_the_scroll_offset_explains_itself(self):
         """76 是魔数——必须写清它不是在避让 sticky 元素。"""

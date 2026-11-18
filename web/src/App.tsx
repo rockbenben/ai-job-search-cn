@@ -5,10 +5,10 @@ import { HrAnswers } from "./components/HrAnswers";
 import { CommandBook } from "./components/CommandBook";
 import { BaseResume } from "./components/BaseResume";
 import { ResumeRead } from "./components/ResumeRead";
-import { App as AntApp, Button, Collapse, ConfigProvider, Modal } from "antd";
+import { App as AntApp, Button, Collapse, Input, Select, ConfigProvider, Modal } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { cockpitComponents, cockpitTheme } from "./theme/tokens";
-import { Shortlist, ShelvedList, plainVerdict } from "./components/Shortlist";
+import { Shortlist, ShelvedList, plainVerdict, matchesJobSearch } from "./components/Shortlist";
 import { CodeToolProvider } from "./context/CodeToolContext";
 import { OutcomeStatsPanel, sayRate } from "./components/OutcomeStats";
 import { HidePrefs } from "./components/HidePrefs";
@@ -27,9 +27,7 @@ import "./theme/cockpit.css";
 /**
  * 求职总览
  *
- * 版面自上而下就是「我现在该做什么」的回答路径：
- *   我走到哪一步了 → 下一步做什么（只给一条）→ 要装的工具够不够
- *   → 有哪些能投的岗 → 这个岗到底怎么样 → 哪些被条件挡下了
+ * 主区放下一步与岗位，侧栏集中显示进度、工具和提醒。
  *
  * 屏幕上的措辞一律用求职者自己会说的话。`workflows/` 里的框架词
  * （硬门、能力边界、四维、台账）是给 AI 看的，不往界面上搬——见 types.ts 顶部说明。
@@ -141,8 +139,8 @@ export default function App() {
   //: 原来这里还有一套受控的折叠展开（`portalsOpen` + 一个「没封 → 有封」
   //: 只开一次的 effect），那是折叠时代的东西：2026-08-21 猎聘 CLI 封了 9 小时，
   //: 而告警整块埋在收起来的折叠里，面板上一个字都看不到。
-  //: 现在那句话印在「招聘网站」那颗按钮上，那排按钮就在「下一步」下面 ——
-  //: **比原来更靠前，也就不需要替用户展开什么了。**
+  //: 现在那句话印在「招聘网站」那颗按钮上，那排按钮在侧栏「工具与设置」里、
+  //: 宽屏首屏就能看到 —— **比原来更靠前，也就不需要替用户展开什么了。**
   const jobPrefs = snap?.prefs ?? [];
   //: **开关必须真的滤，否则它就是个装饰品。** 关掉的那几类从这里被滤掉——
   //: 判据不在这儿算，用的是导出器给每个岗打好的 `prefTags`：两处各写一份判据，
@@ -152,7 +150,7 @@ export default function App() {
   //: **这几块原来是页面正文里的折叠区**（招聘网站、岗位类型、要装的工具、
   //: 你的简历、市场怎么读你的简历、投出去的那些、能敲哪些命令）。它们回答的
   //: 都不是「我今天该投谁」—— 是设置、统计、说明。收起来也各占一行加外边距，
-  //: 七块叠起来就把名单挤下去了。
+  //: 几块叠起来就把名单挤下去了。
   //
   //: 中间试过一版侧边抽屉，用户 2026-08-24 直接否掉：**改成看得懂的文字按钮，
   //: 点一下开 Modal**。按钮上带着原来折叠标题里那句结论 —— 那几句是刻意写的
@@ -347,6 +345,19 @@ export default function App() {
   // 把后三格接成真筛选：引导说什么，点一下就能到那儿。
   const [funnel, setFunnel] =
     useState<"" | "materials" | "ready" | "applied" | "interview">("");
+  const [query, setQuery] = useState("");
+  const [channel, setChannel] = useState("");
+  const kw = query.trim().toLowerCase();
+  const searching = Boolean(kw || channel);
+  const changeFunnel = (view: typeof funnel, jump = false) => {
+    setFunnel(view);
+    setSelectedId("");
+    if (jump) {
+      setQuery("");
+      setChannel("");
+      document.getElementById("positions")?.focus();
+    }
+  };
   const FUNNEL_OF: Record<number, typeof funnel> = {
     3: "materials", 4: "applied", 5: "interview",
   };
@@ -403,13 +414,17 @@ export default function App() {
   //:
   //: 只算后三格：前两格（搜到职位/打过分）不接筛选，本来就是整库口径。
   const funnelCounts = useMemo(() => {
-    const c: Record<string, number> = { materials: 0, ready: 0, applied: 0, interview: 0 };
+    const c: Record<string, number> = { pending: 0, materials: 0, ready: 0, applied: 0, interview: 0 };
+
     for (const j of jobs) {
-      if (excluded.has(j.id) || !passesPrefs(j) || isHidden(j, hidePrefs, appliedCos)) continue;
-      for (const f of j.funnels ?? []) if (f in c) c[f] += 1;
+      if (!inPlay(j) || !passesPrefs(j) || isHidden(j, hidePrefs, appliedCos)) continue;
+      if (!applied(j) && !justActed.has(j.id)) c.pending += 1;
+      for (const f of j.funnels ?? []) {
+        if (f in c && (f === "applied" || !justActed.has(j.id))) c[f] += 1;
+      }
     }
     return c;
-  }, [jobs, excluded, passesPrefs, hidePrefs, appliedCos]);
+  }, [jobs, inPlay, passesPrefs, hidePrefs, appliedCos, justActed]);
 
   const shortlist = useMemo(
     () => jobs.filter((j) => inPlay(j) && matchFunnel(j)
@@ -475,22 +490,6 @@ export default function App() {
   );
   //: 批量跑下来卡住的岗。不看筛选、不看已投——它们是待办，不是名单的一部分。
   const blocked = useMemo(() => jobs.filter((j) => j.blocked?.需要), [jobs]);
-  //: 默认视图里因为「已投过」而被收起来的那些。数量要说出来——一行凭空消失
-  //: 和「我的数据丢了」在用户那里是同一件事。
-  //
-  //: **判据必须和点开之后看到的那批逐字一致。** 这个数是可点的，点下去就是
-  //: `setFunnel("applied")`，那时 `shortlist` 用的是白名单 `canSell` 加
-  //: `funnels` 里有没有 `applied`。这里原来用黑名单 `!isOut` 加 `applied(j)`
-  //: 数——导出侧对没有 rank_verdict 的岗会填 `"已评分"`（见 export 的
-  //: `verdict or "已评分"`），它 `isOut` 假、`canSell` 也假：**进得了这个数，
-  //: 进不了那份名单**。于是「另有 5 个已投出去」点开只有 3 行，正是本文件
-  //: 上面 funnels 那段注释写的「数字必须等于点开看到的行数」又犯一次。
-  const isAppliedRow = (j: Job) =>
-    inPlay(j) && (j.funnels ?? []).includes("applied");
-  const hiddenApplied = useMemo(
-    () => jobs.filter(isAppliedRow).length,
-    [jobs, inPlay],
-  );
   const shelved = useMemo(
     () => jobs.filter((j) => !j.dupOf
                             && (isOut(j.verdict) || excluded.has(j.id) || j.expired)),
@@ -513,13 +512,18 @@ export default function App() {
   //: 计数漏掉被藏起来的，两个数对不上。
   //: **必须 useMemo。** 原来是裸函数调用，于是每次渲染（包括每敲一个字）
   //: 都把 1200 个岗过一遍全部关键词——实测关键词加到 50 多个时渲染进程直接无响应。
-  const visible = useMemo(
+  const available = useMemo(
     () => shortlist.filter((j) => passesPrefs(j) && !isHidden(j, hidePrefs, appliedCos)),
     [shortlist, hidePrefs, appliedCos, passesPrefs]);
   //: 藏了几个要说出来——一个开着的筛选器最危险的失败模式是用户忘了它开着。
-  const hiddenCount = shortlist.length - visible.length;
+  const hiddenCount = shortlist.length - available.length;
+  const channels = useMemo(() => [...new Set(available.flatMap((j) => j.channel ? [j.channel] : []))]
+    .sort().map((value) => ({ value, label: value })), [available]);
+  const visible = useMemo(
+    () => searching ? available.filter((j) => matchesJobSearch(j, kw, channel)) : available,
+    [available, kw, channel, searching]);
   const worth = visible.filter((j) => !maybeOnly(j));
-  const cut = worth.length > 0;
+  const cut = worth.length > 0 && !searching && !funnel;
   const mainList = cut ? worth : visible;
   const restList = cut ? visible.filter(maybeOnly) : [];
   //: 「可以考虑」那一档里有几个是**具名公司的直招**。
@@ -597,18 +601,23 @@ export default function App() {
     [visible],
   );
 
-  // 数据是异步来的，选中项要跟着推荐走一次；用户点过之后就不再自动改
   // 进页面时**不预先展开任何一行**：先看全貌，要看细节自己点。
   // 预展开第一行会把下面 18 行推到屏幕外，反而看不到名单。
   const [selectedId, setSelectedId] = useState("");
+  const updateSearch = (value: string, source: string) => {
+    setQuery(value);
+    setChannel(source);
+    const selected = available.find((j) => j.id === selectedId);
+    if (selected && !matchesJobSearch(selected, value.trim().toLowerCase(), source)) {
+      setSelectedId("");
+    }
+  };
   //: 校验对象必须是**真正渲染出来的那份**（`visible`），不是叠屏蔽之前的 `shortlist`。
   //: `mainList ∪ restList` 恰好等于 `visible`（`cut` 的两支都成立），所以只有它对得上屏幕。
   //:
   //: 拿 `shortlist` 校验时漏的是这条路径：展开一个岗 → 在「这几类岗要不要看」里关掉
   //: 它所属的那一类（或把它公司加进屏蔽词）→ 那一行从名单里消失，而 `selectedId`
-  //: 还指着它。展开态没人收，等他把那一类打开，那一行**已经是展开的**——
-  //: 他没点过。`Shortlist` 内部那道收起闸只认自己的搜索框（`kw`/`channel`），
-  //: 看不见 App 这一层的屏蔽，两层各管各的那一半。
+  //: 还指着它。只有仍在当前名单里的岗可以展开。搜索还会主动清除被筛掉的选中项。
   const effectiveId = visible.some((j) => j.id === selectedId) ? selectedId : "";
 
   // ok === null 是「不由本仓库决定」，**不算缺失**（浏览器能力由 AI 工具提供）
@@ -628,9 +637,8 @@ export default function App() {
   //: 那一行里加个小字」。（这里**不写那个块的 key 字面量**：两条测试拿它当锚点
   //: 去切窗口，注释里再出现一次就把窗口切到注释上了。同一个自陷本仓库栽过五次。）
   //
-  //: 落点变过两次：折叠标题 → 抽屉外那颗固定按钮 → 现在这一排文字按钮。
-  //: **这一排就在「下一步」下面，本来就在首屏** —— 比原来那个要滚到第三屏才
-  //: 露头的折叠标题更靠前。
+  //: 落点变过三次：折叠标题 → 抽屉外那颗固定按钮 → 侧栏「工具与设置」这一排
+  //: 文字按钮。**宽屏首屏就能看到** —— 比原来那个要滚到第三屏才露头的折叠标题更靠前。
   //
   //: 这一句只决定「点不点亮」，按「要你做点什么」排序：被平台拦住 > 要换出口 >
   //: 环境缺项。**具体印哪几枚标记走 `desks` 里那份 `chips`**（那里三枚分开，
@@ -733,7 +741,7 @@ export default function App() {
   //: **每颗按钮都带一句结论，不点开也看得见。** 这几句原来长在折叠标题里，
   //: 是逐条推敲过的（「上次审于 X，之后改过没再审」不是「上次审于 X」；
   //: 「有回音 0%」在还没到时候时要说「还没有」）—— 换成按钮不能把它们丢掉，
-  //: 否则这一排就成了七个没有信息的词。
+  //: 否则这一排就成了八个没有信息的词。
   const desks: {
     key: string; name: string; note: string; title: string;
     alarm?: string; chip?: string; show: boolean;
@@ -902,14 +910,25 @@ export default function App() {
     },
   ].filter((d) => d.show);
 
+  const positionViews: { id: typeof funnel; label: string; count: number }[] = [
+    { id: "", label: "待投", count: funnelCounts.pending },
+    { id: "ready", label: "材料已备", count: funnelCounts.ready },
+    { id: "applied", label: "已投递", count: funnelCounts.applied },
+    { id: "interview", label: "面试中", count: funnelCounts.interview },
+  ];
+  const serviceIsStale = (snap.staleCode?.length ?? 0) > 0;
+  const hasNotices = blocked.length > 0 || materialsThin || Boolean(parked)
+    || (snap.archivedCount ?? 0) > 0 || (snap.restaleCount ?? 0) > 0
+    || serviceIsStale || pipeline.some((stage) => (stage.waiting ?? 0) > 0);
+
   return (
     <ConfigProvider theme={cockpitTheme} locale={zhCN} button={cockpitComponents.button}>
       <AntApp>
         <CodeToolProvider initialTool={snap.detectedTool}>
           <div className="cockpit">
           <header className="mast">
-            <span className="mast-word">求职总览</span>
-            <span className="kicker">全在你自己电脑上跑，数据不上传</span>
+            <h1 className="mast-word">求职总览</h1>
+            <span className="mast-local">本机数据</span>
             {/* 演示数据必须自己承认——否则死链接和不存在的 PDF 会被当成真的 */}
             {/* 演示态其实有两种，指路不一样，混成一句会把新用户支使去跑一条
                 注定失败的命令：还没建过用户时 `export_web_data.py` 直接退出 1
@@ -980,123 +999,14 @@ export default function App() {
                 </div>
               )}
             </div>
+            <a className="tools-jump" href="#workspace-tools">工具与设置</a>
           </header>
 
-          <nav className="rail" aria-label="求职进度">
-            {pipeline.map((s) => {
-              // 前两格不接筛选：「搜到职位」含 73 个没上表的（待评/降权/已过期），
-              // 点了给不出对应的行；「打过分」就是整张表本身。硬接会让点击结果
-              // 与数字对不上——那比不能点更糟。
-              const key = FUNNEL_OF[s.step];
-              const on = Boolean(key) && funnel === key;
-              // 「能不能点」只算一次。之前 disabled 算的是「没有筛选键**或**数为 0」，
-              // 而 aria-label 只看有没有筛选键——于是 0 个的那两格是禁用的，读屏却
-              // 念「0 个，只看这些」，等于给一个按不动的按钮许诺了一个动作。
-              //: 格子上的数按当前过滤链现算，和点开看到的行数永远相等。
-              //: 被过滤压低时把原数一并说出来——否则用户会以为岗位凭空少了。
-              const shown = key ? funnelCounts[key] ?? s.count : s.count;
-              const filtered = key ? s.count - shown : 0;
-              const actionable = Boolean(key) && shown > 0;
-              // 「下一步」点名的那一格高亮。**不另立一条判据**：谁被点名由
-              // `next_step` 说了算，这里只按命令的头一个词对上号。于是顶上的
-              // 五格和那句唯一的下一步永远指向同一件事，不会各说各的。
-              const nudged =
-                Boolean(s.cmd) && Boolean(nextStep.command) &&
-                s.cmd!.split(" ")[0] === nextStep.command!.split(" ")[0];
-              return (
-              <div
-                key={s.step}
-                className="rail-cell"
-                data-state={shown > 0 ? "active" : "zero"}
-                data-filter={key ? (on ? "on" : "off") : undefined}
-                data-nudge={nudged ? "on" : undefined}
-              >
-                <button
-                  type="button"
-                  className="rail-hit"
-                  /* 那句说明从常驻改成只给当前格之后，其余四格的全文留在这儿 ——
-                     「收起来」不等于「删掉」（同这一页对待折叠内容的一贯做法）。 */
-                  title={s.does || undefined}
-                  disabled={!actionable}
-                  onClick={() => key && setFunnel(on ? "" : key)}
-                  aria-pressed={key ? on : undefined}
-                  aria-label={
-                    actionable
-                      ? `第 ${s.step} 步 ${s.label}：${shown} 个${
-                          filtered > 0 ? `（另有 ${filtered} 个被你的筛选挡住了）` : ""
-                        }，${on ? "取消筛选" : "只看这些"}`
-                      : `第 ${s.step} 步 ${s.label}：${shown} 个`
-                  }
-                >
-                  {/* 序号来自真实先后顺序（找→评→写→投→面），不是排版装饰 */}
-                  <span className="rail-step" aria-hidden>
-                    {s.step}
-                  </span>
-                  <div className="rail-v">{shown}</div>
-                  <div className="rail-n">{s.label}</div>
-                </button>
-                {filtered > 0 && (
-                  <p className="rail-filtered">
-                    另有 {filtered} 个被你在「这几类岗要不要看」里关掉了
-                  </p>
-                )}
-                {/* 「投了多少」这一页有两个数：这一格走 funnels（排掉搁置区的），
-                    「投出去的那些」那颗按钮走投递记录行数。差在哪儿要说出来 ——
-                    否则用户只能自己猜哪个是真的。说法在导出器里现拼（`parkedNote`）。 */}
-                {s.parkedNote && (
-                  <p className="rail-filtered">{s.parkedNote}</p>
-                )}
-                {/* 这一格在做什么 + 该敲什么。命令在**按钮外面**——套在按钮里
-                    既是嵌套可交互元素，点「复制」还会顺手触发筛选。
+          <div className="workspace">
+          <main className="workspace-main">
 
-                    **只给「现在轮到的那一格」。** 五格全带这两行时，这一条
-                    2026-08-24 实测占 222px —— 是首屏最高的一块，而
-                    「可以投的岗位」要滚到 831px 才开始。五条说明里，
-                    有四条讲的是他这一刻不做的事。
-                    没删任何一条：`title` 里全文照旧，鼠标停上去就有；
-                    弹窗那边的「能敲哪些命令」也一条不少。
-                    判据不新造：`nextStep.command` 指的就是现在该敲的那条，
-                    它本来就在这一页的最上面 —— 两处指同一件事，不许各判各的。 */}
-                {/* **每一格都留着「该敲什么」，只把那两行散文收进悬浮提示。**
 
-                    原来这里是「说明两行 + 命令」（`rail-guide`）。五格是等高
-                    栅格，那 96px 把每一格都撑到 220px —— 实测 2026-08-24，
-                    「可以投的岗位」要滚到 1061px 才开始。
 
-                    **但命令不能跟着散文一起收走。** `test_pipeline_counts` 那条
-                    守的就是这件事，理由是实测来的：用户问「可以投的不多了，
-                    怎么让你继续抓取」时，五格就在他眼前，而**每一格该敲什么
-                    从来没写在格子上**。所以这一版留命令、收散文：
-                    命令一行 ≈ 22px，散文进 `title`（上面那个按钮）。 */}
-                {/* **还敲不动的格子不给命令。**
-
-                    新用户那一屏实测 2026-08-24（拿一份空快照渲染）：五格全是 0，
-                    却各挂一条命令 —— `/job-rank`「给抓到还没评的打分」、
-                    `/job-apply`「给想投的岗出材料」…… **一条都敲不动**（没资料、
-                    没岗），而正确答案只有一条 `/job-setup`，它就在下面那句
-                    「下一步」里。`AGENTS.md`：「一条引导对应**一条**命令。
-                    给两条以上，用户就要先做一次选择 —— 那正是引导要替他省掉的
-                    那一步。」
-
-                    判据两个都是现成的，不新造：`shown > 0`（这一格有东西了）
-                    或 `nudged`（「下一步」点名的就是它）。有数据的用户五格照旧
-                    都写着该敲什么 —— `test_pipeline_counts` 守的那条不受影响。 */}
-                {s.cmd && (shown > 0 || nudged) && (
-                  <div className="rail-guide">
-                    <Cmd>{s.cmd}</Cmd>
-                  </div>
-                )}
-              </div>
-              );
-            })}
-          </nav>
-
-          {/* 那个缺口里**真是待办的那一半**。
-              `AGENTS.md` 的承诺是「抓完直接排出可以投的，不停在待评」——
-              所以这一段本该是空的；它有数，说明那条自动衔接断过一次
-              （实测 2026-08-23：182 个，而同一屏正在说库存见底）。
-              下面那条 `parked` 说的是「不用管的那一半」，两句管的不是一件事：
-              一个是待办、一个是已经放下的。 */}
           {/* **「下一步」排在那几条提醒之前。**
               原来的顺序是：待评队列 → 服务用的是旧代码 → 归档里有可复活的
               → 下一步。三段散文（实测 2026-08-24 共 122px）压在那一句上面，
@@ -1117,11 +1027,15 @@ export default function App() {
               首屏只留第一句（现状）加那条命令 —— 动作本来就在命令上 ——
               其余点开就在原地展开。不做成 Modal：它和「下一步」是同一件事，
               弹窗会把它变成「另一页」。 */}
+          <section className="nextstep-panel" aria-label="下一步">
           <div className="nextstep">
-            <span className="kicker">
-              下一步
-            </span>
+            <span className="nextstep-label">下一步</span>
             <span className="nextstep-text">{nsHead}</span>
+            {nextStep.command?.startsWith("/job-outcome") && funnelCounts.ready > 0 && (
+              <Button type="primary" className="nextstep-action" onClick={() => changeFunnel("ready", true)}>
+                查看待发岗位
+              </Button>
+            )}
             {nextStep.command && (
               <span className="nextstep-cmd">
                 {nextStep.command.startsWith("/job-outcome") && (
@@ -1145,121 +1059,19 @@ export default function App() {
             )}
           </div>
           {nsWhy && nsOpen && <p className="nextstep-why">{nsWhy}</p>}
-
-          {pipeline.some((s) => (s.waiting ?? 0) > 0) && (() => {
-            const st = pipeline.find((s) => (s.waiting ?? 0) > 0)!;
-            return (
-              <p className="parked-note">
-                {"还有 "}
-                <b>{st.waiting} 个抓回来没评分</b>
-                {"：能不能投还不知道，它们不在上面任何一份名单里。"}
-                {/* **这批是会烂的，而原来这里只有一个数。**
-                    抓的时候只收 14 天内的岗，而评它要花抓详情的额度 ——
-                    这套系统里最稀缺的东西。读的人分不出「昨天抓的 182 个」
-                    和「放了半个月的 182 个」，后者里有一批在平台上已经关了，
-                    评它是白评。判据与实测见 `doctor.waiting_age`；
-                    **有旧的导出器才给这个字段**，所以这一句平时不出现。 */}
-                {st.waitingNote && (
-                  <span className="parked-stale">{st.waitingNote}。</span>
-                )}
-                <Cmd>/job-rank</Cmd>
-              </p>
-            );
-          })()}
-
-          {/* 「搜到职位」与「打过分」之间的缺口，用户会读成「还有这么多要做」。
-              其中一部分只是**只看了标题就先放一边**：标题显示方向不对、留着没结案，抓详情的
-              额度轮不到它们。这个数原来导出了却没人显示——缺口就一直解释不通。 */}
-          {(parked ?? 0) > 0 && (
-            <p className="parked-note">
-              {/* 结论放最前并加粗。原来是「上面两格的差额里有 34 个……它们不是积压，
-                  不用管」——三个毛病：① 让读者做减法（268−195 是 73，不是 34，
-                  对不上就更困惑）；②「结案」「积压」是公文词，「抓详情」是内部词
-                  （用户不知道抓取分两趟）；③ 用一整句解释一件「不用管」的事，
-                  却摆在第一屏最显眼处。现在先说不用管，再说为什么。 */}
-              另有 <b>{parked} 个不用管</b>
-              {"：只看标题就放一边了——方向明显不对，没再去读完整描述。"}
-            </p>
-          )}
-
-          {/* 收进存档的老岗。不显示的话，「搜到职位」的数字会在某次归档后凭空变小，
-              用户第一反应是丢数据了。写清楚去哪了、怎么拉回来（面板每处引导都要带命令）。
-
-              **`--apply` 不能省。** 2026-08-31 起 `--revive` 也认那面旗子
-              （在那之前它敲一次就当场搬 1074 个岗，而同一个工具的 help 写着
-              「不加就是试运行」）。这里印的是给用户复制去跑的命令 —— 少了
-              `--apply`，他跑完只会看到「会拉回 N 个」，然后以为面板骗了他。 */}
-          {(snap?.archivedCount ?? 0) > 0 && (
-            <p className="parked-note">
-              另有 <b>{snap!.archivedCount} 个老岗位收进了存档</b>
-              {"：出局超过两周、没投过也没出过材料的，不占上面的计数。存档文件在 "}<code>job_scraper/archive.json</code>{"；改了硬性条件想重新评它们时先跑 "}
-              <Cmd>python tools/archive.py --revive --apply</Cmd>
-            </p>
-          )}
-
-          {/* 「有几个岗的判断现在不该信了」。用户 2026-08-30 问的是「有没有一个
-              按钮或命令」——**按钮做不成**：`serve.py` 那条路只改一个字段、
-              不接大模型（它自己的边界），而重评要读职位描述再判。
-              命令做得成，所以这里把它印出来。
-              此前这条队列只在 `/job-auto` 收尾的终端输出里一闪而过，
-              而终端日志没人看——和上面 staleCode 那条是同一课。 */}
-          {(snap?.restaleCount ?? 0) > 0 && (
-            <p className="parked-note">
-              有 <b>{snap!.restaleCount} 个岗的判断该重跑一遍</b>
-              {"：要么材料写的档位和现在的对不上，要么当初评它时就没读到完整的职位描述。已经投出去的不在里面。重跑一批 "}
-              <Cmd>/job-apply --stale</Cmd>
-            </p>
-          )}
-
-          {/* 这一页背后的服务在启动之后代码被改过——按钮还在按旧逻辑写盘。
-              2026-08-13 一天撞了三次，前两次都只在终端警告，而终端日志没人看；
-              信号必须走到用户真正盯着的地方，也就是这里。
-              提醒本身由 serve.py 现塞进 /data.json 响应（staleCode），
-              前端只负责显示；服务重启后字段消失，这块自动不渲染。 */}
-          {(snap?.staleCode?.length ?? 0) > 0 && (
-            /* **文件名不上屏。** 这条原来把改过的五个 `.py` 逐个列了出来
-               （`_cli.py、build_dashboard.py、export_web_data.py…`）——
-               AGENTS.md「给用户看的措辞」禁的就是这个：用户对着 `_cli.py`
-               什么也做不了，那是仓库的内部结构，不是他要处理的东西。
-               他需要知道的只有两件：**现在点按钮可能记不准**、**怎么修**。
-               文件名留在终端那份告警里（`serve.py` 里那行 `[!] 这几个文件…`），
-               在那儿它是给开发者看的，位置对。
-               顺带从 156 字压到 44 字 —— 它排在「下一步」上面，
-               而「下一步」才是这一页要人看的那一句。 */
-            <p className="parked-note">
-              {/* **命令块必须是这句的最后一样东西。** 原来它后面跟着一个以「，」
-                  开头的文本节点，而 `<Cmd>` 是 inline-block —— 换行一旦落在这个
-                  边界上，那个逗号就单独站在下一行的行首（中文排版的避头点，
-                  浏览器的 UAX-14 断行只在连续文本里生效，跨不过 inline-block）。
-                  实测 390px 上就是这样。同一段里另外两条（存档那条、job-rank
-                  那条）本来就是以命令收尾的，这条改完与它们一致。 */}
-              <b>这一页的服务还在用旧代码跑</b>
-              {"：现在点按钮记的状态可能不准。再跑一次下面这条，它会告诉你怎么停掉旧的那个。"}
-              <Cmd>python tools/serve.py</Cmd>
-            </p>
-          )}
+          </section>
 
 
 
-          {/* ── 设置 / 统计 / 说明：一排文字按钮，点开是弹窗 ──
 
-              这七块原来是正文里的七段折叠。收起来也各占一行加外边距，叠起来
-              把名单挤下去；而它们回答的都不是「我今天该投谁」。
-              中间试过侧边抽屉，用户 2026-08-24 否掉了 —— 现在是**能看懂的
-              文字按钮**，点一下开 Modal。
 
-              **每颗按钮都带那句结论。** 折叠标题上那几句是逐条推敲过的
-              （「上次审于 X，之后改过没再审」「有回音 0%」还是「还没有」），
-              换成按钮不能把它们丢掉，否则这一排就是七个没有信息的词。
-              告警（被平台拦住、还差几项要装）点亮整颗按钮 —— 这排就在
-              「下一步」下面，本来就在首屏。 */}
           {/* **还没建过档的人：命令表直接摊开，不放进那一排按钮。**
               他最需要这张表，而按钮那一排的前提是「你已经知道自己在看什么」。
               上一版折叠时代这里是 `defaultActiveKey={activeUser ? [] : ["cmds"]}`
               —— 换成按钮之后那个照顾会消失，而为它自动弹一个 Modal 比不弹更糟。 */}
           {!activeUser && (snap.commands ?? []).length > 0 && (
             <section className="firstrun" aria-label="先跑这三条">
-              {/* **只摊脊梁那三条，不摊 20 条全集。**
+              {/* **只摊脊梁那三条，不摊 21 条全集。**
                   全集对还没建档的人是噪音：里面能敲的只有 `/job-setup` 和
                   `/job-user`（实测 2026-08-24 空快照渲染，那张表从 220px
                   一直铺到页面底部）。全集没删 —— 下面那颗「能敲哪些命令」
@@ -1268,49 +1080,14 @@ export default function App() {
               <CommandBook groups={snap.commands ?? []} spineOnly />
             </section>
           )}
-          {desks.length > 0 && (
-            <nav className="deskbar" aria-label="设置、统计与说明">
-              {desks.map((d) => (
-                <button
-                  key={d.key}
-                  type="button"
-                  className="deskbtn"
-                  data-desk={d.key}
-                  data-alarm={d.alarm ? "1" : undefined}
-                  aria-haspopup="dialog"
-                  onClick={() => setDesk(d.key)}
-                >
-                  <span className="deskbtn-name">{d.name}</span>
-                  {/* **那句结论只留给要你处理的那几颗。**
-                      七颗都带一句，这一排 2026-08-24 实测占 203px、排成两行，
-                      而它整体回答的不是「我今天该投谁」。所以：有告警的照旧
-                      带着（那句话就是告警的上下文），其余只留名字 —— 点开
-                      弹窗里一个字都没少。
-                      判据不新写：`d.alarm || d.chips` 就是「这颗要你处理」，
-                      它本来就在决定整颗按钮点不点亮。 */}
-                  {d.note && (d.alarm || (d.chips ?? []).length > 0) && (
-                    <span className="deskbtn-note">{d.note}</span>
-                  )}
-                  {(d.chips ?? []).map((c) => (
-                    <span className="deskbtn-alarm" data-tone={c.tone} key={c.text}>
-                      {c.text}
-                    </span>
-                  ))}
-                  {d.alarm && (d.chips ?? []).length === 0 && (
-                    <span className="deskbtn-alarm">{d.alarm}</span>
-                  )}
-                  {d.chip && <span className="deskbtn-chip">{d.chip}</span>}
-                </button>
-              ))}
-            </nav>
-          )}
+
           <Modal
             open={desk !== null}
             title={desks.find((d) => d.key === desk)?.title ?? ""}
             onCancel={() => setDesk(null)}
             footer={null}
             /* **宽度跟着视口走，不写死。** 原来是 `760`，而这几块里最宽的两块
-               本来就装不下：「能敲哪些命令」是 20 行 × 4 列的表，「投出去的那些」
+               本来就装不下：「能敲哪些命令」是 21 行 × 4 列的表，「投出去的那些」
                是分档与分渠道两张表并排 —— 760px 下都在换行。
                `min()` 让它在窄屏自动缩回去，不必再写一条断点规则。 */
             width="min(1180px, 92vw)"
@@ -1406,148 +1183,51 @@ export default function App() {
             {desk === "cmds" && <CommandBook groups={snap.commands ?? []} />}
           </Modal>
 
-          {/* `/job-apply --top N` 批量跑下来攒的待办。**排在最前面**：它们是「你答一句
-              就能继续」的东西，而批量已经因为它们跳过了那几个岗。
-              批量不回头在对话里问——一次长跑被十几个问题切碎，用户要做的事就从
-              「批准一次」变成「按二十次继续」。问题攒到这儿，有空时一次答完。 */}
-          {blocked.length > 0 && (
-            <div className="mat-gap" role="status">
-              <b>有 {blocked.length} 个岗卡住了，等你一句话</b>
-              {/* 整句一行：JSX 里两个汉字之间的换行会被折成空格，而中文句号
-                  也算汉字，所以断在标点后同样会中招。只有标签边界是安全的。 */}
-              <span>
-                批量出材料时碰到缺东西的地方没有回头问你，跳过继续跑了。答完这几条，逐个跑下面这条把它们补上（每次换成那一行的链接）。
-              </span>
-              <ul className="blocked-list">
-                {blocked.map((j) => (
-                  <li key={j.id}>
-                    <b>{j.title}</b>
-                    <i>{j.company}</i>
-                    <span>{j.blocked!.需要}</span>
-                    <em>{j.blocked!.环节}</em>
-                  </li>
-                ))}
-              </ul>
-              {/* **原来给的是 `/job-apply --top N`，而那条按分数取前 N。**
-                  卡住的岗不一定在里面：它可能是「可以考虑」那一档，也可能排在
-                  第 45 —— 那时「再跑一次下面的命令就会把它们补上」是句假话，
-                  他敲完发现没动，然后连带不信这一整块。
-
-                  改成指名道姓那一个岗。批量命令在这里天然不对：这一栏的每一行
-                  都是一个**具体的、被具体东西卡住的**岗，而批量的选岗条件与
-                  「谁被卡住了」毫无关系。 */}
-              <Cmd>{`/job-apply ${blocked[0].url}`}</Cmd>
-            </div>
-          )}
-
-          {/* 头部的材料备得太少就顶在名单上方。**位置要在表格之前**：
-              它说的是「这份名单现在还投不出去」，读完名单才看到就晚了。
-              和顶部那条流水线「下一步」不冲突——那条说整体该干什么
-              （现在是「把备好的 3 个投出去」），这条说的是这份名单本身缺什么。 */}
-          {materialsThin && (
-            <div className="mat-gap" role="status">
-              {/* **不说「可以投的岗」** —— 屏幕上那个段头就叫「可以投的岗位 9」，
-                  而这里数的是 `sellable` 按分排的前 20（含「可以考虑」那一档，
-                  实测 231 个）。同一句话两个集合，同一屏上。 */}
-              <b>
-                {/* 「只有 0 个」没人这么说话。零是这条提示最常见的取值
-                    （它恰恰是「一个都没备」时才出现的），所以零单独给一句。 */}
-                分最高的 {topReady.size} 个里，
-                {topReady.ready === 0
-                  ? "一个备好材料的都没有"
-                  : `只有 ${topReady.ready} 个备好了材料`}
-                {topReady.raw > 0 && `（其中 ${topReady.raw} 个还没读过 JD，分是粗筛给的）`}
-              </b>
-              {/* 换行只许落在标点或标签边界上：JSX 里两个汉字之间的换行会被折成
-                  一个空格，屏幕上就是「有的 下面」。同 sec-note 那条注释。
-                  措辞上少说一层：原来这里还解释了「出一份材料要读 JD、查公司、
-                  起草、审稿，不是点一下就有的」和「这条命令自带闸门」——前者是在
-                  替工具辩解为什么慢，后者「闸门」是流程内部词（AGENTS.md 禁的那类）。
-                  用户在这一刻要知道的只有一件事：敲哪条能把材料补上。 */}
-              <span>没材料就投不出去。下面这条按分数从高往低补，查完公司发现不该投的只留评估。</span>
-              <Cmd>{`/job-apply --top ${TOP_N}`}</Cmd>
-              {/* 上面那个 0 是「分最高的 20 个里」的局部数。全表还有多少备好的
-                  必须在同一句里说完 —— 否则用户按着一个 0 去补货，而手上那批
-                  一个都没发。补材料花的是机器的工时，发出去花的是他的。 */}
-              {readyToSend > 0 && (
-                <span className="mat-gap-have">
-                  {"不过你手上已经有 "}
-                  {/* **把这个数变成入口。** 它是整条流水线唯一要人做的那一步
-                      （发出去）的清单，而它此前只是一句话 —— 用户读完得自己去
-                      222 行的「可以考虑」里翻。点一下就只看这批；再点取消。
-                      筛选开着时上面那枚 `funnel-chip` 会说「只看备好还没发的」，
-                      有一条明确的回头路（那枚 chip 存在的理由见它自己的注释）。 */}
-                  <button type="button" className="have-jump"
-                          aria-pressed={funnel === "ready"}
-                          onClick={() => setFunnel(funnel === "ready" ? "" : "ready")}>
-                    {readyToSend}
-                  </button>
-                  {/* 这里原来分两句：零回音时改口说「先别发，多半是同一个结果」。
-                      那句撤了（2026-08-29 用户裁定，见 `AGENTS.md`「跟进归用户，
-                      工具不催」）—— 它指的「上面那件事」正是同时撤掉的那一支，
-                      留着就指向了一个不存在的建议。回音的解读归用户，这里只说
-                      手上有什么。 */}
-                  {` 个岗材料是齐的，随时能发。它们分数没进前 ${TOP_N}，`
-                    + `多在「可以考虑」那一档——补货之前先把这批发掉。`}
-                </span>
-              )}
-            </div>
-          )}
-
-
-
+          <section id="positions" className="positions" aria-label="岗位名单" tabIndex={-1}>
           <div className="sec-head">
-            <h2>可以投的岗位</h2>
-            <b className="sec-count">{mainList.length}</b>
-            {/* 屏蔽偏好挨着计数放：那个数变小的原因就在旁边，一眼能对上。 */}
-            <HidePrefs prefs={hidden} onChange={setHiddenSaved} hiddenCount={hiddenCount} />
-            {/* 筛选开着时必须说出来。数字从 54 变成 5 而没有解释，用户第一反应是
-                「我的岗怎么少了」——把筛选状态藏起来，等于制造一个假的数据丢失。 */}
-            {funnel && (
-              <button
-                type="button"
-                className="funnel-chip"
-                onClick={() => setFunnel("")}
-                aria-label="取消筛选，看全部可以投的岗位"
-              >
-                只看
-                {/* 「材料就绪」视图**包含已投的**（见上面 shortlist 的口径注释）——
-                    标签原来写「材料就绪没投的」，和实际行为相反 */}
-                {funnel === "materials" ? "材料就绪的"
-                  : funnel === "ready" ? "备好还没发的"
-                  : funnel === "applied" ? "已投递的" : "面试中的"}
-                <span aria-hidden>×</span>
-              </button>
-            )}
-            {/* 这是**列的图例**——一行都没有时它在解释屏幕上不存在的东西。
-                新用户跑完 /job-setup 的第一屏就是空表，那时最不该做的是先教他读一张
-                他还看不到的表。与硬性条件那句「有一条不满足就别投」同一条原则：
-                提醒只在有可提醒的对象时才出现。 */}
-            {/* 「技能」和它后面的字之间**不能有空格**——`</b>` 不产生断字，
-                屏幕上就是「技能 高于总分」。空格要落在标点或中英交界处。
-                （这条注释放在 `&&(` 外面：那对括号里只能有一个表达式，
-                 塞个 JSX 注释进去整个文件就编译不过。） */}
-            {/* 投过的岗被收起来了就说一声，并且给一条回去看它们的路。
-                默认视图里少了一行而没有解释，用户第一反应永远是「我的数据呢」——
-                与上面那个筛选标同一条原则。 */}
-            {funnel === "" && hiddenApplied > 0 && (
-              <button
-                type="button"
-                className="funnel-chip"
-                onClick={() => setFunnel("applied")}
-                aria-label={`看已经投出去的 ${hiddenApplied} 个岗`}
-              >
-                另有 {hiddenApplied} 个已投出去，不在这份名单里 · 看这批
-              </button>
-            )}
-            {/* 段头右上角只留**一句**。
-                原来这里挤着两条不相干的提示：「点任意一行展开详情」（怎么操作）
-                和一整段技能列的配色规则（怎么读那一列）。后者**列头 tooltip 里
-                已经有一份**，而且那份就挂在它解释的那一列上、滚到哪都够得着；
-                印在段头的这份只在首屏出现一次，位置离它说的东西还最远。
-                同一句解释印两遍，长的那遍还占着最显眼的位置。 */}
+            {funnel === "" ? <h2>可以投的岗位</h2> : <h2>{positionViews.find((view) => view.id === funnel)?.label ?? "材料就绪"}</h2>}
+            <b className="sec-count" aria-live="polite">{visible.length}</b>
             {mainList.length > 0 && (
               <span className="sec-note">点任意一行看详情</span>
+            )}
+          </div>
+          <div className="position-views" role="group" aria-label="按投递进度查看">
+            {positionViews.map(({ id, label, count }) => (
+              <button key={id} type="button" className="position-view"
+                aria-pressed={funnel === id} onClick={() => changeFunnel(id)}>
+                {label}<span>{count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="sl-searchbar">
+            <Input
+              aria-label="搜索当前名单"
+              allowClear
+              prefix={<span className="search-icon" aria-hidden="true" />}
+              placeholder="搜索职位、公司、地点或薪资"
+              value={query}
+              onChange={(e) => updateSearch(e.target.value, channel)}
+              className="sl-search"
+            />
+            {(channels.length > 1 || channel) && (
+              <Select
+                aria-label="按招聘网站筛选"
+                allowClear
+                placeholder="全部来源"
+                value={channel || undefined}
+                onChange={(value) => updateSearch(query, value ?? "")}
+                options={channels}
+                className="sl-filter"
+              />
+            )}
+            <HidePrefs prefs={hidden} onChange={setHiddenSaved} hiddenCount={hiddenCount} />
+            {funnel === "materials" && (
+              <button type="button" className="funnel-chip" onClick={() => changeFunnel("")}>
+                材料就绪（含已投） <span aria-hidden="true">×</span>
+              </button>
+            )}
+            {searching && (
+              <span className="sl-search-n" role="status">找到 <b>{visible.length}</b> 个 / 共 {available.length} 个</span>
             )}
           </div>
           <Shortlist
@@ -1556,12 +1236,13 @@ export default function App() {
             namedDirectBelow={namedDirectInRest}
             observedMonths={snap.observedMonths ?? null}
             selectedId={effectiveId}
-            recommendedId={recommended?.id}
+            recommendedId={funnel === "" || funnel === "ready" ? recommended?.id : undefined}
             onSelect={setSelectedId}
             onExclude={(id) => exclude(id, true)}
             onExpire={live ? expire : undefined}
             onChanged={afterStatus}
             filtered={funnel !== ""}
+            searching={searching}
             // 看已投的那些时按投递时间倒序——分数是用来挑「接下来投谁」的，
             // 对已经投掉的岗没有决策价值，那时人要找的是「我上周投的那个」。
             byDate={funnel === "applied"}
@@ -1581,18 +1262,6 @@ export default function App() {
               // 「可以投的岗位」那张主表对不齐（见 cockpit.css 的 .panel-flush）。
               className="panel-collapse panel-flush is-gap"
               ghost
-              // 筛选开着时默认展开。流水线格子的契约是「格子上的数 = 点开看到的
-              // 行数」（见 export_web_data.funnels_of），而这一档默认收起时
-              // **要再点一次才数得齐**：实测点「材料就绪 19」，标题只写 16，
-              // 剩下 3 个躲在这个折叠里。默认视图不展开——那时它的作用正是
-              // 给长名单一个停止点。
-              //
-              // `key` 是必须的：`defaultActiveKey` **只在挂载时读一次**，而切筛选
-              // 时这个组件早就挂着了。只改 defaultActiveKey 能过类型检查、能构建、
-              // 在页面上一点效果都没有——实测就是这样，靠真点一遍才发现。
-              // 换 key 强制重挂载，展开状态才跟着筛选走，之后用户仍可自己收起。
-              key={funnel || "all"}
-              defaultActiveKey={funnel ? ["maybe"] : []}
               items={[
                 {
                   key: "maybe",
@@ -1642,6 +1311,8 @@ export default function App() {
               ]}
             />
           )}
+
+          </section>
 
           {/* 一个都没有时整块不渲染。空的折叠面板点开是空的，
               而它的标题还在承诺里面有东西。 */}
@@ -1756,6 +1427,346 @@ export default function App() {
                   .join(" ")}`}</Cmd>
             </div>
           )}
+
+          </main>
+          <aside className="workspace-aside" id="workspace-tools" tabIndex={-1} aria-label="进度和工具">
+            <section className="workspace-side-panel">
+              <h2>求职进度</h2>
+          <nav className="rail" aria-label="求职进度">
+            {pipeline.map((s) => {
+              // 前两格不接筛选：「搜到职位」含 73 个没上表的（待评/降权/已过期），
+              // 点了给不出对应的行；「打过分」就是整张表本身。硬接会让点击结果
+              // 与数字对不上——那比不能点更糟。
+              const key = FUNNEL_OF[s.step];
+              const on = Boolean(key) && funnel === key;
+              // 「能不能点」只算一次。之前 disabled 算的是「没有筛选键**或**数为 0」，
+              // 而 aria-label 只看有没有筛选键——于是 0 个的那两格是禁用的，读屏却
+              // 念「0 个，只看这些」，等于给一个按不动的按钮许诺了一个动作。
+              //: 格子上的数按当前过滤链现算，和点开看到的行数永远相等。
+              //: 被过滤压低时把原数一并说出来——否则用户会以为岗位凭空少了。
+              const shown = key ? funnelCounts[key] ?? s.count : s.count;
+              const filtered = key ? s.count - shown : 0;
+              const actionable = Boolean(key) && shown > 0;
+              // 「下一步」点名的那一格高亮。**不另立一条判据**：谁被点名由
+              // `next_step` 说了算，这里只按命令的头一个词对上号。于是侧栏那
+              // 五格和那句唯一的下一步永远指向同一件事，不会各说各的。
+              const nudged =
+                Boolean(s.cmd) && Boolean(nextStep.command) &&
+                s.cmd!.split(" ")[0] === nextStep.command!.split(" ")[0];
+              return (
+              <div
+                key={s.step}
+                className="rail-cell"
+                data-state={shown > 0 ? "active" : "zero"}
+                data-filter={key ? (on ? "on" : "off") : undefined}
+                data-nudge={nudged ? "on" : undefined}
+              >
+                <button
+                  type="button"
+                  className="rail-hit"
+                  /* 那句说明从常驻改成只给当前格之后，其余四格的全文留在这儿 ——
+                     「收起来」不等于「删掉」（同这一页对待折叠内容的一贯做法）。 */
+                  title={s.does || undefined}
+                  disabled={!actionable}
+                  onClick={() => key && changeFunnel(on ? "" : key, true)}
+                  aria-pressed={key ? on : undefined}
+                  aria-label={
+                    actionable
+                      ? `第 ${s.step} 步 ${s.label}：${shown} 个${
+                          filtered > 0 ? `（另有 ${filtered} 个被你的筛选挡住了）` : ""
+                        }，${on ? "取消筛选" : "只看这些"}`
+                      : `第 ${s.step} 步 ${s.label}：${shown} 个`
+                  }
+                >
+                  {/* 序号来自真实先后顺序（找→评→写→投→面），不是排版装饰 */}
+                  <span className="rail-step" aria-hidden>
+                    {s.step}
+                  </span>
+                  <div className="rail-v">{shown}</div>
+                  <div className="rail-n">{s.label}</div>
+                </button>
+                {filtered > 0 && (
+                  <p className="rail-filtered">
+                    另有 {filtered} 个被你在「这几类岗要不要看」里关掉了
+                  </p>
+                )}
+                {/* 「投了多少」这一页有两个数：这一格走 funnels（排掉搁置区的），
+                    「投出去的那些」那颗按钮走投递记录行数。差在哪儿要说出来 ——
+                    否则用户只能自己猜哪个是真的。说法在导出器里现拼（`parkedNote`）。 */}
+                {s.parkedNote && (
+                  <p className="rail-filtered">{s.parkedNote}</p>
+                )}
+                {/* 这一格在做什么 + 该敲什么。命令在**按钮外面**——套在按钮里
+                    既是嵌套可交互元素，点「复制」还会顺手触发筛选。
+
+                    **只给「现在轮到的那一格」。** 五格全带这两行时，这一条
+                    2026-08-24 实测占 222px —— 是首屏最高的一块，而
+                    「可以投的岗位」要滚到 831px 才开始。五条说明里，
+                    有四条讲的是他这一刻不做的事。
+                    没删任何一条：`title` 里全文照旧，鼠标停上去就有；
+                    弹窗那边的「能敲哪些命令」也一条不少。
+                    判据不新造：`nextStep.command` 指的就是现在该敲的那条，
+                    它本来就在这一页的最上面 —— 两处指同一件事，不许各判各的。 */}
+                {/* **每一格都留着「该敲什么」，只把那两行散文收进悬浮提示。**
+
+                    原来这里是「说明两行 + 命令」（`rail-guide`）。五格是等高
+                    栅格，那 96px 把每一格都撑到 220px —— 实测 2026-08-24，
+                    「可以投的岗位」要滚到 1061px 才开始。
+
+                    **但命令不能跟着散文一起收走。** `test_pipeline_counts` 那条
+                    守的就是这件事，理由是实测来的：用户问「可以投的不多了，
+                    怎么让你继续抓取」时，五格就在他眼前，而**每一格该敲什么
+                    从来没写在格子上**。所以这一版留命令、收散文：
+                    命令一行 ≈ 22px，散文进 `title`（上面那个按钮）。 */}
+                {/* **还敲不动的格子不给命令。**
+
+                    新用户那一屏实测 2026-08-24（拿一份空快照渲染）：五格全是 0，
+                    却各挂一条命令 —— `/job-rank`「给抓到还没评的打分」、
+                    `/job-apply`「给想投的岗出材料」…… **一条都敲不动**（没资料、
+                    没岗），而正确答案只有一条 `/job-setup`，它就在下面那句
+                    「下一步」里。`AGENTS.md`：「一条引导对应**一条**命令。
+                    给两条以上，用户就要先做一次选择 —— 那正是引导要替他省掉的
+                    那一步。」
+
+                    判据两个都是现成的，不新造：`shown > 0`（这一格有东西了）
+                    或 `nudged`（「下一步」点名的就是它）。有数据的用户五格照旧
+                    都写着该敲什么 —— `test_pipeline_counts` 守的那条不受影响。 */}
+                {s.cmd && (shown > 0 || nudged) && (
+                  <div className="rail-guide">
+                    <Cmd>{s.cmd}</Cmd>
+                  </div>
+                )}
+              </div>
+              );
+            })}
+          </nav>
+            </section>
+            {desks.length > 0 && (
+              <section className="workspace-side-panel">
+                <h2>工具与设置</h2>
+          {desks.length > 0 && (
+            <nav className="deskbar" aria-label="设置、统计与说明">
+              {desks.map((d) => (
+                <button
+                  key={d.key}
+                  type="button"
+                  className="deskbtn"
+                  data-desk={d.key}
+                  data-alarm={d.alarm ? "1" : undefined}
+                  aria-haspopup="dialog"
+                  onClick={() => setDesk(d.key)}
+                >
+                  <span className="deskbtn-name">{d.name}</span>
+                  {/* **那句结论只留给要你处理的那几颗。**
+                      每颗都带一句时，这一排 2026-08-24 实测占 203px、排成两行
+                      （当时七颗，现在八颗），而它整体回答的不是「我今天该投谁」。所以：有告警的照旧
+                      带着（那句话就是告警的上下文），其余只留名字 —— 点开
+                      弹窗里一个字都没少。
+                      判据不新写：`d.alarm || d.chips` 就是「这颗要你处理」，
+                      它本来就在决定整颗按钮点不点亮。 */}
+                  {d.note && (d.alarm || (d.chips ?? []).length > 0) && (
+                    <span className="deskbtn-note">{d.note}</span>
+                  )}
+                  {(d.chips ?? []).map((c) => (
+                    <span className="deskbtn-alarm" data-tone={c.tone} key={c.text}>
+                      {c.text}
+                    </span>
+                  ))}
+                  {d.alarm && (d.chips ?? []).length === 0 && (
+                    <span className="deskbtn-alarm">{d.alarm}</span>
+                  )}
+                  {d.chip && <span className="deskbtn-chip">{d.chip}</span>}
+                </button>
+              ))}
+            </nav>
+          )}
+              </section>
+            )}
+            {hasNotices && (
+              <details className="workspace-side-panel workspace-notices" open={serviceIsStale || undefined}>
+                <summary>{blocked.length > 0 ? `${blocked.length} 个岗位等你确认` : "岗位与服务提醒"}</summary>
+          {pipeline.some((s) => (s.waiting ?? 0) > 0) && (() => {
+            const st = pipeline.find((s) => (s.waiting ?? 0) > 0)!;
+            return (
+              <p className="parked-note">
+                {"还有 "}
+                <b>{st.waiting} 个抓回来没评分</b>
+                {"：能不能投还不知道，它们不在上面任何一份名单里。"}
+                {/* **这批是会烂的，而原来这里只有一个数。**
+                    抓的时候只收 14 天内的岗，而评它要花抓详情的额度 ——
+                    这套系统里最稀缺的东西。读的人分不出「昨天抓的 182 个」
+                    和「放了半个月的 182 个」，后者里有一批在平台上已经关了，
+                    评它是白评。判据与实测见 `doctor.waiting_age`；
+                    **有旧的导出器才给这个字段**，所以这一句平时不出现。 */}
+                {st.waitingNote && (
+                  <span className="parked-stale">{st.waitingNote}。</span>
+                )}
+                <Cmd>/job-rank</Cmd>
+              </p>
+            );
+          })()}
+
+          {/* 「搜到职位」与「打过分」之间的缺口，用户会读成「还有这么多要做」。
+              其中一部分只是**只看了标题就先放一边**：标题显示方向不对、留着没结案，抓详情的
+              额度轮不到它们。这个数原来导出了却没人显示——缺口就一直解释不通。 */}
+          {(parked ?? 0) > 0 && (
+            <p className="parked-note">
+              {/* 结论放最前并加粗。原来是「上面两格的差额里有 34 个……它们不是积压，
+                  不用管」——三个毛病：① 让读者做减法（268−195 是 73，不是 34，
+                  对不上就更困惑）；②「结案」「积压」是公文词，「抓详情」是内部词
+                  （用户不知道抓取分两趟）；③ 用一整句解释一件「不用管」的事，
+                  却摆在第一屏最显眼处。现在先说不用管，再说为什么。 */}
+              另有 <b>{parked} 个不用管</b>
+              {"：只看标题就放一边了——方向明显不对，没再去读完整描述。"}
+            </p>
+          )}
+
+          {/* 收进存档的老岗。不显示的话，「搜到职位」的数字会在某次归档后凭空变小，
+              用户第一反应是丢数据了。写清楚去哪了、怎么拉回来（面板每处引导都要带命令）。
+
+              **`--apply` 不能省。** 2026-08-31 起 `--revive` 也认那面旗子
+              （在那之前它敲一次就当场搬 1074 个岗，而同一个工具的 help 写着
+              「不加就是试运行」）。这里印的是给用户复制去跑的命令 —— 少了
+              `--apply`，他跑完只会看到「会拉回 N 个」，然后以为面板骗了他。 */}
+          {(snap?.archivedCount ?? 0) > 0 && (
+            <p className="parked-note">
+              另有 <b>{snap!.archivedCount} 个老岗位收进了存档</b>
+              {"：出局超过两周、没投过也没出过材料的，不占上面的计数。存档文件在 "}<code>job_scraper/archive.json</code>{"；改了硬性条件想重新评它们时先跑 "}
+              <Cmd>python tools/archive.py --revive --apply</Cmd>
+            </p>
+          )}
+
+          {/* 「有几个岗的判断现在不该信了」。用户 2026-08-30 问的是「有没有一个
+              按钮或命令」——**按钮做不成**：`serve.py` 那条路只改一个字段、
+              不接大模型（它自己的边界），而重评要读职位描述再判。
+              命令做得成，所以这里把它印出来。
+              此前这条队列只在 `/job-auto` 收尾的终端输出里一闪而过，
+              而终端日志没人看——和上面 staleCode 那条是同一课。 */}
+          {(snap?.restaleCount ?? 0) > 0 && (
+            <p className="parked-note">
+              有 <b>{snap!.restaleCount} 个岗的判断该重跑一遍</b>
+              {"：要么材料写的档位和现在的对不上，要么当初评它时就没读到完整的职位描述。已经投出去的不在里面。重跑一批 "}
+              <Cmd>/job-apply --stale</Cmd>
+            </p>
+          )}
+
+          {/* 这一页背后的服务在启动之后代码被改过——按钮还在按旧逻辑写盘。
+              2026-08-13 一天撞了三次，前两次都只在终端警告，而终端日志没人看；
+              信号必须走到用户真正盯着的地方，也就是这里。
+              提醒本身由 serve.py 现塞进 /data.json 响应（staleCode），
+              前端只负责显示；服务重启后字段消失，这块自动不渲染。 */}
+          {(snap?.staleCode?.length ?? 0) > 0 && (
+            /* **文件名不上屏。** 这条原来把改过的五个 `.py` 逐个列了出来
+               （`_cli.py、build_dashboard.py、export_web_data.py…`）——
+               AGENTS.md「给用户看的措辞」禁的就是这个：用户对着 `_cli.py`
+               什么也做不了，那是仓库的内部结构，不是他要处理的东西。
+               他需要知道的只有两件：**现在点按钮可能记不准**、**怎么修**。
+               文件名留在终端那份告警里（`serve.py` 里那行 `[!] 这几个文件…`），
+               在那儿它是给开发者看的，位置对。
+               顺带从 156 字压到 44 字 —— 它现在在侧栏「岗位与服务提醒」里，
+               原来排在「下一步」上面，而那句才是这一页要人先看的东西。 */
+            <p className="parked-note">
+              {/* **命令块必须是这句的最后一样东西。** 原来它后面跟着一个以「，」
+                  开头的文本节点，而 `<Cmd>` 是 inline-block —— 换行一旦落在这个
+                  边界上，那个逗号就单独站在下一行的行首（中文排版的避头点，
+                  浏览器的 UAX-14 断行只在连续文本里生效，跨不过 inline-block）。
+                  实测 390px 上就是这样。同一段里另外两条（存档那条、job-rank
+                  那条）本来就是以命令收尾的，这条改完与它们一致。 */}
+              <b>这一页的服务还在用旧代码跑</b>
+              {"：现在点按钮记的状态可能不准。再跑一次下面这条，它会告诉你怎么停掉旧的那个。"}
+              <Cmd>python tools/serve.py</Cmd>
+            </p>
+          )}
+          {/* `/job-apply --top N` 批量跑下来攒的待办。**在提醒区里靠前放**：它们是「你答一句
+              就能继续」的东西，而批量已经因为它们跳过了那几个岗。
+              批量不回头在对话里问——一次长跑被十几个问题切碎，用户要做的事就从
+              「批准一次」变成「按二十次继续」。问题攒到这儿，有空时一次答完。 */}
+          {blocked.length > 0 && (
+            <div className="mat-gap" role="status">
+              <b>有 {blocked.length} 个岗卡住了，等你一句话</b>
+              {/* 整句一行：JSX 里两个汉字之间的换行会被折成空格，而中文句号
+                  也算汉字，所以断在标点后同样会中招。只有标签边界是安全的。 */}
+              <span>
+                批量出材料时碰到缺东西的地方没有回头问你，跳过继续跑了。答完这几条，逐个跑下面这条把它们补上（每次换成那一行的链接）。
+              </span>
+              <ul className="blocked-list">
+                {blocked.map((j) => (
+                  <li key={j.id}>
+                    <b>{j.title}</b>
+                    <i>{j.company}</i>
+                    <span>{j.blocked!.需要}</span>
+                    <em>{j.blocked!.环节}</em>
+                  </li>
+                ))}
+              </ul>
+              {/* **原来给的是 `/job-apply --top N`，而那条按分数取前 N。**
+                  卡住的岗不一定在里面：它可能是「可以考虑」那一档，也可能排在
+                  第 45 —— 那时「再跑一次下面的命令就会把它们补上」是句假话，
+                  他敲完发现没动，然后连带不信这一整块。
+
+                  改成指名道姓那一个岗。批量命令在这里天然不对：这一栏的每一行
+                  都是一个**具体的、被具体东西卡住的**岗，而批量的选岗条件与
+                  「谁被卡住了」毫无关系。 */}
+              <Cmd>{`/job-apply ${blocked[0].url}`}</Cmd>
+            </div>
+          )}
+
+          {/* 材料备得太少就进侧栏「岗位与服务提醒」（宽屏首屏可见，窄屏在名单之后）：
+              它说的是「这份名单现在还投不出去」。和「下一步」不冲突——那条说整体
+              该干什么（现在是「把备好的 3 个投出去」），这条说的是这份名单本身缺什么。 */}
+          {materialsThin && (
+            <div className="mat-gap" role="status">
+              {/* **不说「可以投的岗」** —— 屏幕上那个段头就叫「可以投的岗位 9」，
+                  而这里数的是 `sellable` 按分排的前 20（含「可以考虑」那一档，
+                  实测 231 个）。同一句话两个集合，同一屏上。 */}
+              <b>
+                {/* 「只有 0 个」没人这么说话。零是这条提示最常见的取值
+                    （它恰恰是「一个都没备」时才出现的），所以零单独给一句。 */}
+                分最高的 {topReady.size} 个里，
+                {topReady.ready === 0
+                  ? "一个备好材料的都没有"
+                  : `只有 ${topReady.ready} 个备好了材料`}
+                {topReady.raw > 0 && `（其中 ${topReady.raw} 个还没读过 JD，分是粗筛给的）`}
+              </b>
+              {/* 换行只许落在标点或标签边界上：JSX 里两个汉字之间的换行会被折成
+                  一个空格，屏幕上就是「有的 下面」。同 sec-note 那条注释。
+                  措辞上少说一层：原来这里还解释了「出一份材料要读 JD、查公司、
+                  起草、审稿，不是点一下就有的」和「这条命令自带闸门」——前者是在
+                  替工具辩解为什么慢，后者「闸门」是流程内部词（AGENTS.md 禁的那类）。
+                  用户在这一刻要知道的只有一件事：敲哪条能把材料补上。 */}
+              <span>没材料就投不出去。下面这条按分数从高往低补，查完公司发现不该投的只留评估。</span>
+              <Cmd>{`/job-apply --top ${TOP_N}`}</Cmd>
+              {/* 上面那个 0 是「分最高的 20 个里」的局部数。全表还有多少备好的
+                  必须在同一句里说完 —— 否则用户按着一个 0 去补货，而手上那批
+                  一个都没发。补材料花的是机器的工时，发出去花的是他的。 */}
+              {readyToSend > 0 && (
+                <span className="mat-gap-have">
+                  {"不过你手上已经有 "}
+                  {/* **把这个数变成入口。** 它是整条流水线唯一要人做的那一步
+                      （发出去）的清单，而它此前只是一句话 —— 用户读完得自己去
+                      222 行的「可以考虑」里翻。点一下就只看这批；再点取消。
+                      筛选开着时上面那枚 `funnel-chip` 会说「只看备好还没发的」，
+                      有一条明确的回头路（那枚 chip 存在的理由见它自己的注释）。 */}
+                  <button type="button" className="have-jump"
+                          aria-pressed={funnel === "ready"}
+                          onClick={() => changeFunnel(funnel === "ready" ? "" : "ready", true)}>
+                    {readyToSend}
+                  </button>
+                  {/* 这里原来分两句：零回音时改口说「先别发，多半是同一个结果」。
+                      那句撤了（2026-08-29 用户裁定，见 `AGENTS.md`「跟进归用户，
+                      工具不催」）—— 它指的「上面那件事」正是同时撤掉的那一支，
+                      留着就指向了一个不存在的建议。回音的解读归用户，这里只说
+                      手上有什么。 */}
+                  {` 个岗材料是齐的，随时能发。它们分数没进前 ${TOP_N}，`
+                    + `多在「可以考虑」那一档——补货之前先把这批发掉。`}
+                </span>
+              )}
+            </div>
+          )}
+              </details>
+            )}
+          </aside>
+          </div>
 
           <p className="cockpit-foot">
             本页读的是这台电脑上的职位数据和投递记录 ·{" "}

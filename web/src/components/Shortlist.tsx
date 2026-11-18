@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Cmd } from "./Cmd";
 import { useCodeTool } from "../context/CodeToolContext";
-import { Input, Select, Table, Tooltip } from "antd";
+import { Table, Tooltip } from "antd";
 import { JobReadoutBody } from "./JobReadout";
 
 /**
@@ -50,6 +50,12 @@ import type { SortOrder } from "antd/es/table/interface";
 import { verdictColor, type Verdict } from "../theme/tokens";
 import type { Job } from "../types";
 
+export function matchesJobSearch(job: Job, keyword: string, channel: string): boolean {
+  return (!channel || job.channel === channel)
+    && (!keyword || [job.title, job.company, job.location, plainVerdict(job.verdict), job.channel, job.salary]
+      .some((value) => (value || "").toLowerCase().includes(keyword)));
+}
+
 /**
  * 可以投的岗位
  *
@@ -89,6 +95,7 @@ export function Shortlist({
   onExpire,
   onChanged,
   filtered,
+  searching,
   namedDirectBelow,
   observedMonths,
   reasons,
@@ -115,6 +122,7 @@ export function Shortlist({
   /** 是否处于流水线筛选视图（已投递/面试中/材料就绪）。空表文案要认它：
    *  筛选把表清空时说「去找岗（/job-scrape）」是指错路——岗有的是，只是这个筛选下没有。 */
   filtered?: boolean;
+  searching?: boolean;
   /** 「可以考虑」那一档里有几个是具名公司的直招 —— 内推够得着的那批在哪。 */
   namedDirectBelow?: number;
   /** 库里明写薪数的岗，薪数中位数。给「按 12 薪保守算」一个参照量级。 */
@@ -148,182 +156,28 @@ export function Shortlist({
   // 在这里拿到 `/job-apply` 就是照着敲不动的那一种。
   const { formatCommand } = useCodeTool();
 
-  // ---- 搜索与筛选 ----
-  //
-  // **为什么放在这一层而不是 antd 的列筛选。** 用户想找「上次看到的那个整车厂的岗」时，
-  // 记得的是**只言片语**（公司一半的名字、地点、判词），不是某一列的确切值。
-  // 列筛选要求他先知道该点哪一列、再从下拉里挑一个精确值——那是给「按维度收窄」用的，
-  // 不是给「我要找那个岗」用的。一个横跨职位名/公司/地点/判词的搜索框才对得上。
-  //
-  // 来源那一项用下拉：它是**闭集**（就四家），闭集用下拉比让人打字准。
-  const [q, setQ] = useState("");
-  const [channel, setChannel] = useState<string>("");
-  const channels = useMemo(
-    () => [...new Set(jobs.map((j) => j.channel).filter(Boolean))].sort() as string[],
-    [jobs],
-  );
-  const kw = q.trim().toLowerCase();
-  // 搜索面 = **表上看得见的每一列**。少一列，用户搜他明明看得到的字却搜不到，
-  // 而他不会怀疑是搜索框的问题，只会以为那个岗不在了。
-  // 2026-08-20 实测漏了两列：搜「猎聘」只命中 2 个（而来源是猎聘的有 2194 个，
-  // 那 2 个还是公司名里恰好带「猎聘」二字）；搜「16薪」命中 1 个（薪资里带
-  // 16薪 的有几百个）。渠道那一项虽然另有下拉，但下拉是「按维度收窄」，
-  // 打字找是另一件事——两条路都要通。
-  const hit = (j: Job) =>
-    (!channel || j.channel === channel)
-    && (!kw || [j.title, j.company, j.location, j.verdict, j.channel, j.salary]
-      .some((v) => (v || "").toLowerCase().includes(kw)));
-  const jobsIn = kw || channel ? jobs.filter(hit) : jobs;
-
-  // **搜索把展开的那一行筛掉时，要收起它。**
-  // `App` 那边的 `effectiveId` 只挡住「这个岗离开了可投名单」（记了状态、标了不投），
-  // 挡不住这里的搜索筛选——筛选发生在 `jobsIn`，它看不见。
-  // 于是：展开一个岗 → 搜一个搜不到它的词 → 行没了，展开态还在，
-  // 滚动效果的 `querySelector` 找不到那一行、静默返回。不崩，但清掉搜索之后
-  // 会看到一个自己没再点过的岗还开着——用户不会知道它是从哪一步留下来的。
-  useEffect(() => {
-    if (selectedId && !jobsIn.some((j) => j.id === selectedId)) onSelect("");
-    // 只在筛选条件变化时判：依赖 jobsIn 会让每次数据刷新都重跑一遍。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kw, channel]);
-
   const rows = byDate
-    ? [...jobsIn].sort((a, b) =>
+    ? [...jobs].sort((a, b) =>
         (b.applied?.date || "").localeCompare(a.applied?.date || "")
         // 同一天投的按分数排——那天投了十几个时，这个次序比随机顺序有用
         || (b.score ?? -1) - (a.score ?? -1))
     // 窄屏撤掉了分数列，`defaultSortOrder` 跟着没了挂靠处——**默认按分排是这张表
     // 存在的理由**，不能因为换了个布局就丢。和上面已投视图同一个做法：排在数据源上。
     : narrow
-      ? [...jobsIn].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
-      : jobsIn;
+      ? [...jobs].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+      : jobs;
 
   const columns: ColumnsType<Job> = [
     {
-      title: "分",
-      dataIndex: "score",
-      key: "score",
-      // 标记搬到职位那格之后，这一格只剩「分 + 判词」两行，88px 是给三四枚
-      // 竖着堆的标记留的宽度，现在用不上了。
-      width: 72,
-      align: "center",
-      // 分数可排序是真实需求：用户要按分挑，也要回看被压低的那些
-      sorter: (a, b, order) => nullsLast(a.score, b.score, order),
-      // **只有「还能投谁」这份名单默认按分排。** 看已投的那些时按分排没有意义
-      // ——那时你要的是「最近投的在最上面」（用户 2026-08-13）。
-      // 一个静态的默认排序服务不了两种视图，所以让它跟着视图走。
-      defaultSortOrder: byDate ? null : "descend",
-      render: (_, job) => {
-        // 判词去掉「粗筛：」前缀再显示（见 plainVerdict）。带前缀会在这个窄格里折成两行，
-        // 84 行每行都多占一行高；而「是不是深评」已经由下面的「已深评」标记表达了
-        // ——**标记要标少数派**：84 行里 80 行是粗筛，标它等于满屏噪音。
-        const label = plainVerdict(job.verdict);
-        const color = verdictColor[label as Verdict] ?? undefined;
-        return (
-          <div className="score">
-            <b style={{ color }}>{job.score ?? "—"}</b>
-            {/* **整份名单判词都一样时不再逐行重复**（判据见 `constants`）。
-                上面那段注释自己写着「标记要标少数派」——同一条道理对判词也成立：
-                9 行里 9 行都写着「值得投」时，这一行字一个比特都没给出去，
-                而它占的是分数正下方那个位置。表头说一次就够，
-                分数的颜色仍然带着它的语义。混着别的判词时照旧逐行显示。 */}
-            {!constants?.verdict && <i style={{ color }}>{label}</i>}
-          </div>
-        );
-      },
-    },
-    {
-      // 签名列。总分把四维揉成一个数，20 个岗挤在 58-78 分时它分不出高下；
-      // 技能与经验回答的是「你干不干得了这个活」——求职者真正要判断的那件事。
-      // 颜色规则只表达一件事：这个总分主要是谁撑起来的。
-      // 列名带解释：这一列的颜色规则是全表最不直观的一处，而唯一说明它的那行
-      // 提示在表头上方——滚两屏就看不见了，偏偏往下翻才是最需要它的时候。
-      // 挂在表头上，只要列还在，解释就够得着。
-      title: (
-        <Tooltip title="这个岗的活你干不干得了（0-100）。比总分高＝活对口但钱少；比总分低＝钱好但活未必干得了。">
-          <span>技能</span>
-        </Tooltip>
-      ),
-      dataIndex: "skill",
-      key: "skill",
-      width: 76,
-      align: "center",
-      sorter: (a, b, order) => nullsLast(a.skill, b.skill, order),
-      render: (_, job) => {
-        if (job.skill == null) return <span className="skill-none">—</span>;
-        const gap = job.score == null ? 0 : job.skill - job.score;
-        // ≥8 分的背离才算「明显」，小于这个数是打分噪音
-        const tone = gap >= 8 ? "up" : gap <= -8 ? "down" : "flat";
-        const why =
-          tone === "up"
-            ? `活对口（技能 ${job.skill}），但薪资/公司这些条件把总分拖下来了`
-            : tone === "down"
-              ? `总分 ${job.score} 主要是薪资等条件撑的，技能只有 ${job.skill}`
-              : `技能与总分基本一致`;
-        return (
-          <Tooltip title={job.skillWhy ? `${why}。${job.skillWhy}` : why}>
-            <span className="skill" data-tone={tone}>
-              {job.skill}
-            </span>
-          </Tooltip>
-        );
-      },
-    },
-    {
-      // 年包折算好再显示。原始串四种口径混用，跨岗没法比——
-      // 「25-35k·20薪」的 60-84 万其实高过「40-70k」按 12 薪的下沿 48 万。
-      title: "年包",
-      key: "annual",
-      width: 108,
-      align: "right",
-      sorter: (a, b, order) => nullsLast(a.annual?.low, b.annual?.low, order),
-      render: (_, job) =>
-        job.annual ? (
-          <Tooltip
-            title={[
-              // **「保守」得说清保守到什么程度。** 平台只在薪数 >12 时才标
-              // `·N薪`（那是卖点），没标的按 12 折是对的 —— 但实测他库里明写
-              // 薪数的 1346 个岗**一个 12 薪都没有**，中位 15。不给这个参照，
-              // 「保守算」听起来像「差不多」，而它大概率低两三成。
-              // 数从他自己的库里现算（`observed_months`），不写死 —— 各行业的
-              // 薪数惯例差得远，写死一个就成了行业预设。
-              job.annual.assumed12
-                && (observedMonths
-                  ? `平台只给了月薪、没写几薪，这里按 12 薪保守算。你库里明写薪数的岗中位是 ${observedMonths} 薪——真实数多半比这里显示的高。`
-                  : "平台只给了月薪、没写几薪，这里按 12 薪保守算。"),
-              job.annual.estimated &&
-                "这个数是推算的：原文要么按日/小时结算（按法定月计薪天数 21.75 天、"
-                  + "每日 8 小时折），要么只写了「万」没写按月还是按年（数值到了这个量级"
-                  + "只可能是年包）。都不是读到的确切值。",
-              job.annual.variable &&
-                "原文带提成/绩效/计件——这个数只是底薪，浮动部分没算进去。",
-              `原文：${job.salary}`,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <span
-              className="annual"
-              data-assumed={job.annual.assumed12 || job.annual.estimated}
-            >
-              {job.annual.low}-{job.annual.high}
-              <em>万</em>
-              {/* 「另有浮动」必须显示在**表格里**，不能只藏在 tooltip 里：
-                  销售、律师、中介、保险的大头就在提成上，一个 6 万的底薪
-                  被读成「这岗只值 6 万」，人就直接划过去了。 */}
-              {job.annual.variable && <em className="annual-plus">+浮动</em>}
-            </span>
-          </Tooltip>
-        ) : (
-          <span className="skill-none">—</span>
-        ),
-    },
-    {
       title: "职位",
+      className: "position-cell",
       dataIndex: "title",
       key: "title",
       render: (_, job) => (
         <div>
+          <div className="job-title" data-open={job.id === selectedId}>
+            {job.title}
+          </div>
           {/* 窄屏把撤掉的三列并到这里。顺序跟原来的列序一致（分 · 技能 · 年包），
               这样从桌面切到手机时读法不用重学。判词跟着分数走，不单独占位。 */}
           {narrow && (
@@ -352,9 +206,6 @@ export function Shortlist({
               )}
             </div>
           )}
-          <div className="job-title" data-open={job.id === selectedId}>
-            {job.title}
-          </div>
           <div className="job-meta">
             <b>{job.company}</b>
             {/* **公司名自己已经说了的，不再说第二遍。** 平台把不公开的雇主写成
@@ -529,6 +380,123 @@ export function Shortlist({
     // 「硬性条件」这一列撤了：只有深评过的岗才有硬门数据，19 行里只有 2 行有章，
     // 剩下 17 行是空白——一整列的宽度换两枚章不值得。详情区里它是完整展示的。
 
+    {
+      title: "匹配分",
+      dataIndex: "score",
+      key: "score",
+      width: 92,
+      align: "center",
+      // 分数可排序是真实需求：用户要按分挑，也要回看被压低的那些
+      sorter: (a, b, order) => nullsLast(a.score, b.score, order),
+      // **只有「还能投谁」这份名单默认按分排。** 看已投的那些时按分排没有意义
+      // ——那时你要的是「最近投的在最上面」（用户 2026-08-13）。
+      // 一个静态的默认排序服务不了两种视图，所以让它跟着视图走。
+      defaultSortOrder: byDate ? null : "descend",
+      render: (_, job) => {
+        // 判词去掉「粗筛：」前缀再显示（见 plainVerdict）。带前缀会在这个窄格里折成两行，
+        // 84 行每行都多占一行高；而「是不是深评」已经由下面的「已深评」标记表达了
+        // ——**标记要标少数派**：84 行里 80 行是粗筛，标它等于满屏噪音。
+        const label = plainVerdict(job.verdict);
+        const color = verdictColor[label as Verdict] ?? undefined;
+        return (
+          <div className="score">
+            <b style={{ color }}>{job.score ?? "—"}</b>
+            {/* **整份名单判词都一样时不再逐行重复**（判据见 `constants`）。
+                上面那段注释自己写着「标记要标少数派」——同一条道理对判词也成立：
+                9 行里 9 行都写着「值得投」时，这一行字一个比特都没给出去，
+                而它占的是分数正下方那个位置。表头说一次就够，
+                分数的颜色仍然带着它的语义。混着别的判词时照旧逐行显示。 */}
+            {!constants?.verdict && <i style={{ color }}>{label}</i>}
+          </div>
+        );
+      },
+    },
+    {
+      // 签名列。总分把四维揉成一个数，20 个岗挤在 58-78 分时它分不出高下；
+      // 技能与经验回答的是「你干不干得了这个活」——求职者真正要判断的那件事。
+      // 颜色规则只表达一件事：这个总分主要是谁撑起来的。
+      // 列名带解释：这一列的颜色规则是全表最不直观的一处，而唯一说明它的那行
+      // 提示在表头上方——滚两屏就看不见了，偏偏往下翻才是最需要它的时候。
+      // 挂在表头上，只要列还在，解释就够得着。
+      title: (
+        <Tooltip title="这个岗的活你干不干得了（0-100）。比总分高＝活对口但钱少；比总分低＝钱好但活未必干得了。">
+          <span>技能</span>
+        </Tooltip>
+      ),
+      dataIndex: "skill",
+      key: "skill",
+      width: 76,
+      align: "center",
+      sorter: (a, b, order) => nullsLast(a.skill, b.skill, order),
+      render: (_, job) => {
+        if (job.skill == null) return <span className="skill-none">—</span>;
+        const gap = job.score == null ? 0 : job.skill - job.score;
+        // ≥8 分的背离才算「明显」，小于这个数是打分噪音
+        const tone = gap >= 8 ? "up" : gap <= -8 ? "down" : "flat";
+        const why =
+          tone === "up"
+            ? `活对口（技能 ${job.skill}），但薪资/公司这些条件把总分拖下来了`
+            : tone === "down"
+              ? `总分 ${job.score} 主要是薪资等条件撑的，技能只有 ${job.skill}`
+              : `技能与总分基本一致`;
+        return (
+          <Tooltip title={job.skillWhy ? `${why}。${job.skillWhy}` : why}>
+            <span className="skill" data-tone={tone}>
+              {job.skill}
+            </span>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      // 年包折算好再显示。原始串四种口径混用，跨岗没法比——
+      // 「25-35k·20薪」的 60-84 万其实高过「40-70k」按 12 薪的下沿 48 万。
+      title: "年包",
+      key: "annual",
+      width: 108,
+      align: "right",
+      sorter: (a, b, order) => nullsLast(a.annual?.low, b.annual?.low, order),
+      render: (_, job) =>
+        job.annual ? (
+          <Tooltip
+            title={[
+              // **「保守」得说清保守到什么程度。** 平台只在薪数 >12 时才标
+              // `·N薪`（那是卖点），没标的按 12 折是对的 —— 但实测他库里明写
+              // 薪数的 1346 个岗**一个 12 薪都没有**，中位 15。不给这个参照，
+              // 「保守算」听起来像「差不多」，而它大概率低两三成。
+              // 数从他自己的库里现算（`observed_months`），不写死 —— 各行业的
+              // 薪数惯例差得远，写死一个就成了行业预设。
+              job.annual.assumed12
+                && (observedMonths
+                  ? `平台只给了月薪、没写几薪，这里按 12 薪保守算。你库里明写薪数的岗中位是 ${observedMonths} 薪——真实数多半比这里显示的高。`
+                  : "平台只给了月薪、没写几薪，这里按 12 薪保守算。"),
+              job.annual.estimated &&
+                "这个数是推算的：原文要么按日/小时结算（按法定月计薪天数 21.75 天、"
+                  + "每日 8 小时折），要么只写了「万」没写按月还是按年（数值到了这个量级"
+                  + "只可能是年包）。都不是读到的确切值。",
+              job.annual.variable &&
+                "原文带提成/绩效/计件——这个数只是底薪，浮动部分没算进去。",
+              `原文：${job.salary}`,
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <span
+              className="annual"
+              data-assumed={job.annual.assumed12 || job.annual.estimated}
+            >
+              {job.annual.low}-{job.annual.high}
+              <em>万</em>
+              {/* 「另有浮动」必须显示在**表格里**，不能只藏在 tooltip 里：
+                  销售、律师、中介、保险的大头就在提成上，一个 6 万的底薪
+                  被读成「这岗只值 6 万」，人就直接划过去了。 */}
+              {job.annual.variable && <em className="annual-plus">+浮动</em>}
+            </span>
+          </Tooltip>
+        ) : (
+          <span className="skill-none">—</span>
+        ),
+    },
   ];
 
   // 详情直接展开在**这一行下面**，而不是甩到表格外一千像素处 ——
@@ -582,12 +550,8 @@ export function Shortlist({
    * 抽了反而让人以为那一栏没数据。
    */
   const constants = useMemo(() => {
-    // **看的是 `jobs`（整份名单），不是 `rows`（搜索/渠道过滤之后那几行）。**
-    // 用 `rows` 会造出一个很怪的现象：搜索框里打「上海」，命中的三行当然都在上海，
-    // 于是「地点」这一栏**在他刚搜过的那个字段上**整列消失，只剩表头一句
-    // 「这 3 个都在上海」；清空搜索它又自己回来。抽走的前提是「这本来就没差别」，
-    // 而过滤出来的一致是**他自己筛的结果**，不是名单的性质。
-    if (jobs.length < 3) return null;
+    // 搜索结果保留单行地点、公司和结论，方便对照命中的关键词。
+    if (searching || jobs.length < 3) return null;
     //: `=== true` 而不是真值判断 —— `null` 是「没判过」，两边都不算。
     const agencyN = jobs.filter((j) => j.viaHeadhunter === true).length;
     const all = (f: (j: Job) => unknown) => {
@@ -612,7 +576,7 @@ export function Shortlist({
       //: 全是猎头 —— 逐行标记该整个撤掉（标一个人人都有的属性等于没标）。
       agencyAll: jobs.length > 0 && agencyN === jobs.length,
     };
-  }, [jobs]);
+  }, [jobs, searching]);
   const constNote = constants
     ? [constants.verdict && `都是「${constants.verdict}」`,
        constants.city && `都在${constants.city}`,
@@ -648,38 +612,6 @@ export function Shortlist({
           <Cmd>/job-apply 可以考虑</Cmd>
         </p>
       )}
-      {/* 搜索条只在表够长时出现——十几行的表上，一个搜索框比直接扫一眼更慢。 */}
-      {jobs.length >= 12 && (
-        <div className="sl-searchbar">
-          <Input.Search
-            allowClear
-            placeholder="搜职位名、公司、地点、薪资、结论、来源"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="sl-search"
-          />
-          {channels.length > 1 && (
-            <Select
-              allowClear
-              placeholder="哪个网站来的"
-              value={channel || undefined}
-              onChange={(v) => setChannel(v ?? "")}
-              options={channels.map((c) => ({
-                value: c,
-                label: `${c}（${jobs.filter((j) => j.channel === c).length}）`,
-              }))}
-              className="sl-filter"
-            />
-          )}
-          {(kw || channel) && (
-            <span className="sl-search-n">
-              {rows.length === 0
-                ? "一个都没搜到"
-                : <>搜到 <b>{rows.length}</b> 个 / 共 {jobs.length} 个</>}
-            </span>
-          )}
-        </div>
-      )}
       <Table<Job>
         /* **随视图重挂。** antd Table 把排序状态存在自己内部，只改
            `defaultSortOrder` 不会让已经挂载的表重新排——实测切到「已投递」
@@ -695,6 +627,7 @@ export function Shortlist({
         )}
         dataSource={rows}
         pagination={false}
+        showHeader={!narrow}
         showSorterTooltip={false}
         expandable={{
           expandedRowKeys: selectedId ? [selectedId] : [],
@@ -744,10 +677,10 @@ export function Shortlist({
           // 用户搜了个词、没搜到，页面却说「还没有职位可以看，下一步去找岗」，
           // 而库里两千多个岗好好躺着。这一支必须排在最前面：它是**当下这一刻**
           // 表为什么空，比库里有没有岗更近。
-          emptyText: (kw || channel) ? (
+          emptyText: searching ? (
             <div className="shortlist-empty">
               <p className="se-lead">
-                <span>{`没有匹配「${[kw, channel].filter(Boolean).join(" · ")}」的岗。换个词，或者把上面的搜索清空。`}</span>
+                <span>没有符合搜索条件的岗位。可以换个关键词或清空筛选。</span>
               </p>
             </div>
           ) : hiddenCount ? (
@@ -758,7 +691,7 @@ export function Shortlist({
             </div>
           ) : filtered ? (
             <div className="shortlist-empty">
-              <p className="se-lead">这个筛选下没有岗——点上面的「×」取消筛选看全部。</p>
+              <p className="se-lead">这个进度下还没有岗位。可以切回「待投」查看其他岗位。</p>
             </div>
           ) : (
             <div className="shortlist-empty">
