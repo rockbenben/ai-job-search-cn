@@ -285,6 +285,13 @@ Codex 桌面本次实测提供 `mcp__cua_repl` 与 `mcp__chrome_devtools`；CLI 
    各族壳逐字一致，权限文件 `.claude/settings.json` 也由 `shared_grants()` 同步。
    落点**不写进共用工作流正文** —— `AGENTS.md` 要求正文只写能力名、不点名工具。
 
+2026-11-19 补一格：**ego lite**（`ego-browser`，Citro Labs 的独立 Chromium，
+自带 Node 运行时）也是这一层的落点，**排在浏览器扩展之后、`web-access` 之前**
+（用户裁定，理由是登录态成本：扩展用日常 Chrome 不用额外做什么，ego 要单独维护登录，
+`web-access` 还要装并配一次代理）。它同样用命令行驱动，所以 `BROWSER_BASH` 里多了
+`Bash(ego-browser:*)`；登录态是 onboarding 时从 Chrome 导入的，之后独立维护。
+形状、API 与权限弹窗的处理见 `workflows/reference/cdp-portals.md`「ego lite」专节。
+
 ⚠️ **登录态不是白来的，别把一家的说法照抄给另一家**：Claude 浏览器扩展驱动用户
 日常那个已登录的 Chrome，登录态天然带着；`agent-browser` 开的是**独立的
 Chromium**，BOSS / 智联要在它里面各登录一次，之后同一 daemon 会话内 cookies 才保留

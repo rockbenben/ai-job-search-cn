@@ -592,6 +592,7 @@ agy 读**用户主目录**下的配置，本仓库不写那儿。它「预批准
   agent-browser
   bun --version
   bun run .agents/skills/liepin-search/cli/src/cli.ts
+  ego-browser
   node --version
   node .agents/skills/liepin-search/cli/src/cli.ts
   pdftotext

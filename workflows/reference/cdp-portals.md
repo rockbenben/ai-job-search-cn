@@ -89,6 +89,11 @@ BOSS 与智联需要登录态 Chrome，前程无忧不需要——详见「前�
      的浏览器工具；执行下面「执行时自动选择浏览器」，不假定 CLI 自带浏览器或登录态。
    - **其它工具** → 用它自带的浏览器能力；同样不是本仓库要你装的东西。
 
+   **这一层内部的落点顺序（2026-11-19 用户裁定）：浏览器扩展 → ego lite → 其它宿主浏览器。**
+   扩展驱动的是用户日常那个已登录的 Chrome，登录态天然带着；ego lite 是另一个
+   Chromium（`ego-browser`），登录态要单独维护。两者都够不着才降到第 3 层。
+   ego lite 的形状见下面「ego lite」专节。
+
 3. **web-access skill（CDP 代理）** —— 只在第 2 层够不着时才用。
    它是**第三方全局技能，本项目不附带**，要用户自己装一次。
 
@@ -111,14 +116,16 @@ BOSS 与智联需要登录态 Chrome，前程无忧不需要——详见「前�
    | Codex 桌面浏览器 / 电脑操作 | 先读该工具的初始化说明，通过它的浏览器接口选已有标签页或创建任务标签页 | 读取目标页面确认；内置浏览器与用户日常 Chrome 可能隔离 |
    | 已连接的 Chrome DevTools / Playwright 等浏览器工具 | 先列出页面并读取快照，沿该工具自己的导航、点击、输入接口操作 | 以实际连接的浏览器及其页面为准，不把连接等同于登录成功 |
    | Claude 浏览器扩展 | 沿扩展说明读取标签页、页面并操作 | 即使连接日常 Chrome，也先核对招聘网站当前账号 |
+   | ego lite（`ego-browser`） | 走它的 Node 入口跑脚本：`ego-browser nodejs -e "…"`，页面操作用 TaskSpace / Page API | 独立 Chromium；登录态是 onboarding 时从 Chrome 导入的，之后自己维护 |
    | WorkBuddy 提供的 `agent-browser` | 读其技能说明后按下面专节运行 | 独立 Chromium，需要在里面登录 |
    | 其它宿主提供的浏览器能力 | 使用该宿主当前给出的工具说明 | 以页面为准 |
 
    具体工具名示例与会话取证见 `docs/tool-entries.md`「浏览器能力按工具自动适配」；
    Codex 的工具初始化说明见 `docs/codex.md`。本流程按能力执行，不固定接口前缀。
 
-3. **已提供的浏览器工具与已连接的浏览器工具都属于第 1 浏览器顺位。** 其中一条
-   连接失败时，检查其余可用路径；都够不着才加载 `web-access` 并执行它的前置检查。
+3. **已提供的浏览器工具与已连接的浏览器工具都属于第 1 浏览器顺位。** 同一层里按
+   「浏览器扩展 → ego lite → 其它宿主浏览器」选（见下一条）；其中一条连接失败时，
+   检查其余可用路径；都够不着才加载 `web-access` 并执行它的前置检查。
    不因为安装了某个全局技能就跳过宿主浏览器，也不要求用户先配置代理。
 4. 域名授权被工具阻止时，向用户说明并请求开通该域名；这不是网站不可用。
    验证码、账号登录由用户处理，其他渠道继续。平台限流与 `portal_budget.py` 的
@@ -161,6 +168,44 @@ agent-browser close               # 整轮任务结束才关
 
 **别为静态页起 Chromium**：公开页 / JSON 接口用网页抓取能力或第 1 层的平台 API 就够，
 这是 agent-browser 自己那份说明里关于不该用它的场景那一节的规矩，与本文件第 1 层一致。
+
+### ego lite（`ego-browser`）：另一个 Chromium，排在浏览器扩展之后（2026-11-19 取证）
+
+**它是什么。** Citro Labs 的 ego lite（官网 <https://lite.ego.app/>）是一个**自带
+Chromium 与内嵌 Node 运行时**的浏览器，`ego-browser` 是它的命令行入口
+（Windows 装在 `~/.local/share/ego/active_version_dir/ego-browser.exe`）。
+本机取证：`ego-browser --version` 报的是 `ego-browser 0.6.3.14 / chromium 156.0.8078.96 / node v24.22.1`。
+
+**它不是 MCP 工具，也不是 CDP 代理。** 用 `ego-browser nodejs -e "<脚本>"` 或
+`ego-browser nodejs < 脚本.mjs` 跑一段 Node 脚本，脚本里用它自己的 API：
+先用 `taskSpace()` 开一个任务空间，再 `task.page("p1")` 拿页面，然后调页面的导航、
+取值、点击、抓取与截图方法（`page.goto`、`page.evaluate`、`page.click`、
+`page.fetch`、`page.screenshot`）。
+**别猜 Playwright 的方法名**（`locator()`、`expect()` 这些不存在），
+API 清单以 `ego-browser skill` 的输出为准。
+
+**登录态是它自己的一份。** 它首次配置时可以导入你已有浏览器的数据——Chrome、Edge、
+Brave、Arc、Comet、Firefox 这几个都支持（`ego-browser import list` 列出可导入的哪些，
+`ego-browser import --browser chrome --profile Default` 导入一份）。导入之后就是它
+自己的 Profile，**独立维护**：掉登录要在 ego 里重新登、或者再 import 一次。
+所以 Step 0 的「先查登录态」对它同样适用、而且更该先查——2026-11-19 那一轮就是智联在
+它里面没登录，整家空跑了一轮，其余三家照跑。
+
+**权限弹窗把控制权交给用户。** 浏览器级授权（「本地网络访问」这类）弹出时，脚本当场
+停下并报 `The user now controls this task space` —— 这时**不要新开一个任务空间绕过去**，
+用 `takeOverTaskSpace(id)` 接着跑，用户点完 Allow 才继续。
+
+**排序（与上面第 2 层那条同一条规则）：① 浏览器扩展 → ② ego lite → ③ `web-access`。**
+判据是**登录态从哪来、用户要多做什么**：扩展用用户日常那个已登录的 Chrome，一件额外的
+事都不用做；ego lite 是另一个 Chromium，要单独维护登录（可以 import 一次）；
+`web-access` 还要用户自己装并配一次代理。**能扩展就扩展，扩展够不着才用 ego。**
+
+**账号安全铁律照旧**，换驱动不改变密度：动作之间按 `portal_budget.py` 的间隔，
+脚本里连续两个导航之间自己 `await page.waitForTimeout(8000)`；撞验证码即停手；
+同一家的翻页不并发。一页里能做完的读操作打包进同一个脚本（纯读不发请求，不占间隔），
+但**两个发请求的动作不许零间隔连发**——这条与 `browser_batch` 那条是同一个道理。
+
+**别为静态页起它**：公开页 / JSON 接口用网页抓取能力或第 1 层的平台 API 就够。
 
 ---
 
