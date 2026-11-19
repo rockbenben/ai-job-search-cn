@@ -127,7 +127,12 @@ PORTAL_BASH = (
 #: `agent-browser open …` 写进围栏等于把一家工具塞进共用的工作流正文。
 #: 这里走与 `PORTAL_BASH` 同一条路——按「正文提到这项能力」追加，判据在
 #: `_uses_browser()`。别家工具没有这个程序名，多一条白名单对它们无害。
-BROWSER_BASH = ("Bash(agent-browser:*)",)
+#:
+#: ego lite（`ego-browser`）同理：它是**另一个 Chromium**，同样用命令行驱动
+#: （`ego-browser nodejs -e …`），在吃 Bash 的宿主里不批这条就会被逐次弹授权。
+#: 它与 `agent-browser` 的先后顺序（排在浏览器扩展之后）写在
+#: `workflows/reference/cdp-portals.md`，这里只管授权，不管选谁。
+BROWSER_BASH = ("Bash(agent-browser:*)", "Bash(ego-browser:*)")
 
 #: 跨壳共用的授权：**凡某个壳里已经批过的 Bash 条目，壳外也该批**。
 #:

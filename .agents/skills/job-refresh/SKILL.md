@@ -4,7 +4,7 @@ description: >
   把在线简历刷一遍，让 HR 搜得到你（一天一次）
   不给参数时：网页刷得了的那几家全刷一遍；今天刷过的会跳过，网页没有刷新按钮的（BOSS、前程无忧）如实告诉你要开 APP
   触发词：刷一下简历、刷新在线简历、让 HR 搜到我、refresh resume
-allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(python tools/resume_refresh.py:*), Bash(python tools/export_web_data.py:*), Bash(agent-browser:*)
+allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(python tools/resume_refresh.py:*), Bash(python tools/export_web_data.py:*), Bash(agent-browser:*), Bash(ego-browser:*)
 ---
 
 <!-- 由 tools/gen_entries.py 生成：改 workflows/INDEX.md 或 tools/_entries.py，别改这里 -->

@@ -4,7 +4,7 @@ description: >
   一条命令跑完：抓岗 → 评分 → 出材料，一直跑到挖不动为止
   不给参数时：不设目标个数，跑到挖不动为止（连续两轮抓不到新的、或满 20 轮就停）
   触发词：自动跑一轮、一条龙跑完、全都跑了、job auto
-allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(python tools/stale_materials.py:*), Bash(python tools/audit_pipeline.py:*), Bash(python tools/check_outreach.py:*), Bash(python tools/export_web_data.py:*), Bash(python tools/writeback.py:*), Bash(python tools/archive.py:*), Bash(python tools/outreach_header.py:*), Bash(python tools/trim_opening.py:*), Bash(python tools/serve.py:*), Bash(python tools/doctor.py:*), Bash(agent-browser:*), Bash(python tools/query_yield.py:*), Bash(python tools/portal_budget.py:*), Bash(python tools/jd_store.py:*)
+allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(python tools/stale_materials.py:*), Bash(python tools/audit_pipeline.py:*), Bash(python tools/check_outreach.py:*), Bash(python tools/export_web_data.py:*), Bash(python tools/writeback.py:*), Bash(python tools/archive.py:*), Bash(python tools/outreach_header.py:*), Bash(python tools/trim_opening.py:*), Bash(python tools/serve.py:*), Bash(python tools/doctor.py:*), Bash(agent-browser:*), Bash(ego-browser:*), Bash(python tools/query_yield.py:*), Bash(python tools/portal_budget.py:*), Bash(python tools/jd_store.py:*)
 ---
 
 <!-- 由 tools/gen_entries.py 生成：改 workflows/INDEX.md 或 tools/_entries.py，别改这里 -->

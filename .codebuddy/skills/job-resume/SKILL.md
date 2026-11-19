@@ -4,7 +4,7 @@ description: >
   审一遍你的主简历，只报问题、不改你的数字
   不给参数时：审主简历 resume/main.typ，不是某次投递的定制版；还会对一遍你在招聘网站上那份在线简历（HR 主动搜的是它）。只出报告，一个字不改
   触发词：看看我简历、审一遍简历、简历有什么问题、resume review
-allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(typst:*), Bash(pdftotext:*), Bash(agent-browser:*)
+allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(typst:*), Bash(pdftotext:*), Bash(agent-browser:*), Bash(ego-browser:*)
 ---
 
 <!-- 由 tools/gen_entries.py 生成：改 workflows/INDEX.md 或 tools/_entries.py，别改这里 -->

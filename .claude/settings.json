@@ -7,6 +7,7 @@
       "Bash(agent-browser:*)",
       "Bash(bun --version)",
       "Bash(bun run .agents/skills/liepin-search/cli/src/cli.ts:*)",
+      "Bash(ego-browser:*)",
       "Bash(node --version)",
       "Bash(node .agents/skills/liepin-search/cli/src/cli.ts:*)",
       "Bash(pdftotext:*)",

@@ -4,7 +4,7 @@ description: >
   教它去一个新的招聘网站搜岗
   不给参数时：问你要接哪个招聘网站
   触发词：接一个新招聘网站、加一个渠道、新平台怎么接、add portal
-allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(node .agents/skills/liepin-search/cli/src/cli.ts:*), Bash(bun run .agents/skills/liepin-search/cli/src/cli.ts:*), Bash(agent-browser:*)
+allowed-tools: Read, Glob, Grep, WebFetch, WebSearch, Edit, Write, AskUserQuestion, Agent, Bash(node .agents/skills/liepin-search/cli/src/cli.ts:*), Bash(bun run .agents/skills/liepin-search/cli/src/cli.ts:*), Bash(agent-browser:*), Bash(ego-browser:*)
 ---
 
 <!-- 由 tools/gen_entries.py 生成：改 workflows/INDEX.md 或 tools/_entries.py，别改这里 -->
