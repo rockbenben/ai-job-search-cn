@@ -125,10 +125,13 @@ class LoginIsCheckedUpFrontNotOnCollision(unittest.TestCase):
         self.assertLess(doc.index("开跑前先查登录态"), doc.index("## 通用流程"),
                         "登录态检查排在通用流程之后——那就成了边抓边撞")
 
-    def test_it_forbids_silently_skipping(self):
-        doc = self._doc()
-        self.assertIn("不要静默跳过", doc)
-        self.assertIn("一次问清所有缺的", doc, "没写「一次问清」——会变成抓一家停一次")
+    def test_it_prompts_in_chat_before_continuing_other_portals(self):
+        section = self._doc().split("## 开跑前先查登录态", 1)[1].split("## 通用流程", 1)[0]
+        self.assertIn("立即在聊天中向用户发出登录提示", section)
+        self.assertIn("可点击的登录入口", section)
+        self.assertIn("同一批确认未登录的站点合成一条", section)
+        self.assertIn("先发已确认的站点", section)
+        self.assertIn("其余渠道继续", section)
 
     def test_it_records_why_silent_bad_data_is_the_real_danger(self):
         """理由要留下来：不是「拿不到」，是「拿到错的且不报错」。"""
