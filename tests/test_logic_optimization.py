@@ -1,12 +1,16 @@
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import auto_progress
 import jd_store
 import score
 import scoring
+import validate_evaluations as validation
 from validate_evaluations import exclusion_errors
 
 
@@ -73,6 +77,42 @@ class LogicOptimizationTests(unittest.TestCase):
                  "rank_breakdown": {"排除依据": {"个人条件": "不接受外包", "职位原文": "劳务外包"}}}
         self.assertEqual(exclusion_errors(entry, "本人不接受外包", {"description": "这是劳务外包岗位"}), [])
         self.assertTrue(exclusion_errors(entry, "接受外包", {"description": "正式招聘"}))
+
+    def test_rank_batch_normalizes_and_keeps_current_listing_fields(self):
+        stored = {"url": "https://example.com/a", "title": "产品经理", "status": "new",
+                  "salary": "35-40k·15薪", "deprioritized": {"依据": "待评"}}
+        submitted = dict(stored, status="ranked", salary="99-100k", rank_score=90,
+                         rank_date="2026-11-25", rank_verdict="粗筛：强匹配",
+                         rank_breakdown={"来源": "粗筛（读过 JD 正文）", "技能与经验": 60,
+                                         "强度与公司性质": 62, "发展与风险": 79})
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "users/u"
+            path = base / "job_scraper/seen_jobs.json"
+            path.parent.mkdir(parents=True)
+            profile = base / "profile"
+            profile.mkdir()
+            (profile / "candidate.md").write_text("测试资料", encoding="utf-8")
+            source = root / "batch.json"
+            source.write_text(json.dumps({"a": submitted}), encoding="utf-8")
+            args = ["--user", "u", "--input", str(source), "--keys", "a", "--apply"]
+            with (patch.object(validation, "ROOT", root),
+                  patch.object(validation.jd_store, "load", return_value={}),
+                  patch.object(validation.salary_profile, "annual_floor", return_value=45),
+                  patch.object(validation.salary_profile, "annual_expect", return_value=(72, 96))):
+                path.write_text(json.dumps({"seen": {"a": dict(stored, eduLevel="硕士")}}), encoding="utf-8")
+                before = path.read_bytes()
+                self.assertEqual(validation.main(args), 1)
+                self.assertEqual(path.read_bytes(), before)
+                path.write_text(json.dumps({"seen": {"a": stored}}), encoding="utf-8")
+                self.assertEqual(validation.main(args), 0)
+            result = json.loads(path.read_text(encoding="utf-8"))["seen"]["a"]
+        self.assertEqual(result["salary"], stored["salary"])
+        self.assertNotIn("deprioritized", result)
+        self.assertEqual(result["rank_breakdown"]["强度与公司性质"], 50)
+        self.assertEqual(result["rank_breakdown"]["发展与风险"], 70)
+        self.assertEqual(result["rank_score"], 59)
+        self.assertEqual(result["rank_verdict"], "粗筛：可以考虑")
 
 
 if __name__ == "__main__":

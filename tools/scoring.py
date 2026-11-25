@@ -235,6 +235,17 @@ def snap_coarse(v: int) -> int:
     return max([c for c in COARSE_LEVELS if c <= v] or [COARSE_LEVELS[0]])
 
 
+def calculated_score(entry: dict, breakdown: dict, floor, expect, *, coarse: bool):
+    """算出评分明细、综合分和档次。缺少人工判断的分数交回调用方。"""
+    dims = {k: breakdown.get(k) for k in DIM_WEIGHTS}
+    dims["薪资与职级"] = pay_dim(entry, floor, expect)
+    if coarse:
+        for key in ("强度与公司性质", "发展与风险"):
+            dims[key] = snap_coarse(dims[key])
+    score = composite(dims, adjust_of(breakdown))
+    return dims, score, verdict_of(score, dims["技能与经验"])
+
+
 #: 依据里那句「……这一维给 NN」。数改了句子不改，两边就自相矛盾
 #: （`writeback._basis_is_stale` 盯的就是这个形状）。
 SAID = re.compile(r"(给\s*)(\d{2})(\s*(?:并挂|，|。|$))")

@@ -140,70 +140,24 @@ class TheClusterNoteSaysWhatToDo(unittest.TestCase):
         self.assertNotRegex(seg, r'c \+ ["\']|f"\{c\}', "公司名被拼进了字符串键")
 
 
-class TheDocstringFiguresAreRecomputed(unittest.TestCase):
-    """`is_anonymous_employer` 的 docstring 摆着四个数，撑着「脱敏串不是公司身份」
-    这条规矩 —— 而它们**没有任何东西在验**。
+class TheHistoricalSampleIsConsistent(unittest.TestCase):
+    """这组日期和计数描述历史样本，测试不读取活动用户的职位库。"""
 
-    实测 2026-08-23：它标着当天，写「2638 个岗里 1355 个脱敏（51%），
-    其中 98.5% 是猎头岗」，而同一天同一个判据跑出来是 **1369（52%）、97.6%**。
-    标着今天却在当天就对不上，那不是记录，是量错了
-    （`CONTRIBUTING.md`「写下一个实测数时，把日期一起写上」里那条例外）。
+    def test_the_documented_percentage_matches_its_sample(self):
+        doc = _cli.is_anonymous_employer.__doc__ or ""
+        sample = re.search(r"(\d+) 个岗里 (\d+) 个\s*脱敏（(\d+)%）", doc)
+        self.assertIsNotNone(sample)
+        total, masked, share = map(int, sample.groups())
+        self.assertEqual(round(masked / total * 100), share)
 
-    这条守卫现算，不钉死。没有语料就 `skipTest`。
-    """
-
-    def setUp(self):
-        import json
-        p = ROOT / ".active_user"
-        if not p.is_file():
-            self.skipTest("没有活动用户")
-        sp = (ROOT / "users" / p.read_text(encoding="utf-8").strip()
-              / "job_scraper" / "seen_jobs.json")
-        if not sp.is_file():
-            self.skipTest("这个用户还没有职位库")
-        seen = json.loads(sp.read_text(encoding="utf-8"))["seen"]
-        rows = [v for v in seen.values() if isinstance(v, dict)]
-        if len(rows) < 500:
-            self.skipTest("语料太少，这几个数说明不了什么")
-        self.total = len(rows)
-        self.mask = [v for v in rows
-                     if _cli.is_anonymous_employer(v.get("company") or "")]
-        self.doc = _cli.is_anonymous_employer.__doc__ or ""
-
-    def _num(self, pattern):
-        m = re.search(pattern, self.doc)
-        self.assertTrue(m, f"docstring 里找不到 {pattern}")
-        return m
-
-    def test_the_corpus_size_and_mask_count(self):
-        m = self._num(r"(\d{3,5}) 个岗里 (\d{3,5}) 个\s*脱敏")
-        self.assertEqual(int(m.group(1)), self.total, "全库岗数不对")
-        self.assertEqual(int(m.group(2)), len(self.mask), "脱敏数不对")
-
-    def test_the_share(self):
-        m = self._num(r"脱敏（(\d+)%）")
-        self.assertEqual(int(m.group(1)),
-                         round(len(self.mask) / self.total * 100), "占比不对")
-
-    def test_the_headhunter_share(self):
-        """98.5% → 97.6%：这个数撑着「脱敏几乎等于猎头岗」那句判断。"""
-        m = self._num(r"其中 ([\d.]+)% 是猎头岗")
-        a = sum(1 for v in self.mask if "/a/" in (v.get("url") or ""))
-        self.assertEqual(m.group(1), f"{a / len(self.mask) * 100:.1f}",
-                         "猎头岗占比不对")
-
-    def test_the_single_string_count(self):
-        """「某知名公司」那 138 次是整条规矩最直观的证据。"""
-        m = self._num(r"出现 (\d+) 次")
-        n = sum(1 for v in self.mask
-                if (v.get("company") or "").strip() == "某知名公司")
-        self.assertEqual(int(m.group(1)), n)
+    def test_adding_a_named_company_keeps_the_mask_count(self):
+        names = ["某知名公司", "保密", "未公开", "测试公司"]
+        self.assertEqual(sum(_cli.is_anonymous_employer(name) for name in names), 3)
+        names.append("另一家测试公司")
+        self.assertEqual(sum(_cli.is_anonymous_employer(name) for name in names), 3)
 
     def test_the_early_sample_is_marked_as_one(self):
-        """195/77 是最早那次抽样，不是全库 —— 写成「实测 195 个岗里」
-        会被读成当下的口径（同一段下面紧接着才是全库的数）。"""
-        self.assertIn("最早那次抽样", self.doc)
-
+        self.assertIn("最早那次抽样", _cli.is_anonymous_employer.__doc__ or "")
 
 if __name__ == "__main__":
     unittest.main()

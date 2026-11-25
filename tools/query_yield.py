@@ -233,7 +233,7 @@ def unlogged_rounds(doc: dict, seen: dict | None = None) -> dict:
     logs: dict = defaultdict(int)
     for e in (doc.get("query_log") or []):
         d = str(e.get("date") or "")[:10]
-        if d:
+        if d and e.get("outcome", "ok") == "ok" and "expected" not in e:
             logs[d] += 1
     if not logs:
         return {}
@@ -262,7 +262,8 @@ def ran(doc: dict) -> set:
     就是这张表存在的理由，分不开的话它给的建议是错的。
     """
     return {(e.get("query", ""), norm(e.get("portal")))
-            for e in (doc.get("query_log") or []) if e.get("query")}
+            for e in (doc.get("query_log") or [])
+            if e.get("query") and e.get("outcome", "ok") == "ok"}
 
 
 def is_high(r: dict) -> bool:

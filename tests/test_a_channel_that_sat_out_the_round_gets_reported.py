@@ -24,6 +24,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -32,6 +33,8 @@ from _live import user_or_skip  # noqa: E402
 import datetime as _dt  # noqa: E402
 import _cli  # noqa: E402
 import audit_pipeline as ap  # noqa: E402
+import ingest  # noqa: E402
+import query_yield  # noqa: E402
 
 
 class Fake:
@@ -186,8 +189,8 @@ class ADryChannelIsReported(unittest.TestCase):
         log = [x for x in FULL if x["portal"] != "51job-browser"]
         dry, _ = self._run(log)
         self.assertEqual(len(dry), 1)
-        self.assertIn("前程无忧", dry[0][2])
-        self.assertNotIn("BOSS", dry[0][2].split("漏了")[1].split("——")[0])
+        self.assertIn("1 家缺记录：前程无忧", dry[0][2])
+        self.assertIn("无法确认是否打开过", dry[0][2])
 
     def test_either_liepin_lane_covers_that_platform(self):
         """猎聘两条通道是二选一 —— 走了浏览器那条就不算漏。"""
@@ -214,6 +217,34 @@ class ADryChannelIsReported(unittest.TestCase):
         dry, _ = self._run(log)
         self.assertEqual(len(dry), 1)
         self.assertIn("等同", dry[0][2])
+
+    def test_same_day_rounds_and_recovery(self):
+        day = "2026-08-27"
+        with Fake(FULL) as fake, patch.object(ingest, "ROOT", fake.root):
+            user_args = ["--user", "u", "--today", day, "--apply"]
+            self.assertEqual(ingest.main(user_args + ["--start-round", "--expected", "猎聘", "BOSS"]), 0)
+            path = fake.root / "users/u/job_scraper/seen_jobs.json"
+            first = json.loads(path.read_text(encoding="utf-8"))["query_log"][-1]["round_id"]
+            self.assertEqual(ingest.main(user_args + ["--start-round", "--expected", "猎聘", "BOSS"]), 0)
+            second = json.loads(path.read_text(encoding="utf-8"))["query_log"][-1]["round_id"]
+            self.assertNotEqual(first, second)
+            attempt = user_args + ["--round-id", second, "--portal", "liepin-browser", "--query", "智能体"]
+            for outcome, label in (("login_required", "需要登录"), ("captcha", "需要人工验证"),
+                                   ("load_failed", "页面未加载")):
+                self.assertEqual(ingest.main(attempt + ["--outcome", outcome]), 0)
+                rows = ap.check_a_whole_channel_sat_out_the_round({}, {})
+                self.assertIn(label, rows[0][2])
+                self.assertIn("漏了 1 家：BOSS", rows[1][2])
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn(("智能体", "猎聘"), query_yield.ran(doc))
+            empty = fake.root / "empty.json"
+            empty.write_text("[]", encoding="utf-8")
+            self.assertEqual(ingest.main(attempt + ["--input", str(empty)]), 0)
+            self.assertEqual(ingest.main(user_args + ["--round-id", second, "--portal", "boss-browser",
+                                                      "--input", str(empty)]), 0)
+            self.assertEqual(ap.check_a_whole_channel_sat_out_the_round({}, {}), [])
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            self.assertIn(("智能体", "猎聘"), query_yield.ran(doc))
 
 
 class TheBlockedLaneMustHandOver(unittest.TestCase):

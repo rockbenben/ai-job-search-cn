@@ -649,7 +649,7 @@ python tools/archive.py --revive --apply   # 整个拉回热库（不加 --apply
 
 ## Step 4：写回状态
 
-### 本批排除依据在写回前校验
+### 校验并写回本批评分
 
 新评估若因「候选人明确排除」判为不满足，在 `rank_breakdown` 中保存结构化字段：
 
@@ -658,8 +658,9 @@ python tools/archive.py --revive --apply   # 整个拉回热库（不加 --apply
 ```
 
 将本批待写记录存为 `job_scraper/evaluation-batch.json`（按活动用户解析），包含岗位 ID 和完整条目。
-在更新职位库前运行 `python tools/validate_evaluations.py --input users/<活动用户>/job_scraper/evaluation-batch.json --keys <本批岗位ID...>`。
-校验失败则修正引文或改为待核实，重跑通过后再按下方版本戳规则合入库。
+运行 `python tools/validate_evaluations.py --input users/<活动用户>/job_scraper/evaluation-batch.json --keys <本批岗位ID...> --apply`。
+工具按当前职位和资料计算薪资分、把粗筛的强度和发展归到规定档位、重算综合分和结论，并清除待评时的降权标记。
+平台标为硕士或博士时，先核实正文并保存学历结论。校验失败时整批不写，修正依据或补上待确认标记后重跑。
 个人条件与职位依据分别保存，结论、评分和显示说明从本批同一份记录生成。
 写后复核可运行 `python tools/validate_evaluations.py --keys <本批岗位ID...>`。
 
@@ -780,6 +781,9 @@ python tools/archive.py --revive --apply   # 整个拉回热库（不加 --apply
 
 **读一次库、评十几分钟、再整份写回——这中间用户就在总览页上点按钮**，工作流自己
 就是这么建议他的（「跑的时候不用盯着」）。整份写回会把他点的那一下**静默抹掉**。
+
+已评分的批次用上面的写回命令合入。它从当前库读入，只更新评分字段，并按版本戳写入。
+下方伪代码说明其他状态变动（如确认已下线）应使用的版本戳保护。
 
 所以写回时带上版本戳：
 

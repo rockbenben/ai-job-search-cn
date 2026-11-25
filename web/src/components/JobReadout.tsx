@@ -513,7 +513,7 @@ function ReadoutBody({ job, onExclude, onExpire, onChanged, reasons = [],
                   {onExpire && hasServer() && (
                     <Button size="small" className="act-expire" disabled={Boolean(busy)}
                             onClick={onExpire}
-                            title="这个职位已经关了 / 报名截止 / 点开是聚合页。分数与评估都留着，标错了到「不投的岗位」里放回">
+                            title="确认职位下线或报名已截止后再标记。跳到聚合页或要求登录时，请先核实。标记后仍可在「不投的岗位」里放回">
                       职位已下线
                     </Button>
                   )}

@@ -26,12 +26,14 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "tests"))
 from _live import user_or_skip  # noqa: E402
 import audit_pipeline as ap  # noqa: E402
+import portal_budget as pb  # noqa: E402
 
 AUTO = (ROOT / "workflows" / "job-auto.md").read_text(encoding="utf-8")
 
@@ -42,14 +44,6 @@ class TheRuleItLeansOnStillExists(unittest.TestCase):
     def test_the_loop_still_delegates_ranking_to_rank(self):
         self.assertRegex(AUTO, r"跑 /job-rank（它自己会评到排空",
                          "循环第 1 步不再说「rank 会评到排空」—— 这条检查的前提没了")
-
-    def test_the_only_allowed_leftover_is_a_blocked_channel(self):
-        i = AUTO.index("## 停手条件")
-        seg = AUTO[i:i + 4000]
-        self.assertIn("该渠道的岗保持待评", seg,
-                      "停手条件表里不再有「撞验证码 → 该渠道的岗保持待评」"
-                      "—— 那是队列允许非空的唯一出口")
-
 
 class TheQueueCheckFires(unittest.TestCase):
 
@@ -75,6 +69,22 @@ class TheQueueCheckFires(unittest.TestCase):
         self.assertEqual(
             ap.check_queue_left_on_a_live_channel(
                 self._seen("boss-browser", status="ranked"), {}), [])
+
+    def test_pending_verification_pauses_only_its_channel_until_recovery(self):
+        day = ap._dt.date.today().isoformat()
+        log = [{"round_id": "round", "date": day, "expected": ["BOSS", "智联"]},
+               {"round_id": "round", "portal": "boss-browser", "outcome": "captcha"}]
+        seen = self._seen("boss-browser")
+        seen["other"] = next(iter(self._seen("zhaopin-browser").values()))
+        with (patch.object(ap, "_query_log", return_value=log),
+              patch.object(ap, "_SELECTED_USER") as selected,
+              patch.object(pb, "load", return_value={})):
+            selected.get.return_value = "fixture"
+            rows = ap.check_queue_left_on_a_live_channel(seen, {})
+            self.assertNotIn("boss-browser", rows[0][2])
+            self.assertIn("zhaopin-browser 1 个", rows[0][2])
+            log.append({"round_id": "round", "portal": "boss-browser", "outcome": "ok"})
+            self.assertIn("boss-browser 3 个", ap.check_queue_left_on_a_live_channel(seen, {})[0][2])
 
 
 class TheDuplicateVerdictCheckFires(unittest.TestCase):

@@ -734,7 +734,7 @@ JD
 常规抓取走这条（`--input -` 是抓取器内部直接调的那种）：
 
 ```bash
-python tools/ingest.py --input 本轮.json --query "Agent产品经理" --portal liepin-search
+python tools/ingest.py --input 本轮.json --query "Agent产品经理" --portal liepin-search --round-id <轮次ID> --apply
 python tools/ingest.py --input -
 ```
 
@@ -995,6 +995,20 @@ if _cli.job_token(链接, 职位名) in seen:        # 见过 → 只更新 date
 数量这一个指标**。它们实际带回来的是一堆数字IC设计工程师。**数量不等于质量。**
 
 ### ⚠️ `query_log`：跑过就要留痕，哪怕一条都没搜到
+
+按 Step 0.4–0.46 选好渠道后，在检查浏览器登录状态和发出首个查询前登记本轮，保留输出的轮次 ID。
+默认记录总览里开启的站点。若本次指定了较小的范围（例如用了 `--no-browser`），
+用下面的第二条命令登记本轮计划查的平台名。补货每轮各登记一次。同一轮从登录或验证断点恢复时沿用原 ID。
+
+```bash
+python tools/ingest.py --start-round --apply
+python tools/ingest.py --start-round --expected 猎聘 --apply
+python tools/ingest.py --portal <渠道名> --round-id <轮次ID> --outcome captcha --apply
+```
+
+渠道遇到登录页、滑块、加载失败或限流时，按各自的处理规则提醒或暂停，并分别记录
+`login_required`、`captcha`、`load_failed` 或 `rate_limited`。这些是未取得结果的尝试。
+恢复后用同一轮次 ID 正常入库。查询已成功但没有岗位时，用空数组入库，才计为零产出。
 
 除了给每个岗写 `found_by`，**每跑一组查询还要往 `seen_jobs.json` 的 `query_log`
 记一笔**，形如 `{"query": "AI应用落地", "portal": "liepin-search", "date": "…",

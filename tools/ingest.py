@@ -94,11 +94,15 @@ import argparse
 import datetime as _dt
 import json
 import sys
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import _cli  # noqa: E402
+from query_yield import PORTAL_ALIAS, PORTALS  # noqa: E402
+
+ATTEMPT_OUTCOMES = ("login_required", "captcha", "load_failed", "rate_limited")
 
 #: 原样搬进新条目的字段。**只搬这几个** —— 其余的一律不猜。
 #:
@@ -210,6 +214,12 @@ def main(argv=None) -> int:
                          "填 - 从标准输入读")
     ap.add_argument("--query", metavar="词", help="这批是哪个词搜到的，写进 found_by")
     ap.add_argument("--portal", metavar="渠道", help="内部渠道键（如 liepin-search）")
+    ap.add_argument("--start-round", action="store_true", help="登记一轮抓取并打印轮次 ID")
+    ap.add_argument("--round-id", metavar="轮次ID", help="把本次查询关联到已登记的一轮")
+    ap.add_argument("--outcome", choices=ATTEMPT_OUTCOMES,
+                    help="记录未取得结果的原因，不读候选文件")
+    ap.add_argument("--expected", nargs="*", choices=PORTALS,
+                    help="本轮实际安排的平台，仅与 --start-round 同用；默认按总览开关")
     ap.add_argument("--today", metavar="YYYY-MM-DD", help="今天（测试用），默认今天")
     ap.add_argument("--apply", action="store_true", help="真的写进 seen_jobs.json")
     ap.add_argument("--user", help=_cli.HELP_USER)
@@ -220,7 +230,15 @@ def main(argv=None) -> int:
     # argparse 拦下（报「缺 --input」），那个不存在的用户**根本没被校验**——
     # 而「读不到数据 → 当成还没开始 → 导出一份空面板」正是
     # `test_cli_contract` 钉的那件事。先认用户，再问输入。
-    if not args.input:
+    if args.start_round and any((args.input, args.portal, args.query, args.round_id, args.outcome)):
+        ap.error("--start-round 不接受查询结果或渠道参数")
+    if args.expected is not None and not args.start_round:
+        ap.error("--expected 需要 --start-round")
+    if args.round_id and args.portal not in PORTAL_ALIAS:
+        ap.error("--round-id 需要有效的 --portal")
+    if args.outcome and (not args.round_id or args.input):
+        ap.error("--outcome 需要 --round-id 和 --portal，不能同时传 --input")
+    if not (args.input or args.start_round or args.outcome):
         ap.error("要入库得给 --input（候选文件，或 - 表示从标准输入读）")
     today = args.today or _dt.date.today().isoformat()
     path = store_path(user)
@@ -230,6 +248,37 @@ def main(argv=None) -> int:
     seen = _cli.seen_of(data)
     _cli.stop_on_unreadable_rows(seen, path)
 
+    if args.start_round:
+        if not args.apply:
+            print(_cli.DRY_RUN_NOTE)
+            return 0
+        expected = args.expected
+        if expected is None:
+            from portal_budget import switched_off
+            off = switched_off(user, root=ROOT)
+            expected = [site for site in PORTALS if site not in off]
+        round_id = uuid.uuid4().hex
+        data.setdefault("query_log", []).append(
+            {"round_id": round_id, "date": today, "expected": list(dict.fromkeys(expected))})
+        _cli.atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1), expect=stamp)
+        print(round_id)
+        return 0
+    if args.round_id and not any(
+        isinstance(item, dict) and item.get("round_id") == args.round_id and "expected" in item
+        for item in data.get("query_log", [])
+    ):
+        ap.error("找不到这个轮次 ID，请使用 --start-round 返回的 ID")
+    if args.outcome:
+        if not args.apply:
+            print(_cli.DRY_RUN_NOTE)
+            return 0
+        data.setdefault("query_log", []).append({
+            "round_id": args.round_id, "date": today, "portal": args.portal,
+            "query": args.query or "", "outcome": args.outcome,
+        })
+        _cli.atomic_write(path, json.dumps(data, ensure_ascii=False, indent=1), expect=stamp)
+        print("已记录渠道结果")
+        return 0
     rows = load_rows(args.input)
 
     idx = _cli.seen_index(user, root=ROOT)
@@ -296,8 +345,11 @@ def main(argv=None) -> int:
     # query_log：跑过就要留痕，零产出尤其。
     if args.query or args.portal:
         ql = data.setdefault("query_log", [])
-        ql.append({"query": args.query or "", "portal": args.portal or "",
-                   "date": today, "rows": len(rows), "new": len(added)})
+        record = {"query": args.query or "", "portal": args.portal or "",
+                  "date": today, "rows": len(rows), "new": len(added)}
+        if args.round_id:
+            record.update(round_id=args.round_id, outcome="ok")
+        ql.append(record)
 
     print(f"候选 {len(rows)} 条 · 新增 {len(added)} · "
           f"见过（只刷 date）{tally['seen']} · 同公司同岗换链接 {tally['same_pair']} · "

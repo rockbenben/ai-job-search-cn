@@ -1067,7 +1067,7 @@ def clear(data: dict, portal: str, now: dt.datetime) -> tuple[str, str, bool]:
     return site, lanes[0], True
 
 
-def switched_off(user: str) -> set:
+def switched_off(user: str, *, root: Path | None = None) -> set:
     """用户在总览页**自己关掉**的渠道。读不出就当全开 —— 缺文件 ≠ 全关。
 
     ## 这不是把两道闸门合并
@@ -1087,7 +1087,7 @@ def switched_off(user: str) -> set:
     「缺文件 = 全开」是**要紧的默认**（`test_portal_switch_is_read` 钉着），
     抄漏它的话第一次跑就会说四家全关。
     """
-    p = ROOT / "users" / user / "job_scraper" / "portals.json"
+    p = (root or ROOT) / "users" / user / "job_scraper" / "portals.json"
     try:
         d = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError):

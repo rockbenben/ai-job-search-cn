@@ -2499,34 +2499,49 @@ _PAY_TOP, _PAY_IN, _PAY_OK = _sc.PAY_TOP, _sc.PAY_IN, _sc.PAY_OK
 #: 而正本 `query_yield.PORTAL_ALIAS` 十一个别名一个不少。同一份映射两处实现
 #: 必然飘，这个仓库为它付过好几次学费（`gap_split` 的算式、`dupOf` 的键……）。
 _LANES = {ch: site for ch, site in PORTAL_ALIAS.items() if site in PORTALS}
+_ATTEMPT_STATUS = {"login_required": "需要登录", "captcha": "需要人工验证",
+                   "load_failed": "页面未加载", "rate_limited": "平台限流"}
 
 
-def _rounds_by_day(user: str):
-    """`query_log` 按天归成 {日期: {渠道: 查询数}}。读不出返回 None。
-
-    **这是唯一分得清「跑了没收获」和「根本没打开过」的记录。** 拿新岗数去数
-    会把前者算成后者 —— 而两者的下一步正好相反（一个是这条渠道挖空了，
-    一个是这条渠道漏了）。
-    """
+def _query_log(user: str) -> list:
     p = ROOT / "users" / user / "job_scraper" / "seen_jobs.json"
-    if not p.is_file():
-        return None
     try:
-        log = json.loads(p.read_text(encoding="utf-8")).get("query_log")
-    except (ValueError, OSError):
-        return None
-    if not isinstance(log, list) or not log:
-        return None
+        log = json.loads(p.read_text(encoding="utf-8-sig")).get("query_log")
+    except (ValueError, OSError, AttributeError):
+        return []
+    return [item for item in log if isinstance(item, dict)] if isinstance(log, list) else []
+
+
+def _rounds_by_day(user: str, *, log=None):
+    """按天统计渠道旧记录，供按日期核对的检查使用。"""
     out = {}
-    for q in log:
-        if not isinstance(q, dict):
-            continue
+    for q in _query_log(user) if log is None else log:
         day = str(q.get("date") or "")[:10]
         lane = str(q.get("portal") or "")
         if len(day) == 10 and lane in _LANES:
             out.setdefault(day, {}).setdefault(lane, 0)
             out[day][lane] += 1
     return out or None
+
+
+def _latest_search_round(log):
+    """最后登记的新轮次，从记录顺序区分同一天的多轮。"""
+    return next((item for item in reversed(log)
+                 if item.get("round_id") and isinstance(item.get("expected"), list)
+                 and len(str(item.get("date") or "")) == 10), None)
+
+
+def _round_coverage(log, recent):
+    ran, latest = {}, {}
+    for item in log:
+        lane = item.get("portal")
+        if item.get("round_id") != recent["round_id"] or lane not in _LANES:
+            continue
+        outcome = item.get("outcome", "ok")
+        latest[lane] = outcome
+        if outcome == "ok":
+            ran[lane] = ran.get(lane, 0) + 1
+    return ran, latest
 
 
 def check_a_whole_channel_sat_out_the_round(seen, details) -> list:
@@ -2552,7 +2567,8 @@ def check_a_whole_channel_sat_out_the_round(seen, details) -> list:
 
     新岗数分不清「跑了没收获」和「根本没打开过」，而这两件事的下一步正好相反：
     前者说明这条渠道这轮挖空了（正常），后者说明它漏了（要补跑）。
-    `query_log` 逐条记 `{date, portal, query, page}`，0 条就是没打开过。
+    新记录用轮次 ID 区分同一天的多轮，结果字段区分完成查询和加载失败等情况。
+    旧记录只能按天合并，缺记录只能说明无法确认覆盖。
 
     ## 只看最近一轮
 
@@ -2561,17 +2577,27 @@ def check_a_whole_channel_sat_out_the_round(seen, details) -> list:
     """
     if not _USER:
         return []
-    days = _rounds_by_day(_USER[0])
-    if not days:
+    log = _query_log(_USER[0])
+    days = _rounds_by_day(_USER[0], log=[item for item in log if not item.get("round_id")])
+    recent = _latest_search_round(log)
+    if not (recent or days):
         return []
-    day = max(days)
-    ran = days[day]
-    hit = {p for lane, p in _LANES.items() if ran.get(lane)}
     import portal_budget as pb          # 函数内 import，同本文件其余几处
+    latest = {}
+    if recent and recent["date"] >= max(days or {"": None}):
+        day = recent["date"]
+        ran, latest = _round_coverage(log, recent)
+        expected = set(recent["expected"])
+    else:
+        recent = None
+        day = max(days)
+        ran = days[day]
+        expected = set(pb.PORTALS)
+    hit = {_LANES[lane] for lane in ran.keys() | latest.keys()}
     # **渠道名走 `pb.PORTALS`（正本）。** 原来这里自己写了一份，顺序还和
     # `query_yield.PORTALS` / `pb.PORTALS` 不同，于是「哪几家没跑」这句话
     # 的次序在三个地方对不上 —— 同一件事，三种排法。
-    missing = [p for p in pb.PORTALS if p not in hit]
+    missing = [p for p in pb.PORTALS if p in expected and p not in hit]
     # 跑了的那几条之间差得离谱也要说 —— 用户的裁定是「浏览器渠道是等同的」，
     # 一条只给了别人零头，和整条没跑是同一个毛病的轻症。
     browser = {lane: n for lane, n in ran.items()
@@ -2589,25 +2615,34 @@ def check_a_whole_channel_sat_out_the_round(seen, details) -> list:
     # 收尾不该被它占一行 —— 补法也跟着分两种，否则就是在 `/job-auto` 里
     # 印一句「跑 /job-auto」，让人原地转圈。
     fresh = _in_this_batch(day)
+    unresolved = [f"{_LANES[lane]}（{pb.LANE_NAMES[pb.lane_of(lane)]}）{_ATTEMPT_STATUS[state]}"
+                  for lane, state in latest.items() if state in _ATTEMPT_STATUS]
+    warnings = []
+    if unresolved:
+        if fresh:
+            _cli.note_round_scoped()
+        warnings.append(("warn", "渠道已尝试，部分未取得结果",
+                         f"{day}：{'、'.join(unresolved)}。"
+                         "登录或验证完成后，从原页面继续。页面无法加载时保留本轮记录。"))
     if not missing:
         if thin and fresh:
             _cli.note_round_scoped()
-        return [("warn", "上一轮渠道之间跑得不均", thin)] if thin else []
+        if thin:
+            warnings.append(("warn", "上一轮渠道之间跑得不均", thin))
+        return warnings
     if fresh:
         _cli.note_round_scoped()
-        fix = "这一轮就漏在这儿 —— 现在把漏掉的那几家补跑一遍：/job-scrape"
+        fix = "核对未记载的渠道，确实没查再补跑：/job-scrape"
     else:
         fix = "补它：跑 /job-auto"
     detail = "、".join(f"{lane} {n} 次" for lane, n in sorted(ran.items(),
                                                            key=lambda x: -x[1]))
-    return [("warn", "上一轮有渠道整条没跑",
-             f"最近一轮抓取（{day}）漏了 {len(missing)} 家：{'、'.join(missing)}"
-             f" —— `query_log` 里 0 次查询，也就是根本没打开过，不是跑了没收获。"
-             f"那天实际跑的：{detail}。"
-             f"job-scrape.md 那张渠道表写着一轮正常要动 4 条、少一行就是漏了一条；"
-             f"BOSS / 智联 / 前程无忧只有浏览器这一条路，漏掉就是这家整轮没了。"
-             f"猎聘漏掉时注意：CLI 被闸门挡住不等于这家没了，浏览器那条照常进轮次"
-             f"（降速 ×3）。{thin}"
+    summary = (f"最近一轮抓取（{day}）漏了 {len(missing)} 家"
+               if recent else f"最近有记录的一天（{day}）有 {len(missing)} 家缺记录")
+    return warnings + [("warn", "抓取渠道覆盖记录不全",
+             f"{summary}：{'、'.join(missing)}"
+             f" —— {'该轮没有这些渠道的尝试记录。' if recent else '当天没有这些渠道的查询记录，无法确认是否打开过。'}"
+             f"有查询记录的渠道：{detail or '无'}。{thin}"
              f"{fix}")]
 
 
@@ -5743,9 +5778,18 @@ def check_queue_left_on_a_live_channel(seen, details) -> list:
     except Exception:
         return []
     now = _dt.datetime.now()
+    log = _query_log(user)
+    recent = _latest_search_round(log)
+    waiting = set()
+    if recent and recent["date"] == now.date().isoformat():
+        _, outcomes = _round_coverage(log, recent)
+        waiting = {(_LANES[lane], _pb.lane_of(lane)) for lane, state in outcomes.items()
+                   if state in _ATTEMPT_STATUS}
     live = []
     for portal, n in left.items():
         if not portal:
+            continue
+        if (_LANES.get(portal), _pb.lane_of(portal)) in waiting:
             continue
         try:
             st = _pb.block_state(data, portal, now, lane=_pb.lane_of(portal))
@@ -5761,7 +5805,7 @@ def check_queue_left_on_a_live_channel(seen, details) -> list:
     return [("error", "还有待评的岗，而它的渠道并没有停",
              f"{tot} 个岗还没评，而它们的渠道是通的（{rows}）。"
              f"`job-auto` 的循环里没有「队列非空」这个出口 —— "
-             f"唯一允许留下待评的是撞了验证码、用户没响应的那条渠道。"
+             f"已经记录渠道阻塞的待评岗位不计在内。"
              f"渠道通着还剩着，说明这一轮没跑完。评完：/job-rank")]
 
 

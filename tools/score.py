@@ -175,16 +175,9 @@ def plan(user: str, deep: bool = False) -> tuple[list, dict]:
         if any(not isinstance(x, (int, float)) for x in judged.values()):
             skip["要判断的三维不全"] += 1
             continue
-        pay = scoring.pay_dim(v, floor, expect)
         dims = dict(judged, **{"薪资与职级": b.get("薪资与职级")})
-        new = dict(dims)
-        new["薪资与职级"] = pay
-        if not deep:
-            # 粗筛连 JD 都没读，强度/发展只许取四档；深评读过，65 是有依据的。
-            for k in ("强度与公司性质", "发展与风险"):
-                new[k] = scoring.snap_coarse(new[k])
-        score = scoring.composite(new, scoring.adjust_of(b))
-        verdict = scoring.verdict_of(score, new["技能与经验"])
+        new, score, verdict = scoring.calculated_score(v, b, floor, expect, coarse=not deep)
+        pay = new["薪资与职级"]
         pre = "粗筛：" if _cli.is_triage(v.get("rank_verdict")) else ""
         if (new == dims and score == v.get("rank_score")
                 and pre + verdict == (v.get("rank_verdict") or "")):

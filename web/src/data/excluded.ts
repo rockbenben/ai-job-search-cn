@@ -172,7 +172,7 @@ export function postSkip(id: string, reason?: string): Promise<void> {
 }
 
 /**
- * 标记职位已下线（关了 / 报名截止 / 点开是聚合页）。
+ * 标记已确认下线或报名已截止的职位。
  *
  * 与 `postSkip` 是两件事：那是「我不想投」，这是「它已经没了」。分数与判词
  * 都不动——万一判错，放回来时还得在。放回走 `postRestore`（同一条路）。
