@@ -62,6 +62,10 @@ PORTAL_ALIAS = {
     "BOSS直聘": "BOSS", "boss-cdp": "BOSS", "boss": "BOSS", "boss-browser": "BOSS",
     "智联招聘": "智联", "zhaopin-cdp": "智联", "zhaopin": "智联",
     "zhaopin-browser": "智联",
+    # 2026-11-24：浏览器连不上时走 `site:` 兜底 + 公开详情页（`web_fetch`），
+    # 那批岗的 portal 记成 `zhaopin-web`。它同样是「智联这一家的另一种取数方式」，
+    # 不登记的话整批会落进「其它」，面板显示成「某招聘网站」。
+    "zhaopin-web": "智联",
     # 这三条原来只长在 `export_web_data.PORTAL_NAMES` 那一份上。两张表的**键域
     # 本来就是同一个**（都在问「这个内部键是哪一家」），而分头维护已经漏过两次：
     # 一次是 `*-browser` 后缀那边先补、这边后补，一次是中文名这边先认、那边后认。

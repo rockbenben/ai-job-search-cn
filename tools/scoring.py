@@ -75,8 +75,10 @@ def pay_dim(entry: dict, floor: float, expect) -> int | None:
     **比的是年包下沿** —— 上沿是给最理想候选人的，拿它打分等于按最好情况算。
 
     没写薪数时 `annual_package` 已按 12 薪保守折；12 薪够不着底线、按
-    `OPTIMISTIC_MONTHS` 薪能够着 → `PAY_OK`，这是 04「有月薪、但没写几薪」
+    `OPTIMISTIC_MONTHS` 薪估**上沿**能够着 → `PAY_OK`，这是 04「有月薪、但没写几薪」
     那一条：**假设值可以让分保守，不可以让岗消失。**
+    比的是上沿而不是下沿 —— 与预筛 `prescreen.annual_high_wan`、自检
+    「没标薪数的岗被薪资分埋掉了」三处同一个口径（三者都指 `_cli.OPTIMISTIC_MONTHS`）。
 
     ⚠️ **底线用常规那个，不用「方向极对可以降到 X 谈」的弹性值** ——
     弹性是谈判姿态，不是打分输入（判据在 `audit_pipeline._annual_floor`）。
@@ -95,7 +97,12 @@ def pay_dim(entry: dict, floor: float, expect) -> int | None:
         return PAY_IN
     if low >= floor:
         return PAY_OK
-    if pkg.get("assumed12") and low / 12 * OPTIMISTIC_MONTHS >= floor:
+    # 与预筛同一个口径：**上沿 × 最乐观薪数**（`prescreen.annual_high_wan`）。
+    # 拿「下沿 × 16」比会把 04 明令给 55 的那一档判成 25 —— 反例就在 04
+    # 「有月薪、但没写「几薪」」那一节的实测里：28-35k、底线 45 万，
+    # 下沿 28×16=44.8 差一点，上沿 35×16=56 才过；框架要的是 55 不给 25。
+    if (pkg.get("assumed12") and high is not None
+            and high / 12 * OPTIMISTIC_MONTHS >= floor):
         return PAY_OK
     # **区间跨过底线 = 按「过了底线」计**（2026-10-15 本人裁定）。
     # 原话：「30-60 过了45的线」——指 `20-40K·15薪`（年包 30-60 万）这一档。
@@ -142,9 +149,11 @@ def pay_note(entry: dict, floor: float, expect) -> str | None:
     if low >= floor:
         return (f"{how}。下沿 {low:g} 万过了 {floor:g} 万底线，"
                 f"还没进 {expect[0]:g}-{expect[1]:g} 万的期望区间")
-    if pkg.get("assumed12") and low / 12 * OPTIMISTIC_MONTHS >= floor:
+    if (pkg.get("assumed12") and high is not None
+            and high / 12 * OPTIMISTIC_MONTHS >= floor):
         return (f"{how}。12 薪下沿 {low:g} 万够不着 {floor:g} 万底线，"
-                f"按 {OPTIMISTIC_MONTHS} 薪算 {low / 12 * OPTIMISTIC_MONTHS:.0f} 万才过"
+                f"按 {OPTIMISTIC_MONTHS} 薪算上沿 "
+                f"{high / 12 * OPTIMISTIC_MONTHS:.0f} 万就过了"
                 f"——所以这一项是「几薪」说了算")
     if high is not None and high >= floor:
         return (f"{how}。下沿 {low:g} 万低于 {floor:g} 万底线，但上沿 {high:g} 万过了"

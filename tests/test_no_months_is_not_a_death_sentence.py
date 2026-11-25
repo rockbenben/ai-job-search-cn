@@ -306,5 +306,47 @@ class TheSignalItLeansOnIsReal(unittest.TestCase):
                            "标了薪数的岗中位就是 12 —— 那按 12 薪折不再是保守")
 
 
+class TheScorerUsesTheSameOptimisticGuess(unittest.TestCase):
+    """薪资维与预筛必须是同一个「最乐观」口径：**上沿 × 16**。
+
+    实测（活动用户 2026-11-24 的 /job-auto 收尾）：`scoring.pay_dim` 只拿
+    **下沿** × 16 去比，于是「2.5-3.5 万、底线 45 万」被判 25；而 04
+    「有月薪、但没写「几薪」」那一节的实测例子（28-35k、45 万）要求给 55。
+    预筛 `prescreen.annual_high_wan` 与自检「没标薪数的岗被薪资分埋掉了」
+    都按上沿算 —— 同一个口径三处实现，两处对、一处漏。
+    """
+
+    FLOOR, EXPECT = 45.0, (72.0, 96.0)
+
+    def _optimistic_high(self, salary):
+        import prescreen
+        return prescreen.annual_high_wan({"salary": salary, "salaryMonths": None})[0]
+
+    def test_it_agrees_with_the_prescreen_on_the_band(self):
+        import scoring as sc
+        for salary in ("20-30K", "25-35k", "28-35k", "3.5-5万", "10-15k",
+                       "30-45k", "2-3万·13薪"):
+            with self.subTest(salary=salary):
+                high = self._optimistic_high(salary)
+                got = sc.pay_dim({"salary": salary, "salaryMonths": None},
+                                 self.FLOOR, self.EXPECT)
+                want_ok = high is not None and high >= self.FLOOR
+                self.assertEqual(got == sc.PAY_OK, want_ok,
+                                 f"{salary}：预筛乐观上沿 {high}，薪资维给了 {got}")
+
+    def test_the_frameworks_own_example_gets_fiftyfive(self):
+        """04 的实测例：28-35k、底线 45 万 → 55（下沿差一点，上沿才过）。"""
+        import scoring as sc
+        self.assertEqual(
+            sc.pay_dim({"salary": "28-35k"}, self.FLOOR, self.EXPECT), sc.PAY_OK)
+
+    def test_the_note_says_it_is_the_upper_edge(self):
+        """说明那一格跟着同一个数走，别「写着 55、解释的还是下沿」。"""
+        import scoring as sc
+        n = sc.pay_note({"salary": "28-35k"}, self.FLOOR, self.EXPECT)
+        self.assertIn("上沿", n)
+        self.assertIn("56", n)   # 月薪上限 3.5 万 × 16 薪 = 56 万
+
+
 if __name__ == "__main__":
     unittest.main()
