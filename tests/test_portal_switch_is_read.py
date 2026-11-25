@@ -138,6 +138,13 @@ class LoginIsCheckedUpFrontNotOnCollision(unittest.TestCase):
         doc = self._doc()
         self.assertIn("没有任何报错", doc)
 
+    def test_slider_notice_asks_the_user_to_act_on_the_current_page(self):
+        section = self._doc().split("### 撞了就停", 1)[1].split("\n---", 1)[0]
+        self.assertIn("立即在聊天中提醒用户亲手通过", section)
+        self.assertIn("站名、验证页面和通过后的动作", section)
+        self.assertIn("把验证码标签页交给用户", section)
+        self.assertIn("复核原页面，从断点续跑", section)
+
     def test_the_scrape_and_auto_workflows_both_carry_it(self):
         wf = (ROOT / "workflows" / "job-scrape.md").read_text(encoding="utf-8")
         self.assertIn("先查登录态", wf, "/job-scrape 没写这一步")
